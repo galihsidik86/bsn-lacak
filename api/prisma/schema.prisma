@@ -1,0 +1,238 @@
+// Bank Syariah Nasional — Sistem Tracking Penagihan
+// Prisma schema · PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPERVISOR
+  PETUGAS
+  ADMIN
+}
+
+enum PetugasStatus {
+  LAPANGAN
+  ISTIRAHAT
+  KANTOR
+}
+
+enum KolKey {
+  K1 // Lancar
+  K2 // DPK
+  K3 // Kurang Lancar
+  K4 // Diragukan
+  K5 // Macet
+}
+
+enum Akad {
+  MURABAHAH
+  MUSYARAKAH
+  IJARAH
+  MUSYARAKAH_MUTANAQISAH
+  ISTISHNA
+}
+
+enum HasilKunjungan {
+  BAYAR
+  JANJI
+  TIDAKADA
+  TOLAK
+}
+
+enum BlastChannel {
+  WA
+  SMS
+}
+
+enum BlastStatus {
+  TERJADWAL
+  BERJALAN
+  SELESAI
+  GAGAL
+}
+
+model User {
+  id                  String         @id @default(cuid())
+  username            String         @unique
+  passwordHash        String
+  nama                String
+  role                Role
+  petugas             Petugas?       @relation(fields: [petugasId], references: [id])
+  petugasId           String?        @unique
+  failedAttempts      Int            @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  passwordChangedAt   DateTime       @default(now())
+  mustChangePassword  Boolean        @default(false)
+  refreshTokens       RefreshToken[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  // SHA-256 of the opaque token value — never store the plaintext.
+  tokenHash String   @unique
+  // Track rotation chain so reuse-detection can blow up a session lineage.
+  parentId  String?
+  family    String   // groups all tokens descended from one login
+  ip        String?
+  userAgent String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([family])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?           // User.id (null untuk anonim: gagal login)
+  actor     String?           // username snapshot
+  action    String            // "auth.login.ok", "auth.login.fail", "nasabah.reassign", ...
+  target    String?           // ID resource yang diaksi (nasabah ID, blast ID, dll)
+  ip        String?
+  userAgent String?
+  meta      Json?             // payload tambahan (small)
+  createdAt DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+}
+
+model Petugas {
+  id        String        @id @default(cuid())
+  kode      String        @unique          // P1, P2, ...
+  nama      String
+  inisial   String
+  wilayah   String
+  hp        String
+  status    PetugasStatus @default(LAPANGAN)
+  target    BigInt        @default(0)
+  hue       Int           @default(156)
+  user      User?
+  nasabah   Nasabah[]
+  kunjungan Kunjungan[]
+  positions PetugasPosition[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+model PetugasPosition {
+  id         String   @id @default(cuid())
+  petugas    Petugas  @relation(fields: [petugasId], references: [id], onDelete: Cascade)
+  petugasId  String
+  lat        Float
+  lng        Float
+  accuracy   Float?
+  recordedAt DateTime @default(now())
+
+  @@index([petugasId, recordedAt])
+}
+
+model Nasabah {
+  id         String      @id @default(cuid())
+  kode       String      @unique           // N1000, N1001, ...
+  nama       String
+  alamat     String
+  hp         String
+  lat        Float?
+  lng        Float?
+  kol        KolKey      @default(K1)
+  akad       Akad        @default(MURABAHAH)
+  plafon     BigInt
+  tenor      Int
+  angsuran   BigInt
+  sisa       BigInt
+  dpd        Int         @default(0)
+  dueIn      Int         @default(0)
+  lastBayar  String?
+  petugas    Petugas     @relation(fields: [petugasId], references: [id])
+  petugasId  String
+  kunjungan      Kunjungan[]
+  pembayaran     Pembayaran[]
+  blastRecipient BlastRecipient[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([petugasId])
+  @@index([kol])
+}
+
+model Kunjungan {
+  id         String         @id @default(cuid())
+  petugas    Petugas        @relation(fields: [petugasId], references: [id])
+  petugasId  String
+  nasabah    Nasabah        @relation(fields: [nasabahId], references: [id])
+  nasabahId  String
+  hasil      HasilKunjungan
+  nominal    BigInt         @default(0)
+  catatan    String
+  lokasi     String
+  lat        Float?
+  lng        Float?
+  valid      Boolean        @default(true)
+  fotos      Foto[]
+  jam        String
+  tanggal    DateTime       @default(now())
+
+  @@index([petugasId, tanggal])
+  @@index([nasabahId, tanggal])
+}
+
+model Foto {
+  id          String    @id @default(cuid())
+  kunjungan   Kunjungan @relation(fields: [kunjunganId], references: [id], onDelete: Cascade)
+  kunjunganId String
+  path        String
+  createdAt   DateTime  @default(now())
+}
+
+model Pembayaran {
+  id        String   @id @default(cuid())
+  nasabah   Nasabah  @relation(fields: [nasabahId], references: [id])
+  nasabahId String
+  nominal   BigInt
+  metode    String   // tunai | transfer | autodebet
+  status    String   @default("berhasil")
+  jam       String
+  tanggal   DateTime @default(now())
+
+  @@index([nasabahId, tanggal])
+}
+
+model Blast {
+  id           String       @id @default(cuid())
+  judul        String
+  kanal        BlastChannel
+  template     String
+  status       BlastStatus  @default(TERJADWAL)
+  target       Int          @default(0)
+  terkirim     Int          @default(0)
+  dibaca       Int?
+  scheduledAt  DateTime?
+  createdAt    DateTime     @default(now())
+  recipients   BlastRecipient[]
+}
+
+model BlastRecipient {
+  id        String  @id @default(cuid())
+  blast     Blast   @relation(fields: [blastId], references: [id], onDelete: Cascade)
+  blastId   String
+  nasabah   Nasabah @relation(fields: [nasabahId], references: [id])
+  nasabahId String
+  hp        String
+  status    String  @default("pending")  // pending | terkirim | gagal | dibaca
+  sentAt    DateTime?
+
+  @@unique([blastId, nasabahId])
+}

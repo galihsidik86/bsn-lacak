@@ -1,0 +1,118 @@
+# BSN Lacak — production-ish docker-compose stack
+# Run: docker compose up -d --build
+# Required files first time:
+#   .env (see .env.example)
+#   deploy/nginx/certs/{fullchain,privkey}.pem  (TLS cert/key; use mkcert in dev)
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bsn_lacak}
+      POSTGRES_USER: ${POSTGRES_USER:-bsn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bsn} -d ${POSTGRES_DB:-bsn_lacak}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bsn}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bsn_lacak}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?set in .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      REFRESH_TTL_DAYS: ${REFRESH_TTL_DAYS:-7}
+      WEB_ORIGIN: ${WEB_ORIGIN:?set in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      UPLOAD_DIR: /app/uploads
+      # Blast gateway (optional — leave empty to keep stub mode)
+      BLAST_PROVIDER: ${BLAST_PROVIDER:-stub}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_SMS: ${TWILIO_FROM_SMS:-}
+      TWILIO_WA_FROM: ${TWILIO_WA_FROM:-}
+    volumes:
+      - api_uploads:/app/uploads
+    expose: ["4000"]
+    networks: [internal]
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${PUBLIC_API_URL:-/api}
+        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+        VITE_USE_MOCK: "false"
+    restart: unless-stopped
+    expose: ["80"]
+    networks: [internal]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+      web:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+      - certbot_www:/var/www/certbot:ro
+    networks: [internal, external]
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-bsn}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-bsn_lacak}
+      RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+    volumes:
+      - ./deploy/backup/backup.sh:/usr/local/bin/backup.sh:ro
+      - db_backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "[backup] starting; backups → /backups; retention $${RETENTION_DAYS}d";
+        while true; do
+          /usr/local/bin/backup.sh || echo "[backup] failed: $$?";
+          sleep 86400;
+        done
+    networks: [internal]
+
+volumes:
+  db_data:
+  db_backups:
+  api_uploads:
+  certbot_www:
+
+networks:
+  internal:
+    driver: bridge
+  external:
+    driver: bridge

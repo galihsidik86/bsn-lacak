@@ -1,0 +1,74 @@
+groups:
+  - name: bsn-api.rules
+    rules:
+      # ---- Availability ----
+      - alert: ApiDown
+        expr: up{job="bsn-api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "API tidak menanggapi scrape (host {{ $labels.instance }})"
+          description: "Prometheus tidak bisa scrape `/metrics` selama ≥ 2 menit."
+
+      - alert: DatabaseDown
+        expr: db_up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "API kehilangan koneksi ke Postgres"
+          description: "DB ping gagal selama ≥ 1 menit. Kemungkinan: DB crash, network partition, atau pool exhausted."
+
+      # ---- Latency ----
+      - alert: ApiHighLatencyP95
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Latensi API p95 > 1s selama 10 menit"
+          description: "User mulai merasakan lemot. Cek DB queries, n+1, atau worker yang menggigit CPU."
+
+      # ---- Errors ----
+      - alert: ApiHighErrorRate
+        expr: |
+          sum(rate(http_request_duration_seconds_count{status=~"5.."}[5m]))
+          / sum(rate(http_request_duration_seconds_count[5m])) > 0.02
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Error rate 5xx > 2% selama 5 menit"
+          description: "Cek log dengan x-request-id terkait. Sumber tipikal: bug deploy, DB panas, third-party gateway down."
+
+      # ---- Security ----
+      - alert: LoginBruteForce
+        expr: increase(auth_login_failed_total[5m]) > 50
+        for: 0m
+        labels: { severity: warning }
+        annotations:
+          summary: "Login failures > 50 dalam 5 menit"
+          description: "Indikasi brute-force. Cek source IP via audit log dan rate-limit nginx."
+
+      - alert: SuddenLockoutSpike
+        expr: increase(auth_lockouts_total[15m]) > 5
+        for: 0m
+        labels: { severity: warning }
+        annotations:
+          summary: "Lebih dari 5 account lockout dalam 15 menit"
+
+      # ---- Blast queue ----
+      - alert: BlastQueueBacklog
+        expr: blast_queue_pending > 1000
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Blast queue tertumpuk > 1000 selama 30 menit"
+          description: "Worker tidak mengejar. Cek log worker, kuota gateway, atau scale-out worker."
+
+      - alert: BlastHighFailureRate
+        expr: |
+          sum(rate(blast_messages_failed_total[10m]))
+          / clamp_min(sum(rate(blast_messages_sent_total[10m])) + sum(rate(blast_messages_failed_total[10m])), 1) > 0.1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Failure rate blast > 10% selama 10 menit"
+          description: "Cek kredensial gateway, saldo Twilio, atau format nomor penerima."
