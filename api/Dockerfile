@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ---- deps: install all (incl dev) for the TS build ----
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma
@@ -15,7 +15,7 @@ RUN npx prisma generate \
   && npm run build
 
 # ---- prod: prune dev deps, run as non-root ----
-FROM node:22-alpine AS prod
+FROM node:26-alpine AS prod
 ENV NODE_ENV=production
 WORKDIR /app
 
