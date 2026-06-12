@@ -21,9 +21,11 @@ test.describe('sidebar navigation', () => {
   test('navigates to Blast and sees segment cards', async ({ page }) => {
     await login(page);
     await page.getByRole('button', { name: /^Blast SMS/i }).click();
-    await expect(page.getByText(/belum jatuh tempo/i)).toBeVisible();
-    await expect(page.getByText(/jatuh tempo hari ini/i)).toBeVisible();
-    await expect(page.getByText(/lewat jatuh tempo/i)).toBeVisible();
+    // Use role=button to disambiguate from the template textarea + preview text
+    // that contain the same phrases (Playwright strict mode rejects 4-element matches).
+    await expect(page.getByRole('button', { name: /belum jatuh tempo/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /jatuh tempo hari ini/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^[0-9]+\s+lewat jatuh tempo/i })).toBeVisible();
   });
 
   test('navigates to Tracking and sees petugas list', async ({ page }) => {
