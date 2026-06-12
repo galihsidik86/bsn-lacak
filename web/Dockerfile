@@ -21,7 +21,7 @@ COPY src ./src
 RUN npm run build
 
 # ---- serve: tiny nginx that just hands out the static SPA ----
-FROM nginx:1.27-alpine AS serve
+FROM nginx:1.31-alpine AS serve
 
 # Internal-only nginx config — the outer nginx reverse-proxy does TLS + headers.
 RUN rm /etc/nginx/conf.d/default.conf
