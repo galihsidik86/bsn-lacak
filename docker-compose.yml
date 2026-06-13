@@ -57,7 +57,8 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${PUBLIC_API_URL:-/api}
-        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+        VITE_MAPTILER_API_KEY: ${VITE_MAPTILER_API_KEY:-}
+        VITE_MAPTILER_STYLE: ${VITE_MAPTILER_STYLE:-streets-v2}
         VITE_USE_MOCK: "false"
     restart: unless-stopped
     expose: ["80"]

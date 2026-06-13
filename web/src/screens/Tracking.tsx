@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { APIProvider, Map as GMap, AdvancedMarker, Pin, useMap } from '@vis.gl/react-google-maps';
+import { Map as MlMap, Marker, Source, Layer } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { Ic } from '../components/Icons';
 import { Avatar, StatusPill, cssVar } from '../components/UI';
 import {
@@ -8,7 +9,10 @@ import {
 } from '../data/queries';
 import type { Petugas } from '../types';
 
-const GMAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY;
+// MapTiler style — `streets-v2` is the default. Other clean options:
+//   dataviz-light, basic-v2, hybrid, satellite. Swap to taste.
+const MAPTILER_STYLE = import.meta.env.VITE_MAPTILER_STYLE || 'streets-v2';
 
 // Fallback hub center (BSN headquarter — Depok area)
 const HUB = { lat: -6.4025, lng: 106.7942 };
@@ -108,26 +112,8 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
 
       <div style={{ display: 'grid', gridTemplateRows: '1fr auto', overflow: 'hidden', position: 'relative' }}>
         <div style={{ position: 'relative', overflow: 'hidden', background: 'var(--surface-2)' }}>
-          {GMAPS_KEY ? (
-            <APIProvider apiKey={GMAPS_KEY}>
-              <GMap
-                mapId="bsn-tracking"
-                defaultCenter={HUB}
-                defaultZoom={13}
-                gestureHandling="greedy"
-                disableDefaultUI={false}
-                style={{ width: '100%', height: '100%' }}>
-                <RoutePolylines routes={routes} sel={sel} showAll={showAll} />
-                {routes.flatMap(r =>
-                  (r.pt.id === sel || showAll) ? r.stops.map((s, i) => (
-                    <AdvancedMarker key={r.pt.id + i} position={{ lat: s.lat, lng: s.lng }} onClick={() => setSel(r.pt.id)}>
-                      <Pin background={r.pt.id === sel ? cssVar('--accent') : `oklch(0.6 0.1 ${r.pt.hue})`}
-                        borderColor="white" glyphColor="white" />
-                    </AdvancedMarker>
-                  )) : []
-                )}
-              </GMap>
-            </APIProvider>
+          {MAPTILER_KEY ? (
+            <MapTilerMap routes={routes} sel={sel} showAll={showAll} setSel={setSel} />
           ) : (
             <MapStylized routes={routes} sel={sel} showAll={showAll} setSel={setSel} myRoute={myRoute} />
           )}
@@ -210,26 +196,87 @@ function MiniKv({ label, value }: { label: string; value: string }) {
 
 type Route = { pt: Petugas; stops: { lat: number; lng: number; x: number; y: number; t: string; idx: number }[] };
 
-function RoutePolylines({ routes, sel, showAll }: { routes: Route[]; sel: string; showAll: boolean }) {
-  const map = useMap();
-  useEffect(() => {
-    if (!map) return;
-    const polys: google.maps.Polyline[] = [];
-    routes.forEach(r => {
-      if (!showAll && r.pt.id !== sel) return;
-      const isSel = r.pt.id === sel;
-      const poly = new google.maps.Polyline({
-        path: r.stops.map(s => ({ lat: s.lat, lng: s.lng })),
-        strokeColor: isSel ? (cssVar('--accent') || '#1f8a5b') : `hsl(${r.pt.hue}, 60%, 55%)`,
-        strokeOpacity: isSel ? 0.9 : 0.4,
-        strokeWeight: isSel ? 4 : 2,
-        map,
-      });
-      polys.push(poly);
-    });
-    return () => polys.forEach(p => p.setMap(null));
-  }, [map, routes, sel, showAll]);
-  return null;
+// MapTiler basemap + route lines + petugas markers via MapLibre GL.
+function MapTilerMap({ routes, sel, showAll, setSel }: {
+  routes: Route[]; sel: string; showAll: boolean; setSel: (s: string) => void;
+}) {
+  const accent = cssVar('--accent') || '#1f8a5b';
+  const styleUrl = `https://api.maptiler.com/maps/${MAPTILER_STYLE}/style.json?key=${MAPTILER_KEY}`;
+
+  // GeoJSON FeatureCollection of route LineStrings — each feature carries a
+  // `kind` so the line style picks selected vs. faint via case-expression.
+  const routesGeo = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: routes
+      .filter(r => showAll || r.pt.id === sel)
+      .map(r => ({
+        type: 'Feature' as const,
+        properties: {
+          kind: r.pt.id === sel ? 'sel' : 'other',
+          color: r.pt.id === sel ? accent : `hsl(${r.pt.hue}, 60%, 55%)`,
+        },
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: r.stops.map(s => [s.lng, s.lat] as [number, number]),
+        },
+      })),
+  }), [routes, sel, showAll, accent]);
+
+  return (
+    <MlMap
+      initialViewState={{ longitude: HUB.lng, latitude: HUB.lat, zoom: 12 }}
+      style={{ width: '100%', height: '100%' }}
+      mapStyle={styleUrl}
+      attributionControl={{ compact: true }}>
+      <Source id="bsn-routes" type="geojson" data={routesGeo}>
+        <Layer
+          id="bsn-routes-line"
+          type="line"
+          paint={{
+            'line-color': ['get', 'color'],
+            'line-width': ['case', ['==', ['get', 'kind'], 'sel'], 4, 2],
+            'line-opacity': ['case', ['==', ['get', 'kind'], 'sel'], 0.9, 0.4],
+          }}
+          layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+        />
+      </Source>
+
+      {routes.flatMap(r =>
+        (r.pt.id === sel || showAll)
+          ? r.stops.map((s, i) => {
+              const isSel = r.pt.id === sel;
+              const isLive = isSel && i === r.stops.length - 1;
+              const color = isSel ? accent : `hsl(${r.pt.hue}, 60%, 55%)`;
+              return (
+                <Marker key={`${r.pt.id}-${i}`} longitude={s.lng} latitude={s.lat} anchor="center"
+                  onClick={(e) => { e.originalEvent.stopPropagation(); setSel(r.pt.id); }}>
+                  {isLive ? (
+                    <div style={{ position: 'relative', width: 26, height: 26, cursor: 'pointer' }}>
+                      <div style={{
+                        position: 'absolute', inset: 0, borderRadius: 99,
+                        background: color, opacity: 0.25, animation: 'mlpulse 2.2s ease-out infinite',
+                      }} />
+                      <div style={{
+                        position: 'absolute', inset: 6, borderRadius: 99,
+                        background: color, border: '3px solid white',
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+                      }} />
+                    </div>
+                  ) : (
+                    <div style={{
+                      width: isSel ? 16 : 12, height: isSel ? 16 : 12, borderRadius: 99,
+                      background: color, border: '2px solid white',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                      cursor: 'pointer',
+                    }} />
+                  )}
+                </Marker>
+              );
+            })
+          : []
+      )}
+    </MlMap>
+  );
 }
 
 // Fallback stylized map for when no Google Maps API key is provided

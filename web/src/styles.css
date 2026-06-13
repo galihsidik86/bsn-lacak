@@ -353,6 +353,13 @@ button { font-family: inherit; cursor: pointer; }
 /* skeleton shimmer */
 @keyframes sk { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
+/* live position pulse on MapTiler marker */
+@keyframes mlpulse {
+  0%   { transform: scale(0.6); opacity: 0.55; }
+  80%  { transform: scale(2.0); opacity: 0; }
+  100% { transform: scale(2.0); opacity: 0; }
+}
+
 /* modal */
 .modal-scrim {
   position: fixed; inset: 0; background: oklch(0.2 0.02 160 / 0.45);
