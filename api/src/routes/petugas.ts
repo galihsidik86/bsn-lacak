@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { bus } from '../lib/events.js';
+import { computeStatsFor } from '../lib/petugasStats.js';
 
 const router = Router();
 
@@ -9,7 +10,8 @@ router.use(requireAuth);
 
 router.get('/', async (_req, res) => {
   const list = await prisma.petugas.findMany({ orderBy: { kode: 'asc' } });
-  res.json(list);
+  const stats = await computeStatsFor(list.map(p => p.id));
+  res.json(list.map(p => ({ ...p, ...(stats.get(p.id) ?? {}) })));
 });
 
 router.get('/:id', async (req, res) => {

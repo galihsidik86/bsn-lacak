@@ -52,7 +52,7 @@ function petugasFromServer(p: any): Petugas {
     status: STATUS_MAP[p.status] ?? 'kantor',
     hp: p.hp,
     target: n(p.target),
-    // These aren't on the schema yet — default to 0 so the dashboard renders.
+    // Now computed server-side per request from real Pembayaran/Kunjungan/Position.
     terkumpul: n(p.terkumpul),
     kunjungan: n(p.kunjungan),
     rencana: n(p.rencana),

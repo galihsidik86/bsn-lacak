@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Ic, type IconKey } from '../components/Icons';
 import { Badge, KolBadge, Modal, Ring } from '../components/UI';
-import { RP, TEMPLATES, useBlastHistory, useSegmen } from '../data/queries';
+import { EmptyState, ErrorState, Skeleton } from '../components/States';
+import { RP, TEMPLATES, useBlastHistory, useNasabahList, useSegmen } from '../data/queries';
 import { api } from '../lib/api';
 import type { Nasabah } from '../types';
 
@@ -29,8 +30,10 @@ type Kanal = 'wa' | 'sms';
 type Stage = null | 'confirm' | 'progress' | 'done';
 
 export function ScreenBlast() {
+  const nasabahQ = useNasabahList();
+  const blastQ = useBlastHistory();
   const SEGMEN = useSegmen();
-  const { data: BLAST_HISTORY } = useBlastHistory();
+  const { data: BLAST_HISTORY } = blastQ;
 
   const [segKey, setSegKey] = useState<SegKey>('hari_ini');
   const [kanal, setKanal] = useState<Kanal>('wa');
@@ -41,6 +44,23 @@ export function ScreenBlast() {
   const [sending, setSending] = useState<Stage>(null);
 
   useEffect(() => { setTpl(TEMPLATES[seg.tpl]); setExcluded(new Set()); }, [segKey, seg.tpl]);
+
+  if (nasabahQ.isPending || blastQ.isPending) {
+    return (
+      <div className="content" style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} h={130} />)}
+        </div>
+        <Skeleton h={400} />
+      </div>
+    );
+  }
+  if (nasabahQ.error || blastQ.error) {
+    return <div className="content"><ErrorState onRetry={() => { nasabahQ.refetch(); blastQ.refetch(); }} /></div>;
+  }
+  if (nasabahQ.data.length === 0) {
+    return <div className="content"><EmptyState title="Tidak ada nasabah yang bisa di-blast" hint="Tambahkan nasabah dulu." /></div>;
+  }
 
   const active = recipients.filter(r => !excluded.has(r.id));
   const sample = active[0] || recipients[0];

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Ic } from '../components/Icons';
 import { Avatar, Badge, KolBadge, Kv, Modal, StackedBar } from '../components/UI';
+import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   KOL, RP, RPjt,
   useNasabahList, usePetugasFinder, usePetugasList, usePostur,
@@ -35,8 +36,10 @@ function AkadBadge({ akad }: { akad: Akad }) {
 }
 
 export function ScreenKolektabilitas({ go }: { go: (k: string) => void }) {
-  const { data: NASABAH } = useNasabahList();
-  const { data: PETUGAS } = usePetugasList();
+  const nasabahQ = useNasabahList();
+  const petugasQ = usePetugasList();
+  const { data: NASABAH } = nasabahQ;
+  const { data: PETUGAS } = petugasQ;
   const POSTUR = usePostur();
   const petugasById = usePetugasFinder();
 
@@ -45,6 +48,23 @@ export function ScreenKolektabilitas({ go }: { go: (k: string) => void }) {
   const [fAkad, setFAkad] = useState<'all' | Akad>('all');
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<Nasabah | null>(null);
+
+  if (nasabahQ.isPending || petugasQ.isPending) {
+    return (
+      <div className="content" style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(5, 1fr)' }}>
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} h={110} />)}
+        </div>
+        <Skeleton h={460} />
+      </div>
+    );
+  }
+  if (nasabahQ.error || petugasQ.error) {
+    return <div className="content"><ErrorState onRetry={() => { nasabahQ.refetch(); petugasQ.refetch(); }} /></div>;
+  }
+  if (NASABAH.length === 0) {
+    return <div className="content"><EmptyState title="Belum ada nasabah binaan" hint="Seed database atau tambahkan nasabah." /></div>;
+  }
 
   const rows = NASABAH.filter(n =>
     (fKol === 'all' || n.kol === +fKol) &&

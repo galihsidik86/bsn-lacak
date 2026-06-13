@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Ic, type IconKey } from '../components/Icons';
 import { Avatar, Badge, ImgPh, KolBadge } from '../components/UI';
 import { IOSDevice } from '../components/IosFrame';
+import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   HASIL_KUNJUNGAN, KOL, RP, RPjt,
   useCreateKunjungan, useNasabahList, usePetugasList,
@@ -11,8 +12,10 @@ import type { HasilKunjungan, Nasabah, Petugas } from '../types';
 type Tab = 'beranda' | 'rute' | 'riwayat' | 'profil';
 
 export function ScreenMobile() {
-  const { data: PETUGAS } = usePetugasList();
-  const { data: NASABAH } = useNasabahList();
+  const petugasQ = usePetugasList();
+  const nasabahQ = useNasabahList();
+  const { data: PETUGAS } = petugasQ;
+  const { data: NASABAH } = nasabahQ;
   const ME = PETUGAS[0];
   const MY_TASKS = ME ? NASABAH.filter(n => n.petugas === ME.id).slice(0, 6) : [];
 
@@ -20,8 +23,14 @@ export function ScreenMobile() {
   const [reportFor, setReportFor] = useState<Nasabah | null>(null);
   const [done, setDone] = useState<string[]>([]);
 
+  if (petugasQ.isPending || nasabahQ.isPending) {
+    return <div className="content" style={{ maxWidth: 980, margin: '0 auto' }}><Skeleton h={600} /></div>;
+  }
+  if (petugasQ.error || nasabahQ.error) {
+    return <div className="content"><ErrorState onRetry={() => { petugasQ.refetch(); nasabahQ.refetch(); }} /></div>;
+  }
   if (!ME) {
-    return <div className="content"><div className="muted" style={{ padding: 40 }}>Memuat data petugas…</div></div>;
+    return <div className="content"><EmptyState title="Belum ada petugas" hint="Seed database dulu." /></div>;
   }
 
   return (

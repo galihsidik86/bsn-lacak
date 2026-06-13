@@ -183,6 +183,48 @@ async function main() {
   }
   console.log(`  ${sampleVisits.length} kunjungan + pembayaran sample`);
 
+  // Sample PetugasPosition rows so dashboard "mulai"/"terakhir" + Tracking
+  // marker have something realistic to render even before petugas mobile
+  // pings start arriving. Idempotent: skip if today already has positions.
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const existingToday = await prisma.petugasPosition.count({ where: { recordedAt: { gte: todayStart } } });
+  if (existingToday > 0) {
+    console.log(`  ${existingToday} petugas position rows already exist today — skipping`);
+    console.log('Done.');
+    return;
+  }
+
+  const HUB = { lat: -6.4025, lng: 106.7942 };
+  let positionsCreated = 0;
+  for (const p of PETUGAS_SEED) {
+    const petugas = await prisma.petugas.findUnique({ where: { kode: p.kode } });
+    if (!petugas) continue;
+
+    const startHour = 7 + (positionsCreated % 2);     // 07:xx or 08:xx
+    const startMin = (positionsCreated * 13) % 60;
+    const startAt = new Date();
+    startAt.setHours(startHour, startMin, 0, 0);
+
+    // Spread the rest of the day's pings — one every ~45 min, slight geo drift.
+    const pings = 6;
+    for (let i = 0; i < pings; i++) {
+      const recordedAt = new Date(startAt.getTime() + i * 45 * 60 * 1000);
+      if (recordedAt > new Date()) break;            // don't seed into the future
+      const drift = (positionsCreated + i) * 0.0035;
+      await prisma.petugasPosition.create({
+        data: {
+          petugasId: petugas.id,
+          lat: HUB.lat + Math.sin(drift) * 0.025,
+          lng: HUB.lng + Math.cos(drift) * 0.04,
+          accuracy: 8 + (i % 6),
+          recordedAt,
+        },
+      });
+      positionsCreated++;
+    }
+  }
+  console.log(`  ${positionsCreated} petugas position pings`);
+
   console.log('Done.');
 }
 

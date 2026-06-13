@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Ic } from '../components/Icons';
 import { Avatar, Badge, ImgPh, KolBadge, Kv, Modal, Stat } from '../components/UI';
+import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   HASIL_KUNJUNGAN, RP,
   useKunjunganList, useNasabahFinder, usePetugasFinder, usePetugasList,
@@ -8,8 +9,10 @@ import {
 import type { HasilKunjungan, Kunjungan, Nasabah, Petugas } from '../types';
 
 export function ScreenLaporan() {
-  const { data: KUNJUNGAN } = useKunjunganList();
-  const { data: PETUGAS } = usePetugasList();
+  const kunjunganQ = useKunjunganList();
+  const petugasQ = usePetugasList();
+  const { data: KUNJUNGAN } = kunjunganQ;
+  const { data: PETUGAS } = petugasQ;
   const petugasById = usePetugasFinder();
   const nasabahById = useNasabahFinder();
 
@@ -24,6 +27,25 @@ export function ScreenLaporan() {
 
   const counts = (Object.keys(HASIL_KUNJUNGAN) as HasilKunjungan[])
     .map(h => ({ h, n: KUNJUNGAN.filter(k => k.hasil === h).length }));
+
+  if (kunjunganQ.isPending || petugasQ.isPending) {
+    return (
+      <div className="content" style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={120} />)}
+        </div>
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} h={260} />)}
+        </div>
+      </div>
+    );
+  }
+  if (kunjunganQ.error || petugasQ.error) {
+    return <div className="content"><ErrorState onRetry={() => { kunjunganQ.refetch(); petugasQ.refetch(); }} /></div>;
+  }
+  if (KUNJUNGAN.length === 0) {
+    return <div className="content"><EmptyState title="Belum ada laporan kunjungan" hint="Laporan akan muncul setelah petugas mengisi via app mobile." /></div>;
+  }
 
   return (
     <div className="content">

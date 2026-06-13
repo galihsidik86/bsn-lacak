@@ -3,6 +3,7 @@ import { Map as MlMap, Marker, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Ic } from '../components/Icons';
 import { Avatar, StatusPill, cssVar } from '../components/UI';
+import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   HASIL_KUNJUNGAN, RPjt, STATUS_PETUGAS,
   useKunjunganList, useNasabahFinder, usePetugasFinder, usePetugasList,
@@ -46,8 +47,10 @@ function makeRoute(p: Petugas, seed: number) {
 }
 
 export function ScreenTracking({ go }: { go: (k: string) => void }) {
-  const { data: PETUGAS } = usePetugasList();
-  const { data: KUNJUNGAN } = useKunjunganList();
+  const petugasQ = usePetugasList();
+  const kunjunganQ = useKunjunganList();
+  const { data: PETUGAS } = petugasQ;
+  const { data: KUNJUNGAN } = kunjunganQ;
   const petugasById = usePetugasFinder();
   const nasabahById = useNasabahFinder();
 
@@ -67,8 +70,27 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
     setLivePositions(prev => ({ ...prev, [d.petugasId]: { lat: d.lat, lng: d.lng, ts: d.ts } }));
   }, []));
 
+  if (petugasQ.isPending || kunjunganQ.isPending) {
+    return (
+      <div className="content" style={{ display: 'grid', gap: 16, gridTemplateColumns: '318px 1fr' }}>
+        <Skeleton h={600} />
+        <Skeleton h={600} />
+      </div>
+    );
+  }
+  if (petugasQ.error || kunjunganQ.error) {
+    return <div className="content"><ErrorState onRetry={() => { petugasQ.refetch(); kunjunganQ.refetch(); }} /></div>;
+  }
+  if (PETUGAS.length === 0) {
+    return (
+      <div className="content">
+        <EmptyState title="Belum ada petugas terdaftar"
+          hint="Tambahkan petugas lapangan dulu dari menu Distribusi atau seed database." />
+      </div>
+    );
+  }
   if (!p || !myRoute) {
-    return <div className="content"><div className="muted" style={{ padding: 40 }}>Memuat petugas…</div></div>;
+    return <div className="content"><div className="muted" style={{ padding: 40 }}>Memilih petugas…</div></div>;
   }
 
   return (

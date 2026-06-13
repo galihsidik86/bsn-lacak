@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Ic } from '../components/Icons';
 import { Avatar, AreaChart, Badge, Donut, Stat, cssVar } from '../components/UI';
+import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   RP, RPjt, useNasabahList, usePayflow, usePetugasFinder,
 } from '../data/queries';
@@ -38,12 +39,31 @@ function buildTrx(NASABAH: Nasabah[], petugasById: (id: string) => Petugas | und
 }
 
 export function ScreenAngsuran() {
-  const { data: NASABAH } = useNasabahList();
-  const { data: PAYFLOW } = usePayflow();
+  const nasabahQ = useNasabahList();
+  const payflowQ = usePayflow();
+  const { data: NASABAH } = nasabahQ;
+  const { data: PAYFLOW } = payflowQ;
   const petugasById = usePetugasFinder();
 
   const [range, setRange] = useState<'7h' | '14h' | '30h'>('14h');
   const TRX = useMemo(() => buildTrx(NASABAH, petugasById), [NASABAH, petugasById]);
+
+  if (nasabahQ.isPending || payflowQ.isPending) {
+    return (
+      <div className="content" style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={120} />)}
+        </div>
+        <Skeleton h={300} />
+      </div>
+    );
+  }
+  if (nasabahQ.error || payflowQ.error) {
+    return <div className="content"><ErrorState onRetry={() => { nasabahQ.refetch(); payflowQ.refetch(); }} /></div>;
+  }
+  if (NASABAH.length === 0 && PAYFLOW.length === 0) {
+    return <div className="content"><EmptyState title="Belum ada transaksi" hint="Pembayaran nasabah akan muncul di sini setelah ada kunjungan." /></div>;
+  }
   const totalHari = TRX.filter(t => t.status === 'berhasil').reduce((s, t) => s + t.nominal, 0);
   const byMethod = (['tunai', 'transfer', 'autodebet'] as const).map(k => {
     const items = TRX.filter(t => t.metode.k === k && t.status === 'berhasil');

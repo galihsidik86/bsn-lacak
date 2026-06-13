@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Ic } from '../components/Icons';
 import { Avatar, Badge, KolBadge, Modal, StackedBar, StatusPill } from '../components/UI';
+import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   KOL, RP, RPjt,
   useNasabahFinder, useNasabahList, usePetugasFinder, usePetugasList, useReassign,
@@ -8,8 +9,10 @@ import {
 import type { KolKey, Nasabah } from '../types';
 
 export function ScreenDistribusi() {
-  const { data: NASABAH } = useNasabahList();
-  const { data: PETUGAS } = usePetugasList();
+  const nasabahQ = useNasabahList();
+  const petugasQ = usePetugasList();
+  const { data: NASABAH } = nasabahQ;
+  const { data: PETUGAS } = petugasQ;
   const nasabahById = useNasabahFinder();
   const petugasById = usePetugasFinder();
   const reassignMut = useReassign();
@@ -39,6 +42,23 @@ export function ScreenDistribusi() {
     setToast('Distribusi otomatis selesai — beban diseimbangkan');
     setTimeout(() => setToast(null), 2600);
   };
+
+  if (nasabahQ.isPending || petugasQ.isPending) {
+    return (
+      <div className="content" style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} h={200} />)}
+        </div>
+        <Skeleton h={400} />
+      </div>
+    );
+  }
+  if (nasabahQ.error || petugasQ.error) {
+    return <div className="content"><ErrorState onRetry={() => { nasabahQ.refetch(); petugasQ.refetch(); }} /></div>;
+  }
+  if (PETUGAS.length === 0 || NASABAH.length === 0) {
+    return <div className="content"><EmptyState title="Belum ada nasabah / petugas" hint="Seed database dulu agar distribusi bisa ditampilkan." /></div>;
+  }
 
   return (
     <div className="content">
