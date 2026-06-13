@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
-import { requireAuth, requireRole } from '../auth.js';
+import { requireAuth, requireRole, scopedBranchId } from '../auth.js';
 import { audit, fromReq } from '../lib/audit.js';
 import { bus } from '../lib/events.js';
 import { enqueueNotification } from './notifications.js';
@@ -9,10 +9,15 @@ import { enqueueNotification } from './notifications.js';
 const router = Router();
 router.use(requireAuth);
 
-// Build a `where` clause that scopes PETUGAS users to only see their own nasabah.
+// Build a `where` clause combining branch-tenancy + role scoping.
+// ADMIN: no branch filter; SUPERVISOR/PETUGAS: filter to token's branchId.
+// PETUGAS also pinned to their own assignments.
 function scope(req: any) {
-  if (req.user?.role === 'PETUGAS') return { petugasId: req.user.petugasId ?? '__none__' };
-  return {};
+  const w: Record<string, unknown> = {};
+  if (req.user?.role === 'PETUGAS') w.petugasId = req.user.petugasId ?? '__none__';
+  const branchId = scopedBranchId(req);
+  if (branchId !== null && branchId !== undefined) w.branchId = branchId;
+  return w;
 }
 
 router.get('/', async (req, res) => {
@@ -61,11 +66,22 @@ router.patch('/:id/petugas', requireRole('SUPERVISOR', 'ADMIN'), async (req, res
   const parsed = reassign.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_request' });
   const id = String(req.params.id);
-  const before = await prisma.nasabah.findUnique({ where: { id } });
+
+  // Source nasabah must be inside the requester's branch scope.
+  const before = await prisma.nasabah.findFirst({ where: { id, ...scope(req) } });
   if (!before) return res.status(404).json({ error: 'not_found' });
 
+  // Target petugas must live in the same branch unless requester is ADMIN.
+  const targetPetugas = await prisma.petugas.findUnique({ where: { id: parsed.data.petugasId } });
+  if (!targetPetugas) return res.status(400).json({ error: 'unknown_petugas' });
+  if (req.user?.role !== 'ADMIN' && targetPetugas.branchId !== before.branchId) {
+    return res.status(403).json({ error: 'cross_branch_forbidden' });
+  }
+
   const updated = await prisma.nasabah.update({
-    where: { id }, data: { petugasId: parsed.data.petugasId },
+    where: { id },
+    // When ADMIN moves nasabah across branches, branchId follows the new petugas.
+    data: { petugasId: parsed.data.petugasId, branchId: targetPetugas.branchId },
   });
   await audit({
     action: 'nasabah.reassign', target: id,

@@ -27,13 +27,20 @@ function genPassword(len = 16) {
 
 const prisma = new PrismaClient();
 
+const BRANCH_SEED = [
+  { kode: 'BSN001', nama: 'BSN Pusat', alamat: 'Jl. Sudirman, Jakarta', kepalaCabang: 'Ir. H. Rahmat Hidayat' },
+  { kode: 'BSN002', nama: 'BSN Cabang Depok', alamat: 'Jl. Margonda Raya, Depok', kepalaCabang: 'Drs. Bambang Sutrisno' },
+  { kode: 'BSN003', nama: 'BSN Cabang Bogor', alamat: 'Jl. Pajajaran, Bogor', kepalaCabang: 'Hj. Siti Aminah, S.E.' },
+];
+
+// 6 petugas dibagi rata ke 3 cabang (2 per cabang).
 const PETUGAS_SEED = [
-  { kode: 'P1', nama: 'Andi Pratama', inisial: 'AP', wilayah: 'Cibinong – Bojonggede', hp: '0812-3344-1100', status: PetugasStatus.LAPANGAN, target: 42_000_000n, hue: 156 },
-  { kode: 'P2', nama: 'Rizki Hidayat', inisial: 'RH', wilayah: 'Citayam – Depok', hp: '0813-9988-2200', status: PetugasStatus.LAPANGAN, target: 38_000_000n, hue: 245 },
-  { kode: 'P3', nama: 'Sri Wahyuni', inisial: 'SW', wilayah: 'Sawangan – Pancoran Mas', hp: '0857-1122-3344', status: PetugasStatus.LAPANGAN, target: 35_000_000n, hue: 320 },
-  { kode: 'P4', nama: 'Bayu Setiawan', inisial: 'BS', wilayah: 'Tapos – Cimanggis', hp: '0811-5566-7788', status: PetugasStatus.ISTIRAHAT, target: 40_000_000n, hue: 60 },
-  { kode: 'P5', nama: 'Dewi Lestari', inisial: 'DL', wilayah: 'Beji – Kemiri Muka', hp: '0856-7788-9900', status: PetugasStatus.KANTOR, target: 33_000_000n, hue: 25 },
-  { kode: 'P6', nama: 'Fajar Nugroho', inisial: 'FN', wilayah: 'Limo – Grogol', hp: '0852-3344-5566', status: PetugasStatus.LAPANGAN, target: 36_000_000n, hue: 200 },
+  { kode: 'P1', nama: 'Andi Pratama', inisial: 'AP', wilayah: 'Cibinong – Bojonggede', hp: '0812-3344-1100', status: PetugasStatus.LAPANGAN, target: 42_000_000n, hue: 156, branchKode: 'BSN001' },
+  { kode: 'P2', nama: 'Rizki Hidayat', inisial: 'RH', wilayah: 'Citayam – Depok', hp: '0813-9988-2200', status: PetugasStatus.LAPANGAN, target: 38_000_000n, hue: 245, branchKode: 'BSN002' },
+  { kode: 'P3', nama: 'Sri Wahyuni', inisial: 'SW', wilayah: 'Sawangan – Pancoran Mas', hp: '0857-1122-3344', status: PetugasStatus.LAPANGAN, target: 35_000_000n, hue: 320, branchKode: 'BSN002' },
+  { kode: 'P4', nama: 'Bayu Setiawan', inisial: 'BS', wilayah: 'Tapos – Cimanggis', hp: '0811-5566-7788', status: PetugasStatus.ISTIRAHAT, target: 40_000_000n, hue: 60, branchKode: 'BSN003' },
+  { kode: 'P5', nama: 'Dewi Lestari', inisial: 'DL', wilayah: 'Beji – Kemiri Muka', hp: '0856-7788-9900', status: PetugasStatus.KANTOR, target: 33_000_000n, hue: 25, branchKode: 'BSN001' },
+  { kode: 'P6', nama: 'Fajar Nugroho', inisial: 'FN', wilayah: 'Limo – Grogol', hp: '0852-3344-5566', status: PetugasStatus.LAPANGAN, target: 36_000_000n, hue: 200, branchKode: 'BSN003' },
 ];
 
 const AKAD_CYCLE: Akad[] = [Akad.MURABAHAH, Akad.MUSYARAKAH, Akad.IJARAH, Akad.MUSYARAKAH_MUTANAQISAH, Akad.ISTISHNA, Akad.MURABAHAH];
@@ -61,29 +68,47 @@ const kolFromIdx = (i: number): KolKey => {
 async function main() {
   console.log('Seeding…');
 
+  // Branches
+  const branchMap = new Map<string, string>(); // kode -> id
+  for (const b of BRANCH_SEED) {
+    const upserted = await prisma.branch.upsert({
+      where: { kode: b.kode },
+      update: { nama: b.nama, alamat: b.alamat, kepalaCabang: b.kepalaCabang },
+      create: b,
+    });
+    branchMap.set(b.kode, upserted.id);
+  }
+  console.log(`  ${branchMap.size} cabang`);
+
   // Petugas
   const petugasMap = new Map<string, string>(); // kode -> id
+  const petugasBranchMap = new Map<string, string>(); // kode -> branchId
   for (const p of PETUGAS_SEED) {
+    const branchId = branchMap.get(p.branchKode)!;
+    const { branchKode, ...rest } = p;
     const upserted = await prisma.petugas.upsert({
       where: { kode: p.kode },
-      update: p,
-      create: p,
+      update: { ...rest, branchId },
+      create: { ...rest, branchId },
     });
     petugasMap.set(p.kode, upserted.id);
+    petugasBranchMap.set(p.kode, branchId);
   }
-  console.log(`  ${petugasMap.size} petugas`);
+  console.log(`  ${petugasMap.size} petugas (terdistribusi ke ${branchMap.size} cabang)`);
 
   // Users — generate random password per user, force change on first login.
   // Printed ONCE here; not stored in plaintext anywhere.
   const credentials: Array<{ username: string; password: string; role: Role }> = [];
 
-  async function ensureUser(username: string, nama: string, role: Role, petugasId?: string) {
+  async function ensureUser(username: string, nama: string, role: Role, opts: { petugasId?: string; branchId?: string | null } = {}) {
     const existing = await prisma.user.findUnique({ where: { username } });
     if (existing) return;
     const password = genPassword(16);
     await prisma.user.create({
       data: {
-        username, nama, role, petugasId: petugasId ?? null,
+        username, nama, role,
+        petugasId: opts.petugasId ?? null,
+        branchId: opts.branchId === undefined ? null : opts.branchId,
         passwordHash: await bcrypt.hash(password, 12),
         mustChangePassword: true,
       },
@@ -91,9 +116,21 @@ async function main() {
     credentials.push({ username, password, role });
   }
 
-  await ensureUser('supervisor', 'Supervisor BSN', Role.SUPERVISOR);
+  // 1 HQ admin (cross-branch), 1 supervisor per cabang, 1 user per petugas.
+  await ensureUser('admin', 'Admin HQ BSN', Role.ADMIN, { branchId: null });
+  for (const b of BRANCH_SEED) {
+    await ensureUser(
+      `sup_${b.kode.toLowerCase()}`,
+      `Supervisor ${b.nama}`,
+      Role.SUPERVISOR,
+      { branchId: branchMap.get(b.kode)! },
+    );
+  }
   for (const p of PETUGAS_SEED) {
-    await ensureUser(p.kode.toLowerCase(), p.nama, Role.PETUGAS, petugasMap.get(p.kode));
+    await ensureUser(p.kode.toLowerCase(), p.nama, Role.PETUGAS, {
+      petugasId: petugasMap.get(p.kode),
+      branchId: branchMap.get(p.branchKode)!,
+    });
   }
 
   if (credentials.length > 0) {
@@ -129,9 +166,13 @@ async function main() {
     const dueIn = kol === KolKey.K1 ? [0, 1, 2, 3, 5, 7, 10][i % 7] : -dpd;
 
     const kode = 'N' + (1000 + i);
+    // Nasabah inherits branch from their assigned petugas.
+    const branchId = petugasBranchMap.get(petugasKode)!;
     await prisma.nasabah.upsert({
       where: { kode },
-      update: {},
+      // Keep nasabah pinned to their seed petugas + branch even if a previous
+      // run left them in BSN001 (the default backfill branch).
+      update: { petugasId: petugasMap.get(petugasKode)!, branchId },
       create: {
         kode,
         nama: FIRST_N[i % FIRST_N.length] + (i >= FIRST_N.length ? ' ' + (Math.floor(i / FIRST_N.length) + 1) : ''),
@@ -147,6 +188,7 @@ async function main() {
         dueIn,
         lastBayar: ['3 hari lalu', 'Kemarin', '1 minggu lalu', '2 minggu lalu', 'Hari ini', '1 bulan lalu'][i % 6],
         petugasId: petugasMap.get(petugasKode)!,
+        branchId,
       },
     });
   }
@@ -168,6 +210,7 @@ async function main() {
     await prisma.kunjungan.create({
       data: {
         petugasId: petugas.id, nasabahId: nasabah.id,
+        branchId: petugas.branchId,
         jam: v.jam, hasil: v.hasil, nominal: v.nominal,
         catatan: v.catatan, lokasi: v.lokasi, valid: true,
       },
@@ -175,7 +218,7 @@ async function main() {
     if (v.hasil === HasilKunjungan.BAYAR && v.nominal > 0n) {
       await prisma.pembayaran.create({
         data: {
-          nasabahId: nasabah.id, nominal: v.nominal,
+          nasabahId: nasabah.id, branchId: petugas.branchId, nominal: v.nominal,
           metode: 'tunai', status: 'berhasil', jam: v.jam,
         },
       });

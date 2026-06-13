@@ -66,17 +66,26 @@ router.post('/login', async (req, res) => {
     data: { failedAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
   });
 
-  const access = sign({ sub: user.id, role: user.role, petugasId: user.petugasId });
+  const access = sign({ sub: user.id, role: user.role, petugasId: user.petugasId, branchId: user.branchId });
   const { raw } = await issueRefreshToken({ userId: user.id, req });
   setRefreshCookie(res, raw);
 
   await audit({ action: 'auth.login.ok', actorId: user.id, actor: user.username, ip, userAgent: ua });
-  logger.info({ userId: user.id, role: user.role }, 'login_ok');
+  logger.info({ userId: user.id, role: user.role, branchId: user.branchId }, 'login_ok');
+
+  // Fetch branch nama for UI display (cheap — joined on user.branchId).
+  let branchName: string | null = null;
+  if (user.branchId) {
+    const b = await prisma.branch.findUnique({ where: { id: user.branchId }, select: { nama: true } });
+    branchName = b?.nama ?? null;
+  }
 
   res.json({
     token: access,
     role: user.role,
     nama: user.nama,
+    branchId: user.branchId,
+    branchName,
     mustChangePassword: user.mustChangePassword,
   });
 });
@@ -96,9 +105,15 @@ router.post('/refresh', async (req, res) => {
     return res.status(401).json({ error: out.kind });
   }
 
-  const access = sign({ sub: out.user.id, role: out.user.role, petugasId: out.user.petugasId });
+  const access = sign({
+    sub: out.user.id, role: out.user.role,
+    petugasId: out.user.petugasId, branchId: out.user.branchId,
+  });
   setRefreshCookie(res, out.refresh.raw);
-  res.json({ token: access, role: out.user.role, nama: out.user.nama });
+  res.json({
+    token: access, role: out.user.role, nama: out.user.nama,
+    branchId: out.user.branchId,
+  });
 });
 
 router.post('/logout', requireAuth, async (req, res) => {
@@ -110,9 +125,18 @@ router.post('/logout', requireAuth, async (req, res) => {
 });
 
 router.get('/me', requireAuth, async (req, res) => {
-  const u = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+  const u = await prisma.user.findUnique({
+    where: { id: req.user!.sub },
+    include: { branch: { select: { id: true, kode: true, nama: true } } },
+  });
   if (!u) return res.status(404).json({ error: 'not_found' });
-  res.json({ id: u.id, username: u.username, nama: u.nama, role: u.role, petugasId: u.petugasId, mustChangePassword: u.mustChangePassword });
+  res.json({
+    id: u.id, username: u.username, nama: u.nama, role: u.role,
+    petugasId: u.petugasId,
+    branchId: u.branchId,
+    branch: u.branch ?? null,
+    mustChangePassword: u.mustChangePassword,
+  });
 });
 
 const changeSchema = z.object({

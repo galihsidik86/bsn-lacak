@@ -7,12 +7,20 @@ const USE_MOCK = (import.meta.env.VITE_USE_MOCK ?? 'true') !== 'false';
 
 export type Role = 'SUPERVISOR' | 'PETUGAS' | 'ADMIN';
 
+interface BranchInfo {
+  id: string;
+  kode: string;
+  nama: string;
+}
+
 interface User {
   id?: string;
   username?: string;
   nama: string;
   role: Role;
   petugasId?: string | null;
+  branchId?: string | null;
+  branch?: BranchInfo | null;
   mustChangePassword?: boolean;
 }
 
@@ -43,6 +51,8 @@ export async function doLogin(username: string, password: string): Promise<Login
   tokenStore.set(data.token);
   useAuth.getState().setUser({
     nama: data.nama, role: data.role, username,
+    branchId: data.branchId ?? null,
+    branch: data.branchName ? { id: data.branchId, kode: '', nama: data.branchName } : null,
     mustChangePassword: !!data.mustChangePassword,
   });
   return { mustChangePassword: !!data.mustChangePassword };

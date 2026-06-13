@@ -211,6 +211,19 @@ export function App() {
             <div className="page-title">{title}</div>
             <div className="page-sub">{sub}</div>
           </div>
+          {user.branch && (
+            <div className="chip" title={`Cabang Anda: ${user.branch.nama}`} aria-label={`Cabang ${user.branch.nama}`}>
+              <Ic.layers size={13} aria-hidden="true" />
+              {user.branch.nama}
+            </div>
+          )}
+          {user.role === 'ADMIN' && !user.branch && (
+            <div className="chip" style={{ background: 'var(--gold-soft)', color: 'var(--gold-ink)' }}
+              title="ADMIN HQ — lihat semua cabang" aria-label="Admin HQ, melihat semua cabang">
+              <Ic.layers size={13} aria-hidden="true" />
+              Semua Cabang
+            </div>
+          )}
           <div className="search" style={{ width: 260 }}>
             <Ic.search size={16} aria-hidden="true" />
             <input placeholder="Cari nasabah, petugas, transaksi…"

@@ -16,6 +16,26 @@ enum Role {
   ADMIN
 }
 
+// Cabang BSN (multi-tenant root). Tenancy is row-level: every scoped entity
+// carries `branchId`. ADMIN role bypasses the scope; SUPERVISOR sees their
+// own branch; PETUGAS sees only their own assignments inside that branch.
+model Branch {
+  id           String     @id @default(cuid())
+  kode         String     @unique         // BSN001, BSN002, ...
+  nama         String                     // "BSN Pusat", "BSN Cabang Depok", ...
+  alamat       String?
+  kepalaCabang String?
+  active       Boolean    @default(true)
+  users        User[]
+  petugas      Petugas[]
+  nasabah      Nasabah[]
+  kunjungan    Kunjungan[]
+  pembayaran   Pembayaran[]
+  blast        Blast[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
 enum PetugasStatus {
   LAPANGAN
   ISTIRAHAT
@@ -63,6 +83,8 @@ model User {
   passwordHash        String
   nama                String
   role                Role
+  branch              Branch?        @relation(fields: [branchId], references: [id])
+  branchId            String?        // null = HQ user (ADMIN scope); set for SUPERVISOR/PETUGAS
   petugas             Petugas?       @relation(fields: [petugasId], references: [id])
   petugasId           String?        @unique
   failedAttempts      Int            @default(0)
@@ -74,6 +96,8 @@ model User {
   notifications       Notification[]
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
+
+  @@index([branchId])
 }
 
 model RefreshToken {
@@ -141,12 +165,16 @@ model Petugas {
   status    PetugasStatus @default(LAPANGAN)
   target    BigInt        @default(0)
   hue       Int           @default(156)
+  branch    Branch        @relation(fields: [branchId], references: [id])
+  branchId  String
   user      User?
   nasabah   Nasabah[]
   kunjungan Kunjungan[]
   positions PetugasPosition[]
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
+
+  @@index([branchId])
 }
 
 model PetugasPosition {
@@ -180,6 +208,8 @@ model Nasabah {
   lastBayar  String?
   petugas    Petugas     @relation(fields: [petugasId], references: [id])
   petugasId  String
+  branch     Branch      @relation(fields: [branchId], references: [id])
+  branchId   String
   kunjungan      Kunjungan[]
   pembayaran     Pembayaran[]
   blastRecipient BlastRecipient[]
@@ -188,6 +218,7 @@ model Nasabah {
 
   @@index([petugasId])
   @@index([kol])
+  @@index([branchId])
 }
 
 model Kunjungan {
@@ -196,6 +227,8 @@ model Kunjungan {
   petugasId  String
   nasabah    Nasabah        @relation(fields: [nasabahId], references: [id])
   nasabahId  String
+  branch     Branch         @relation(fields: [branchId], references: [id])
+  branchId   String
   hasil      HasilKunjungan
   nominal    BigInt         @default(0)
   catatan    String
@@ -209,6 +242,7 @@ model Kunjungan {
 
   @@index([petugasId, tanggal])
   @@index([nasabahId, tanggal])
+  @@index([branchId, tanggal])
 }
 
 model Foto {
@@ -223,6 +257,8 @@ model Pembayaran {
   id        String   @id @default(cuid())
   nasabah   Nasabah  @relation(fields: [nasabahId], references: [id])
   nasabahId String
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  branchId  String
   nominal   BigInt
   metode    String   // tunai | transfer | autodebet
   status    String   @default("berhasil")
@@ -230,6 +266,7 @@ model Pembayaran {
   tanggal   DateTime @default(now())
 
   @@index([nasabahId, tanggal])
+  @@index([branchId, tanggal])
 }
 
 model Blast {
@@ -242,8 +279,12 @@ model Blast {
   terkirim     Int          @default(0)
   dibaca       Int?
   scheduledAt  DateTime?
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  branchId     String
   createdAt    DateTime     @default(now())
   recipients   BlastRecipient[]
+
+  @@index([branchId, createdAt])
 }
 
 model BlastRecipient {

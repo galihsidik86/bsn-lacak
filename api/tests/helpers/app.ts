@@ -34,6 +34,7 @@ export async function resetDb() {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
       "AuditLog",
+      "Notification",
       "BlastRecipient", "Blast",
       "Foto", "Kunjungan",
       "Pembayaran",
@@ -41,7 +42,8 @@ export async function resetDb() {
       "PetugasPosition",
       "Nasabah",
       "User",
-      "Petugas"
+      "Petugas",
+      "Branch"
     RESTART IDENTITY CASCADE
   `);
 }

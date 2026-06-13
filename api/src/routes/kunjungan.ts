@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { env } from '../env.js';
+import { scopedBranchId } from '../auth.js';
 import { audit, fromReq } from '../lib/audit.js';
 import { bus } from '../lib/events.js';
 import { logger } from '../lib/logger.js';
@@ -26,8 +27,11 @@ const upload = multer({
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
 
 function scope(req: any) {
-  if (req.user?.role === 'PETUGAS') return { petugasId: req.user.petugasId ?? '__none__' };
-  return {};
+  const w: Record<string, unknown> = {};
+  if (req.user?.role === 'PETUGAS') w.petugasId = req.user.petugasId ?? '__none__';
+  const branchId = scopedBranchId(req);
+  if (branchId !== null && branchId !== undefined) w.branchId = branchId;
+  return w;
 }
 
 const body = z.object({
@@ -63,6 +67,10 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
     return res.status(403).json({ error: 'forbidden' });
   }
 
+  // Derive branch from the petugas; the kunjungan inherits that branch.
+  const petugasRow = await prisma.petugas.findUnique({ where: { id: parsed.data.petugasId }, select: { branchId: true } });
+  if (!petugasRow) return res.status(400).json({ error: 'unknown_petugas' });
+
   const photos = (req.files as Express.Multer.File[] | undefined) ?? [];
 
   // Magic-byte check + persist
@@ -84,6 +92,7 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
   const k = await prisma.kunjungan.create({
     data: {
       ...parsed.data,
+      branchId: petugasRow.branchId,
       jam,
       fotos: { create: savedPaths.map(p => ({ path: p })) },
     },
