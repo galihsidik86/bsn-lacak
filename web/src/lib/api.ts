@@ -130,8 +130,18 @@ const http = axios.create({
   withCredentials: true,
 });
 
-http.interceptors.request.use((cfg) => {
+// Lazy import to dodge the auth → api circular import.
+async function getBranchOverride(): Promise<string | null> {
+  try {
+    const m = await import('./auth');
+    return m.useAuth.getState().branchOverride ?? null;
+  } catch { return null; }
+}
+
+http.interceptors.request.use(async (cfg) => {
   if (_token) cfg.headers.Authorization = `Bearer ${_token}`;
+  const branchOverride = await getBranchOverride();
+  if (branchOverride) cfg.headers['x-branch-id'] = branchOverride;
   return cfg;
 });
 

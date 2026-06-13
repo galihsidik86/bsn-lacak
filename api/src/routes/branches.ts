@@ -18,6 +18,66 @@ router.get('/', async (_req, res) => {
   res.json(list);
 });
 
+// Cross-branch comparison stats. ADMIN-only; one row per active branch with
+// the rollups the dashboard "Performance per Cabang" card needs.
+router.get('/comparison', requireRole('ADMIN'), async (_req, res) => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+
+  const branches = await prisma.branch.findMany({
+    where: { active: true },
+    orderBy: { kode: 'asc' },
+    select: { id: true, kode: true, nama: true },
+  });
+
+  const outstandingByKol = await prisma.nasabah.groupBy({
+    by: ['branchId', 'kol'],
+    _sum: { sisa: true },
+  });
+
+  const nasabahCount = await prisma.nasabah.groupBy({
+    by: ['branchId'],
+    _count: { _all: true },
+  });
+
+  const petugasAgg = await prisma.petugas.groupBy({
+    by: ['branchId'],
+    _count: { _all: true },
+    _sum: { target: true },
+  });
+
+  const todaysPay = await prisma.pembayaran.groupBy({
+    by: ['branchId'],
+    where: { tanggal: { gte: start } },
+    _sum: { nominal: true },
+  });
+
+  const out = branches.map(b => {
+    let outstanding = 0n;
+    let nplNom = 0n;
+    for (const r of outstandingByKol.filter(x => x.branchId === b.id)) {
+      const v = r._sum.sisa ?? 0n;
+      outstanding += v;
+      if (r.kol === 'K3' || r.kol === 'K4' || r.kol === 'K5') nplNom += v;
+    }
+    const npl = outstanding > 0n
+      ? Number(nplNom) / Number(outstanding) * 100
+      : 0;
+    return {
+      id: b.id, kode: b.kode, nama: b.nama,
+      outstanding: Number(outstanding),
+      nplNom: Number(nplNom),
+      npl,
+      nasabah: nasabahCount.find(x => x.branchId === b.id)?._count._all ?? 0,
+      petugas: petugasAgg.find(x => x.branchId === b.id)?._count._all ?? 0,
+      target: Number(petugasAgg.find(x => x.branchId === b.id)?._sum.target ?? 0n),
+      terkumpul: Number(todaysPay.find(x => x.branchId === b.id)?._sum.nominal ?? 0n),
+    };
+  });
+
+  res.json(out);
+});
+
 router.get('/:id', async (req, res) => {
   const b = await prisma.branch.findUnique({ where: { id: String(req.params.id) } });
   if (!b) return res.status(404).json({ error: 'not_found' });

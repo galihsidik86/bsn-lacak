@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { BranchComparison } from '../components/BranchComparison';
 import { Ic } from '../components/Icons';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
@@ -9,6 +10,7 @@ import {
   useDataStatus, useKunjunganList, useNasabahFinder, useNasabahList, useNpl, usePayflow,
   usePetugasFinder, usePetugasList, usePostur, useTotalOutstanding,
 } from '../data/queries';
+import { useAuth } from '../lib/auth';
 import type { KolKey } from '../types';
 
 export function ScreenDashboard({ go }: { go: (k: string) => void }) {
@@ -22,6 +24,12 @@ export function ScreenDashboard({ go }: { go: (k: string) => void }) {
   const petugasById = usePetugasFinder();
   const nasabahById = useNasabahFinder();
   const status = useDataStatus();
+  const role = useAuth(s => s.user?.role);
+  const branchOverride = useAuth(s => s.branchOverride);
+  // Cross-branch card is only meaningful when the ADMIN is not already
+  // scoped to a single branch — otherwise the comparison collapses to one row.
+  const showComparison = role === 'ADMIN' && !branchOverride;
+  const setOverride = useAuth(s => s.setBranchOverride);
 
   // Derive directly instead of state+effect — usePostur() returns a fresh
   // object every render, so an effect keyed on it would re-fire forever.
@@ -70,6 +78,7 @@ export function ScreenDashboard({ go }: { go: (k: string) => void }) {
 
   return (
     <div className="content">
+      {showComparison && <BranchComparison onPickBranch={(id) => setOverride(id)} />}
       <div className="stat-grid fade-up" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 22 }}>
         <Stat icon={Ic.wallet} label="Outstanding Pembiayaan" value={RPjt(TOTAL_OUTSTANDING)} delta="2,1%" deltaDir="up" sub="vs bulan lalu" />
         <Stat icon={Ic.alert} label="NPL (Col 3–5)" value={NPL.toFixed(2) + '%'} delta="0,4%" deltaDir="down" tint="var(--col-macet)" soft="var(--col-macet-soft)" sub="membaik" />

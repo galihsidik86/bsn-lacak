@@ -27,15 +27,32 @@ interface User {
 interface AuthState {
   user: User | null;
   bootstrapped: boolean;
+  // When an ADMIN picks a specific branch from the topbar switcher, store
+  // that id here. The API client mirrors it onto the `x-branch-id` header
+  // so every subsequent request runs in that branch's scope.
+  branchOverride: string | null;
   setUser: (u: User | null) => void;
   setBootstrapped: (b: boolean) => void;
+  setBranchOverride: (id: string | null) => void;
 }
+
+const BRANCH_OVERRIDE_KEY = 'bsn_branch_override';
 
 export const useAuth = create<AuthState>((set) => ({
   user: null,
   bootstrapped: false,
+  branchOverride: (() => {
+    try { return localStorage.getItem(BRANCH_OVERRIDE_KEY); } catch { return null; }
+  })(),
   setUser: (user) => set({ user }),
   setBootstrapped: (bootstrapped) => set({ bootstrapped }),
+  setBranchOverride: (id) => {
+    try {
+      if (id) localStorage.setItem(BRANCH_OVERRIDE_KEY, id);
+      else localStorage.removeItem(BRANCH_OVERRIDE_KEY);
+    } catch { /* private mode */ }
+    set({ branchOverride: id });
+  },
 }));
 
 export interface LoginResult { mustChangePassword: boolean }
@@ -67,6 +84,7 @@ export async function doLogout() {
   } catch { /* ignore */ }
   tokenStore.clear();
   useAuth.getState().setUser(null);
+  useAuth.getState().setBranchOverride(null);
 }
 
 export async function fetchMe(): Promise<User | null> {
