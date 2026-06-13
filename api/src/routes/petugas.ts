@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../db.js';
 import { requireAuth } from '../auth.js';
+import { bus } from '../lib/events.js';
 
 const router = Router();
 
@@ -22,9 +23,16 @@ router.post('/:id/position', async (req, res) => {
   if (typeof lat !== 'number' || typeof lng !== 'number') {
     return res.status(400).json({ error: 'bad_request' });
   }
+  const id = String(req.params.id);
+  // A petugas can only update their own position; supervisor can update any.
+  if (req.user?.role === 'PETUGAS' && req.user.petugasId !== id) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
   const pos = await prisma.petugasPosition.create({
-    data: { petugasId: req.params.id, lat, lng, accuracy: accuracy ?? null },
+    data: { petugasId: id, lat, lng, accuracy: accuracy ?? null },
   });
+  // Broadcast — supervisors viewing the tracking screen consume this in real time.
+  bus.publish('petugas.position', { petugasId: id, lat, lng, accuracy, ts: pos.recordedAt });
   res.status(201).json(pos);
 });
 

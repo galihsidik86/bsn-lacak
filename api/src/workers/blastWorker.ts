@@ -3,9 +3,11 @@
 // justifies it (split via `npm run worker` + a separate Dockerfile target).
 
 import { prisma } from '../db.js';
+import { bus } from '../lib/events.js';
 import { gateway } from '../lib/gateway/index.js';
 import { logger } from '../lib/logger.js';
 import { blastFailed, blastSent } from '../lib/metrics.js';
+import { enqueueNotification } from '../routes/notifications.js';
 
 const POLL_MS = 10_000;
 const BATCH_SIZE = 25;
@@ -45,8 +47,24 @@ async function tick() {
     if (pending.length === 0) {
       const remaining = await prisma.blastRecipient.count({ where: { blastId: b.id, status: 'pending' } });
       if (remaining === 0) {
-        await prisma.blast.update({ where: { id: b.id }, data: { status: 'SELESAI' } });
-        logger.info({ blastId: b.id }, 'blast_completed');
+        const after = await prisma.blast.update({ where: { id: b.id }, data: { status: 'SELESAI' } });
+        const gagal = await prisma.blastRecipient.count({ where: { blastId: b.id, status: 'gagal' } });
+        logger.info({ blastId: b.id, terkirim: after.terkirim, gagal }, 'blast_completed');
+        bus.publish('blast.completed', { blastId: b.id, terkirim: after.terkirim, gagal });
+        // Notify supervisors that the blast wrapped up.
+        const supervisors = await prisma.user.findMany({
+          where: { role: { in: ['SUPERVISOR', 'ADMIN'] } }, select: { id: true },
+        });
+        if (supervisors.length > 0) {
+          await enqueueNotification({
+            userIds: supervisors.map(s => s.id),
+            type: 'blast.completed',
+            title: `Blast "${after.judul}" selesai`,
+            body: `${after.terkirim} terkirim, ${gagal} gagal dari total ${after.target} penerima.`,
+            severity: gagal > 0 ? 'WARN' : 'INFO',
+            link: 'blast',
+          }).catch(() => undefined);
+        }
       }
       continue;
     }

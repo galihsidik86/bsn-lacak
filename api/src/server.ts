@@ -21,6 +21,8 @@ import kunjungan from './routes/kunjungan.js';
 import angsuran from './routes/angsuran.js';
 import blast from './routes/blast.js';
 import distribusi from './routes/distribusi.js';
+import events from './routes/events.js';
+import notifications from './routes/notifications.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -97,6 +99,8 @@ app.use('/api/kunjungan', kunjungan);
 app.use('/api/angsuran', angsuran);
 app.use('/api/blast', blast);
 app.use('/api/distribusi', distribusi);
+app.use('/api/events', events);
+app.use('/api/notifications', notifications);
 
 // Static uploads — Cache-Control prevents stale photo IDs from sticking.
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {

@@ -1,9 +1,11 @@
 import { Fragment, Suspense, lazy, useEffect, useState } from 'react';
 import { Ic, type IconKey } from './components/Icons';
+import { NotificationBell } from './components/NotificationBell';
 import { Avatar } from './components/UI';
 import { TweakRadio, TweakSection, TweakSelect, TweakToggle, TweaksPanel, useTweaks } from './components/TweaksPanel';
 import { useSegmen } from './data/queries';
 import { doLogout, useAuth } from './lib/auth';
+import { useEventStream } from './lib/useEventStream';
 import { ChangePassword } from './screens/ChangePassword';
 import { Login } from './screens/Login';
 
@@ -130,6 +132,11 @@ export function App() {
   // bootstrap → login → dashboard transitions.
   const NAV = useNav();
 
+  // Wire up SSE-driven query invalidation. Hook order must stay stable, so
+  // this also runs before the conditional returns; the underlying connect
+  // is no-op without a token.
+  useEventStream();
+
   // Wait for the silent bootstrap to settle before deciding what to render.
   if (!bootstrapped) {
     return (
@@ -209,14 +216,7 @@ export function App() {
             <input placeholder="Cari nasabah, petugas, transaksi…"
               aria-label="Cari nasabah, petugas, transaksi" type="search" />
           </div>
-          <button className="btn btn-ghost" style={{ padding: 9, position: 'relative' }}
-            aria-label="Notifikasi (ada pemberitahuan baru)">
-            <Ic.bell size={19} aria-hidden="true" />
-            <span aria-hidden="true" style={{
-              position: 'absolute', top: 7, right: 8, width: 7, height: 7, borderRadius: 99,
-              background: 'var(--col-macet)', border: '1.5px solid var(--surface)',
-            }} />
-          </button>
+          <NotificationBell onNavigate={(link) => go(link)} />
           <button className="btn" aria-label="Ekspor laporan"><Ic.download size={16} aria-hidden="true" />Ekspor</button>
         </header>
 

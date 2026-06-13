@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Map as MlMap, Marker, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Ic } from '../components/Icons';
@@ -7,6 +7,7 @@ import {
   HASIL_KUNJUNGAN, RPjt, STATUS_PETUGAS,
   useKunjunganList, useNasabahFinder, usePetugasFinder, usePetugasList,
 } from '../data/queries';
+import { usePetugasPositions } from '../lib/useEventStream';
 import type { Petugas } from '../types';
 
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY;
@@ -58,6 +59,13 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
   const routes = useMemo(() => PETUGAS.map((pt, i) => ({ pt, stops: makeRoute(pt, i + 1) })), [PETUGAS]);
   const myRoute = routes.find(r => r.pt.id === sel);
   const visitsOf = (pid: string) => KUNJUNGAN.filter(k => k.petugas === pid);
+
+  // Latest live coordinates pushed via SSE, keyed by petugasId. Overrides the
+  // stylized last-stop coords for the "live pulse" pin on the map.
+  const [livePositions, setLivePositions] = useState<Record<string, { lat: number; lng: number; ts: number }>>({});
+  usePetugasPositions(useCallback((d) => {
+    setLivePositions(prev => ({ ...prev, [d.petugasId]: { lat: d.lat, lng: d.lng, ts: d.ts } }));
+  }, []));
 
   if (!p || !myRoute) {
     return <div className="content"><div className="muted" style={{ padding: 40 }}>Memuat petugas…</div></div>;
@@ -113,7 +121,7 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
       <div style={{ display: 'grid', gridTemplateRows: '1fr auto', overflow: 'hidden', position: 'relative' }}>
         <div style={{ position: 'relative', overflow: 'hidden', background: 'var(--surface-2)' }}>
           {MAPTILER_KEY ? (
-            <MapTilerMap routes={routes} sel={sel} showAll={showAll} setSel={setSel} />
+            <MapTilerMap routes={routes} sel={sel} showAll={showAll} setSel={setSel} live={livePositions} />
           ) : (
             <MapStylized routes={routes} sel={sel} showAll={showAll} setSel={setSel} myRoute={myRoute} />
           )}
@@ -197,8 +205,9 @@ function MiniKv({ label, value }: { label: string; value: string }) {
 type Route = { pt: Petugas; stops: { lat: number; lng: number; x: number; y: number; t: string; idx: number }[] };
 
 // MapTiler basemap + route lines + petugas markers via MapLibre GL.
-function MapTilerMap({ routes, sel, showAll, setSel }: {
+function MapTilerMap({ routes, sel, showAll, setSel, live }: {
   routes: Route[]; sel: string; showAll: boolean; setSel: (s: string) => void;
+  live: Record<string, { lat: number; lng: number; ts: number }>;
 }) {
   const accent = cssVar('--accent') || '#1f8a5b';
   const styleUrl = `https://api.maptiler.com/maps/${MAPTILER_STYLE}/style.json?key=${MAPTILER_KEY}`;
@@ -245,10 +254,16 @@ function MapTilerMap({ routes, sel, showAll, setSel }: {
         (r.pt.id === sel || showAll)
           ? r.stops.map((s, i) => {
               const isSel = r.pt.id === sel;
-              const isLive = isSel && i === r.stops.length - 1;
+              const isLastStop = i === r.stops.length - 1;
               const color = isSel ? accent : `hsl(${r.pt.hue}, 60%, 55%)`;
+              // The very last stop of each route is the "live position" — when
+              // an SSE update arrives for this petugas, override coords.
+              const livePos = isLastStop ? live[r.pt.id] : undefined;
+              const lng = livePos?.lng ?? s.lng;
+              const lat = livePos?.lat ?? s.lat;
+              const isLive = isSel && isLastStop;
               return (
-                <Marker key={`${r.pt.id}-${i}`} longitude={s.lng} latitude={s.lat} anchor="center"
+                <Marker key={`${r.pt.id}-${i}`} longitude={lng} latitude={lat} anchor="center"
                   onClick={(e) => { e.originalEvent.stopPropagation(); setSel(r.pt.id); }}>
                   {isLive ? (
                     <div style={{ position: 'relative', width: 26, height: 26, cursor: 'pointer' }}>

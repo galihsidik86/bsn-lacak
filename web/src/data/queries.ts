@@ -118,6 +118,18 @@ export function useCreateKunjungan() {
   });
 }
 
+// Combined loading/error flags from the core data the dashboard depends on.
+// Screens use these to decide whether to render skeletons or empty states.
+export function useDataStatus() {
+  const p = usePetugasList();
+  const n = useNasabahList();
+  const k = useKunjunganList();
+  const isPending = p.isPending || n.isPending || k.isPending;
+  const isError = !!(p.error || n.error || k.error);
+  const isEmpty = !isPending && !isError && p.data.length === 0 && n.data.length === 0;
+  return { isPending, isError, isEmpty };
+}
+
 // Re-export constants so screens have a single import source.
 export const KOL = mock.KOL;
 export const STATUS_PETUGAS = mock.STATUS_PETUGAS;

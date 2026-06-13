@@ -71,6 +71,7 @@ model User {
   passwordChangedAt   DateTime       @default(now())
   mustChangePassword  Boolean        @default(false)
   refreshTokens       RefreshToken[]
+  notifications       Notification[]
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 }
@@ -92,6 +93,27 @@ model RefreshToken {
 
   @@index([userId, expiresAt])
   @@index([family])
+}
+
+enum NotifSeverity {
+  INFO
+  WARN
+  CRIT
+}
+
+model Notification {
+  id        String        @id @default(cuid())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  type      String        // "kunjungan.created", "blast.completed", ...
+  title     String
+  body      String?
+  severity  NotifSeverity @default(INFO)
+  link      String?       // optional in-app target (e.g. "tracking?petugas=P1")
+  readAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  @@index([userId, readAt, createdAt])
 }
 
 model AuditLog {

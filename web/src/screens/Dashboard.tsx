@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import { Ic } from '../components/Icons';
+import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   Avatar, AreaChart, Donut, HBars, Stat, cssVar,
 } from '../components/UI';
 import {
   HASIL_KUNJUNGAN, KOL, RP, RPjt,
-  useKunjunganList, useNasabahFinder, useNasabahList, useNpl, usePayflow,
+  useDataStatus, useKunjunganList, useNasabahFinder, useNasabahList, useNpl, usePayflow,
   usePetugasFinder, usePetugasList, usePostur, useTotalOutstanding,
 } from '../data/queries';
 import type { KolKey } from '../types';
@@ -20,6 +21,7 @@ export function ScreenDashboard({ go }: { go: (k: string) => void }) {
   const NPL = useNpl();
   const petugasById = usePetugasFinder();
   const nasabahById = useNasabahFinder();
+  const status = useDataStatus();
 
   // Derive directly instead of state+effect — usePostur() returns a fresh
   // object every render, so an effect keyed on it would re-fire forever.
@@ -33,6 +35,27 @@ export function ScreenDashboard({ go }: { go: (k: string) => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [POSTUR[1].n, POSTUR[2].n, POSTUR[3].n, POSTUR[4].n, POSTUR[5].n],
   );
+
+  if (status.isPending) {
+    return (
+      <div className="content" style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(4, 1fr)' }}>
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} h={120} />)}
+        <div style={{ gridColumn: '1 / -1' }}><Skeleton h={280} /></div>
+        <div style={{ gridColumn: '1 / -1' }}><Skeleton h={200} /></div>
+      </div>
+    );
+  }
+  if (status.isError) {
+    return <div className="content"><ErrorState onRetry={() => location.reload()} /></div>;
+  }
+  if (status.isEmpty) {
+    return (
+      <div className="content">
+        <EmptyState title="Belum ada data nasabah / petugas"
+          hint="Jalankan seed atau tambahkan data dari menu Distribusi untuk mulai." />
+      </div>
+    );
+  }
 
   const totalNasabah = NASABAH.length;
   const lapangan = PETUGAS.filter(p => p.status === 'lapangan').length;

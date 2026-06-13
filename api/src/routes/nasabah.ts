@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireAuth, requireRole } from '../auth.js';
 import { audit, fromReq } from '../lib/audit.js';
+import { bus } from '../lib/events.js';
+import { enqueueNotification } from './notifications.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -70,6 +72,21 @@ router.patch('/:id/petugas', requireRole('SUPERVISOR', 'ADMIN'), async (req, res
     ...fromReq(req),
     meta: { from: before.petugasId, to: parsed.data.petugasId },
   });
+  bus.publish('nasabah.reassign', { nasabahId: id, from: before.petugasId, to: parsed.data.petugasId });
+
+  // Notify the receiving petugas so they see "Nasabah baru ditugaskan" in their bell.
+  const targetUser = await prisma.user.findFirst({ where: { petugasId: parsed.data.petugasId } });
+  if (targetUser) {
+    await enqueueNotification({
+      userIds: [targetUser.id],
+      type: 'nasabah.reassigned_to_you',
+      title: 'Nasabah baru ditugaskan',
+      body: `${updated.nama} (${updated.kode}) sekarang ada di binaan Anda.`,
+      severity: 'INFO',
+      link: 'kolektabilitas',
+    }).catch(() => undefined);
+  }
+
   res.json(updated);
 });
 

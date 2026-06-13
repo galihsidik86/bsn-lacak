@@ -8,6 +8,7 @@ import { prisma } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { env } from '../env.js';
 import { audit, fromReq } from '../lib/audit.js';
+import { bus } from '../lib/events.js';
 import { logger } from '../lib/logger.js';
 
 const router = Router();
@@ -92,6 +93,15 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
   await audit({
     action: 'kunjungan.create', target: k.id, ...fromReq(req),
     meta: { nasabahId: parsed.data.nasabahId, photos: savedPaths.length, hasil: parsed.data.hasil },
+  });
+
+  bus.publish('kunjungan.created', {
+    kunjunganId: k.id,
+    petugasId: k.petugasId,
+    nasabahId: k.nasabahId,
+    hasil: k.hasil,
+    nominal: Number(k.nominal),
+    jam: k.jam,
   });
 
   res.status(201).json(k);
