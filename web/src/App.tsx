@@ -19,6 +19,8 @@ const ScreenKolektabilitas = lazy(() => import('./screens/Kolektabilitas').then(
 const ScreenLaporan = lazy(() => import('./screens/Laporan').then(m => ({ default: m.ScreenLaporan })));
 const ScreenMobile = lazy(() => import('./screens/Mobile').then(m => ({ default: m.ScreenMobile })));
 const ScreenTracking = lazy(() => import('./screens/Tracking').then(m => ({ default: m.ScreenTracking })));
+const ScreenBranch = lazy(() => import('./screens/Branch').then(m => ({ default: m.ScreenBranch })));
+const ScreenAudit = lazy(() => import('./screens/Audit').then(m => ({ default: m.ScreenAudit })));
 
 function ScreenFallback() {
   return (
@@ -30,14 +32,16 @@ function ScreenFallback() {
 
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
-  | 'blast' | 'laporan' | 'distribusi' | 'mobile';
+  | 'blast' | 'laporan' | 'distribusi' | 'mobile'
+  | 'branch' | 'audit';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
 
 function useNav(): NavGroup[] {
   const seg = useSegmen();
-  return [
+  const role = useAuth(s => s.user?.role);
+  const groups: NavGroup[] = [
     { group: 'Monitoring', items: [
       { k: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
       { k: 'tracking', label: 'Tracking Petugas', icon: 'map' },
@@ -53,6 +57,13 @@ function useNav(): NavGroup[] {
       { k: 'mobile', label: 'Aplikasi Petugas', icon: 'phone' },
     ] },
   ];
+  // Admin/Audit panel — supervisor sees audit (scoped to own branch); only
+  // ADMIN can manage branches.
+  const adminItems: NavItem[] = [];
+  if (role === 'ADMIN') adminItems.push({ k: 'branch', label: 'Kelola Cabang', icon: 'layers' });
+  if (role === 'ADMIN' || role === 'SUPERVISOR') adminItems.push({ k: 'audit', label: 'Audit Log', icon: 'eye' });
+  if (adminItems.length) groups.push({ group: 'Administrasi', items: adminItems });
+  return groups;
 }
 
 const TITLES: Record<PageKey, [string, string]> = {
@@ -64,6 +75,8 @@ const TITLES: Record<PageKey, [string, string]> = {
   laporan: ['Laporan Kunjungan', 'Laporan harian petugas beserta foto bukti'],
   distribusi: ['Distribusi Nasabah', 'Alokasi nasabah binaan ke petugas lapangan'],
   mobile: ['Aplikasi Petugas Lapangan', 'Pratinjau aplikasi mobile kolektor'],
+  branch: ['Kelola Cabang', 'Kelola cabang BSN — hanya ADMIN HQ'],
+  audit: ['Audit Log', 'Audit trail aktivitas sistem (login, mutasi data, dll)'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -246,6 +259,8 @@ export function App() {
             {page === 'laporan' && <ScreenLaporan />}
             {page === 'distribusi' && <ScreenDistribusi />}
             {page === 'mobile' && <ScreenMobile />}
+            {page === 'branch' && <ScreenBranch />}
+            {page === 'audit' && <ScreenAudit />}
           </Suspense>
         </main>
       </div>

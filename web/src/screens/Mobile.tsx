@@ -266,19 +266,48 @@ function MLapor({ n, me: ME, onClose, onDone }: {
   const create = useCreateKunjungan();
   const [hasil, setHasil] = useState<HasilKunjungan>('bayar');
   const [nominal, setNominal] = useState(String(n.angsuran));
-  const [foto, setFoto] = useState(0);
+  const [photos, setPhotos] = useState<File[]>([]);
   const [catatan, setCatatan] = useState('');
   const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const foto = photos.length;
+  const MAX_PHOTOS = 3;
+  const MAX_BYTES = 8 * 1024 * 1024;   // matches backend multer limit
+
+  const addPhoto = (file: File) => {
+    setErr(null);
+    if (!/^image\//.test(file.type)) {
+      setErr('File harus berupa gambar.');
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      setErr('Foto maksimum 8 MB.');
+      return;
+    }
+    setPhotos(p => [...p, file].slice(0, MAX_PHOTOS));
+  };
+  const removePhoto = (i: number) => {
+    setPhotos(p => p.filter((_, idx) => idx !== i));
+  };
 
   const submit = async () => {
+    setErr(null);
+    if (photos.length === 0) return;
     setSending(true);
     try {
       await create.mutateAsync({
         nasabah: n.id, petugas: ME.id, hasil, nominal: Number(nominal),
-        catatan, lokasi: n.alamat, photos: [],
+        catatan, lokasi: n.alamat, photos,
       });
-    } catch { /* swallow */ }
-    setTimeout(() => onDone(n.id), 600);
+      setTimeout(() => onDone(n.id), 600);
+    } catch (e: any) {
+      const code = e?.response?.data?.error;
+      if (code === 'invalid_file_type') setErr('File tidak dikenali sebagai foto. Coba foto ulang.');
+      else if (e?.response?.status === 413) setErr('Foto terlalu besar.');
+      else setErr('Gagal mengirim laporan. Periksa koneksi.');
+      setSending(false);
+    }
   };
 
   return (
@@ -301,15 +330,47 @@ function MLapor({ n, me: ME, onClose, onDone }: {
         <div>
           <MLabel>Foto Bukti Kunjungan</MLabel>
           <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
-            {[0, 1, 2].map(i => (
-              foto > i
-                ? <ImgPh key={i} label="✓ terfoto" h={76}
-                    style={{ color: 'var(--accent)', background: 'var(--accent-soft)', borderColor: 'var(--accent)' }} />
-                : <button key={i} onClick={() => setFoto(f => Math.max(f, i + 1))} style={{
-                    height: 76, borderRadius: 12, border: '1.5px dashed var(--line-2)',
-                    background: 'var(--surface-2)', color: 'var(--ink-4)', display: 'grid', placeItems: 'center',
-                  }}><Ic.camera size={20} /></button>
-            ))}
+            {[0, 1, 2].map(i => {
+              const file = photos[i];
+              if (file) {
+                const url = URL.createObjectURL(file);
+                return (
+                  <div key={i} style={{
+                    position: 'relative', height: 76, borderRadius: 12, overflow: 'hidden',
+                    background: 'var(--ink)', boxShadow: 'inset 0 0 0 1.5px var(--accent)',
+                  }}>
+                    <img src={url} alt={`Foto ${i + 1}`}
+                      onLoad={() => URL.revokeObjectURL(url)}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    <button type="button" onClick={() => removePhoto(i)}
+                      aria-label={`Hapus foto ${i + 1}`}
+                      style={{
+                        position: 'absolute', top: 4, right: 4, width: 22, height: 22,
+                        borderRadius: 99, border: 'none', background: 'rgba(0,0,0,0.6)',
+                        color: 'white', display: 'grid', placeItems: 'center', cursor: 'pointer',
+                      }}>
+                      <Ic.x size={13} />
+                    </button>
+                  </div>
+                );
+              }
+              return (
+                <label key={i} style={{
+                  height: 76, borderRadius: 12, border: '1.5px dashed var(--line-2)',
+                  background: 'var(--surface-2)', color: 'var(--ink-4)', display: 'grid', placeItems: 'center',
+                  cursor: 'pointer',
+                }}>
+                  <input type="file" accept="image/*" capture="environment"
+                    style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) addPhoto(f); e.target.value = ''; }}
+                    aria-label={`Ambil foto ${i + 1}`} />
+                  <Ic.camera size={20} aria-hidden="true" />
+                </label>
+              );
+            })}
+          </div>
+          <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
+            {foto > 0 ? `${foto} foto siap kirim` : 'Ketuk untuk ambil foto dari kamera'}
           </div>
         </div>
 
@@ -353,6 +414,15 @@ function MLapor({ n, me: ME, onClose, onDone }: {
           </div>
           <Ic.checkCircle size={18} style={{ color: 'var(--accent)' }} />
         </div>
+
+        {err && (
+          <div className="center gap-2" style={{
+            background: 'var(--col-macet-soft)', color: 'var(--col-macet)',
+            borderRadius: 10, padding: '10px 12px', fontSize: 12.5, fontWeight: 600,
+          }}>
+            <Ic.alert size={15} />{err}
+          </div>
+        )}
       </div>
 
       <div style={{ padding: 16, borderTop: '1px solid var(--line)', background: 'var(--surface)' }}>
