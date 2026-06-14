@@ -1,7 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Map as MlMap, Marker, Source, Layer } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { Ic, type IconKey } from '../components/Icons';
 import { InstallPrompt } from '../components/InstallPrompt';
-import { Avatar, Badge, ImgPh, KolBadge } from '../components/UI';
+import { Avatar, Badge, ImgPh, KolBadge, cssVar } from '../components/UI';
 import { IOSDevice } from '../components/IosFrame';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
@@ -217,28 +219,112 @@ function MiniStatW({ label, value }: { label: string; value: string }) {
   );
 }
 
+// Default hub center (Depok area). Nasabah lat/lng isn't persisted yet, so we
+// derive deterministic offsets from the nasabah id so markers cluster around
+// the petugas's wilayah and don't jump between renders.
+const RUTE_HUB = { lat: -6.4025, lng: 106.7942 };
+
+function hash01(s: string, salt: number): number {
+  let h = 2166136261 ^ salt;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 10_000) / 10_000;
+}
+
+// Prefer the persisted coords. Fall back to a deterministic offset only when
+// the nasabah row pre-dates the lat/lng feature so we never blank the map.
+function stopCoords(n: Nasabah): { lat: number; lng: number } {
+  if (typeof n.lat === 'number' && typeof n.lng === 'number') {
+    return { lat: n.lat, lng: n.lng };
+  }
+  return {
+    lat: RUTE_HUB.lat + (hash01(n.id, 1) - 0.5) * 0.04,
+    lng: RUTE_HUB.lng + (hash01(n.id, 2) - 0.5) * 0.05,
+  };
+}
+
+const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY;
+const MAPTILER_STYLE = import.meta.env.VITE_MAPTILER_STYLE || 'streets-v2';
+
 function MRute({ me: ME, tasks: MY_TASKS, onReport }: {
   me: Petugas; tasks: Nasabah[]; onReport: (n: Nasabah) => void;
 }) {
+  const accent = cssVar('--accent') || '#1f8a5b';
+  const styleUrl = `https://api.maptiler.com/maps/${MAPTILER_STYLE}/style.json?key=${MAPTILER_KEY}`;
+
+  const stops = useMemo(
+    () => MY_TASKS.map(n => ({ n, ...stopCoords(n) })),
+    [MY_TASKS],
+  );
+
+  const routeGeo = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: stops.length < 2 ? [] : [{
+      type: 'Feature' as const,
+      properties: {},
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: stops.map(s => [s.lng, s.lat] as [number, number]),
+      },
+    }],
+  }), [stops]);
+
+  const initialView = useMemo(() => {
+    if (stops.length === 0) {
+      return { longitude: RUTE_HUB.lng, latitude: RUTE_HUB.lat, zoom: 12 };
+    }
+    if (stops.length === 1) {
+      return { longitude: stops[0].lng, latitude: stops[0].lat, zoom: 13.5 };
+    }
+    const lats = stops.map(s => s.lat);
+    const lngs = stops.map(s => s.lng);
+    return {
+      bounds: [
+        [Math.min(...lngs), Math.min(...lats)],
+        [Math.max(...lngs), Math.max(...lats)],
+      ] as [[number, number], [number, number]],
+      fitBoundsOptions: { padding: 32 },
+    };
+  }, [stops]);
+
   return (
     <div>
       <MHeader title="Rute Saya" sub={`${MY_TASKS.length} kunjungan · ${ME.wilayah}`} />
-      <div style={{ margin: '0 16px 16px', borderRadius: 18, overflow: 'hidden', border: '1px solid var(--line)', height: 160, position: 'relative' }}>
-        <svg viewBox="0 0 340 160" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
-          <rect width="340" height="160" fill="var(--surface-2)" />
-          {[60, 140, 220, 300].map((x, i) => <line key={i} x1={x} y1="0" x2={x} y2="160" stroke="var(--surface)" strokeWidth="9" />)}
-          {[45, 100].map((y, i) => <line key={i} x1="0" y1={y} x2="340" y2={y} stroke="var(--surface)" strokeWidth="9" />)}
-          <path d="M40 130 L100 90 L150 110 L210 60 L270 80 L300 40" fill="none" stroke="var(--accent)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-          {([[40, 130], [100, 90], [150, 110], [210, 60], [270, 80]] as [number, number][]).map((p, i) => (
-            <g key={i}>
-              <circle cx={p[0]} cy={p[1]} r="9" fill="var(--surface)" stroke="var(--accent)" strokeWidth="2.5" />
-              <text x={p[0]} y={p[1] + 3.5} textAnchor="middle" fontSize="9" fontWeight="800" fill="var(--accent)">{i + 1}</text>
-            </g>
-          ))}
-          <circle cx="300" cy="40" r="7" fill="var(--accent)" stroke="white" strokeWidth="2.5" />
-        </svg>
+      <div style={{ margin: '0 16px 16px', borderRadius: 18, overflow: 'hidden', border: '1px solid var(--line)', height: 220, position: 'relative' }}>
+        {MAPTILER_KEY ? (
+          <MlMap
+            initialViewState={initialView}
+            style={{ width: '100%', height: '100%' }}
+            mapStyle={styleUrl}
+            attributionControl={{ compact: true }}>
+            <Source id="rute-line" type="geojson" data={routeGeo}>
+              <Layer
+                id="rute-line-stroke"
+                type="line"
+                paint={{ 'line-color': accent, 'line-width': 4, 'line-opacity': 0.85 }}
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+              />
+            </Source>
+            {stops.map((s, i) => (
+              <Marker key={s.n.id} longitude={s.lng} latitude={s.lat} anchor="center"
+                onClick={(e) => { e.originalEvent.stopPropagation(); onReport(s.n); }}>
+                <div className="num" style={{
+                  width: 26, height: 26, borderRadius: 99, background: accent, color: 'white',
+                  display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 12,
+                  border: '2.5px solid white', boxShadow: '0 2px 6px rgba(0,0,0,0.35)', cursor: 'pointer',
+                }}>{i + 1}</div>
+              </Marker>
+            ))}
+          </MlMap>
+        ) : (
+          <div className="center gap-2" style={{ height: '100%', justifyContent: 'center', color: 'var(--ink-3)', fontSize: 12.5, fontWeight: 600, background: 'var(--surface-2)' }}>
+            <Ic.alert size={14} />Map key belum dipasang
+          </div>
+        )}
         <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'var(--ink)', color: 'white', borderRadius: 8, padding: '4px 9px', fontSize: 11, fontWeight: 700 }} className="center gap-2">
-          <Ic.nav size={12} />Estimasi 14 km · 6 stop
+          <Ic.nav size={12} />{stops.length} stop
         </div>
       </div>
       <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>

@@ -146,6 +146,28 @@ async function main() {
     console.log('  users (existing — no new credentials generated)');
   }
 
+  // Per-petugas cluster centers in the Depok/Cibinong/Bogor metro. Nasabah
+  // coords are seeded as deterministic offsets around their petugas cluster
+  // so the route map shows realistic stops grouped by wilayah binaan.
+  const PETUGAS_CLUSTER: Record<string, { lat: number; lng: number }> = {
+    P1: { lat: -6.4825, lng: 106.8550 }, // Cibinong – Bojonggede
+    P2: { lat: -6.4400, lng: 106.8200 }, // Citayam – Depok
+    P3: { lat: -6.3950, lng: 106.7900 }, // Sawangan – Pancoran Mas
+    P4: { lat: -6.3800, lng: 106.8500 }, // Tapos – Cimanggis
+    P5: { lat: -6.4030, lng: 106.7850 }, // Beji – Kemiri Muka
+    P6: { lat: -6.3700, lng: 106.7700 }, // Limo – Grogol
+  };
+  const nasabahCoords = (petugasKode: string, idx: number) => {
+    const c = PETUGAS_CLUSTER[petugasKode] ?? { lat: -6.4025, lng: 106.7942 };
+    // Spiral-ish distribution: radius 0.4–2 km, deterministic per nasabah index.
+    const angle = (idx * 2.399963) % (Math.PI * 2);   // golden-angle for spread
+    const radius = 0.0045 + ((idx * 7) % 20) * 0.0009;
+    return {
+      lat: c.lat + Math.sin(angle) * radius,
+      lng: c.lng + Math.cos(angle) * radius,
+    };
+  };
+
   // Nasabah
   for (let i = 0; i < 88; i++) {
     const kol = kolFromIdx(i);
@@ -168,16 +190,20 @@ async function main() {
     const kode = 'N' + (1000 + i);
     // Nasabah inherits branch from their assigned petugas.
     const branchId = petugasBranchMap.get(petugasKode)!;
+    const coords = nasabahCoords(petugasKode, i);
     await prisma.nasabah.upsert({
       where: { kode },
       // Keep nasabah pinned to their seed petugas + branch even if a previous
-      // run left them in BSN001 (the default backfill branch).
-      update: { petugasId: petugasMap.get(petugasKode)!, branchId },
+      // run left them in BSN001 (the default backfill branch). Also backfill
+      // coords for rows seeded before the lat/lng feature existed.
+      update: { petugasId: petugasMap.get(petugasKode)!, branchId, lat: coords.lat, lng: coords.lng },
       create: {
         kode,
         nama: FIRST_N[i % FIRST_N.length] + (i >= FIRST_N.length ? ' ' + (Math.floor(i / FIRST_N.length) + 1) : ''),
         alamat: ADDR[i % ADDR.length] + ', ' + wilayah,
         hp: '08' + (10 + (i % 80)) + '-' + (1000 + i) + '-' + (2000 + (i * 7) % 8000),
+        lat: coords.lat,
+        lng: coords.lng,
         kol,
         akad: AKAD_CYCLE[i % AKAD_CYCLE.length],
         plafon: BigInt(plafonNum),

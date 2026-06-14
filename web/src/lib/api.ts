@@ -69,6 +69,8 @@ function nasabahFromServer(x: any): Nasabah {
     nama: x.nama,
     alamat: x.alamat,
     hp: x.hp,
+    lat: typeof x.lat === 'number' ? x.lat : null,
+    lng: typeof x.lng === 'number' ? x.lng : null,
     petugas: x.petugasId,
     kol: KOL_MAP[x.kol] ?? 1,
     akad: AKAD_MAP[x.akad] ?? 'Murabahah',

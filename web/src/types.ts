@@ -54,6 +54,8 @@ export interface Nasabah {
   nama: string;
   alamat: string;
   hp: string;
+  lat?: number | null;
+  lng?: number | null;
   petugas: string;
   kol: KolKey;
   akad: Akad;

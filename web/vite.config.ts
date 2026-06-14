@@ -53,7 +53,9 @@ export default defineConfig({
           },
         ],
       },
-      devOptions: { enabled: false },
+      // Enable SW in dev so Chrome's installability check passes and the
+      // beforeinstallprompt event fires when previewing on localhost.
+      devOptions: { enabled: true, type: 'module' },
     }),
   ],
   server: {
