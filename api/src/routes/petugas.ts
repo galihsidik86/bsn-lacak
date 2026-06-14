@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireAuth, scopedBranchId } from '../auth.js';
+import { audit, fromReq } from '../lib/audit.js';
 import { bus } from '../lib/events.js';
 import { computeStatsFor } from '../lib/petugasStats.js';
 
@@ -49,6 +51,70 @@ router.post('/:id/position', async (req, res) => {
   });
   bus.publish('petugas.position', { petugasId: id, lat, lng, accuracy, ts: pos.recordedAt });
   res.status(201).json(pos);
+});
+
+// ---- create / patch (ADMIN + SUPERVISOR within own branch) ----
+const createSchema = z.object({
+  kode: z.string().min(2).max(20).regex(/^[A-Z0-9]+$/, 'Huruf besar + angka'),
+  nama: z.string().min(1).max(200),
+  inisial: z.string().min(1).max(8),
+  wilayah: z.string().min(1).max(200),
+  hp: z.string().min(4).max(40),
+  branchId: z.string().min(1),
+  target: z.coerce.bigint().nonnegative().default(0n),
+  status: z.enum(['LAPANGAN', 'ISTIRAHAT', 'KANTOR']).default('LAPANGAN'),
+  hue: z.coerce.number().int().min(0).max(360).default(156),
+});
+
+function canManagePetugas(req: any, branchId: string): boolean {
+  if (req.user?.role === 'ADMIN') return true;
+  if (req.user?.role === 'SUPERVISOR') return req.user.branchId === branchId;
+  return false;
+}
+
+router.post('/', async (req, res) => {
+  const parsed = createSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request', details: parsed.error.flatten() });
+  if (!canManagePetugas(req, parsed.data.branchId)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  try {
+    const p = await prisma.petugas.create({ data: parsed.data });
+    await audit({
+      action: 'petugas.create', target: p.id, ...fromReq(req),
+      meta: { kode: p.kode, branchId: p.branchId },
+    });
+    res.status(201).json(p);
+  } catch (err: any) {
+    if (err?.code === 'P2002') return res.status(409).json({ error: 'kode_taken' });
+    throw err;
+  }
+});
+
+const patchSchema = createSchema.partial().extend({
+  // Kode is immutable — tying historical Kunjungan/Pembayaran to an old kode
+  // and renaming it later would mismatch printed receipts in the wild.
+  kode: z.never().optional(),
+});
+
+router.patch('/:id', async (req, res) => {
+  const parsed = patchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request', details: parsed.error.flatten() });
+
+  const id = String(req.params.id);
+  const before = await prisma.petugas.findUnique({ where: { id } });
+  if (!before) return res.status(404).json({ error: 'not_found' });
+  if (!canManagePetugas(req, before.branchId)) return res.status(403).json({ error: 'forbidden' });
+  if (parsed.data.branchId && !canManagePetugas(req, parsed.data.branchId)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+
+  const updated = await prisma.petugas.update({ where: { id }, data: parsed.data });
+  await audit({
+    action: 'petugas.update', target: id, ...fromReq(req),
+    meta: parsed.data,
+  });
+  res.json(updated);
 });
 
 router.get('/:id/route', async (req, res) => {

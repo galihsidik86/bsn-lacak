@@ -92,6 +92,7 @@ model User {
   lastLoginAt         DateTime?
   passwordChangedAt   DateTime       @default(now())
   mustChangePassword  Boolean        @default(false)
+  active              Boolean        @default(true)
   refreshTokens       RefreshToken[]
   notifications       Notification[]
   createdAt           DateTime       @default(now())

@@ -22,6 +22,8 @@ const ScreenTracking = lazy(() => import('./screens/Tracking').then(m => ({ defa
 const ScreenBranch = lazy(() => import('./screens/Branch').then(m => ({ default: m.ScreenBranch })));
 const ScreenAudit = lazy(() => import('./screens/Audit').then(m => ({ default: m.ScreenAudit })));
 const ScreenSettings = lazy(() => import('./screens/Settings').then(m => ({ default: m.ScreenSettings })));
+const ScreenUsers = lazy(() => import('./screens/Users').then(m => ({ default: m.ScreenUsers })));
+const ScreenPetugas = lazy(() => import('./screens/Petugas').then(m => ({ default: m.ScreenPetugas })));
 
 function ScreenFallback() {
   return (
@@ -34,7 +36,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -58,11 +60,15 @@ function useNav(): NavGroup[] {
       { k: 'mobile', label: 'Aplikasi Petugas', icon: 'phone' },
     ] },
   ];
-  // Admin/Audit panel — supervisor sees audit (scoped to own branch); only
-  // ADMIN can manage branches.
+  // Admin panel — SUPERVISOR sees user/petugas/audit scoped to own branch;
+  // only ADMIN gets the cabang manager.
   const adminItems: NavItem[] = [];
   if (role === 'ADMIN') adminItems.push({ k: 'branch', label: 'Kelola Cabang', icon: 'layers' });
-  if (role === 'ADMIN' || role === 'SUPERVISOR') adminItems.push({ k: 'audit', label: 'Audit Log', icon: 'eye' });
+  if (role === 'ADMIN' || role === 'SUPERVISOR') {
+    adminItems.push({ k: 'petugas', label: 'Kelola Petugas', icon: 'user' });
+    adminItems.push({ k: 'users', label: 'Kelola User', icon: 'users' });
+    adminItems.push({ k: 'audit', label: 'Audit Log', icon: 'eye' });
+  }
   if (adminItems.length) groups.push({ group: 'Administrasi', items: adminItems });
   return groups;
 }
@@ -79,6 +85,8 @@ const TITLES: Record<PageKey, [string, string]> = {
   branch: ['Kelola Cabang', 'Kelola cabang BSN — hanya ADMIN HQ'],
   audit: ['Audit Log', 'Audit trail aktivitas sistem (login, mutasi data, dll)'],
   settings: ['Pengaturan Akun', 'Profil, password, dan preferensi pribadi'],
+  users: ['Kelola User', 'Tambah / edit / nonaktifkan akun login pengguna sistem'],
+  petugas: ['Kelola Petugas', 'Tambah / edit data petugas lapangan'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -270,6 +278,8 @@ export function App() {
             {page === 'branch' && <ScreenBranch />}
             {page === 'audit' && <ScreenAudit />}
             {page === 'settings' && <ScreenSettings />}
+            {page === 'users' && <ScreenUsers />}
+            {page === 'petugas' && <ScreenPetugas />}
           </Suspense>
         </main>
       </div>
