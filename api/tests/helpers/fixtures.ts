@@ -73,8 +73,8 @@ export async function seedBasic(prisma: PrismaClient): Promise<SeedOut> {
 
   await prisma.nasabah.createMany({
     data: [
-      { kode: 'N0001', nama: 'Nasabah A1', alamat: 'Jl. A', hp: '08111', petugasId: pet1.id, branchId: branchA.id, plafon: 1_000_000n, tenor: 12, angsuran: 100_000n, sisa: 500_000n, dueIn: 5 },
-      { kode: 'N0002', nama: 'Nasabah A2', alamat: 'Jl. B', hp: '08112', petugasId: pet1.id, branchId: branchA.id, plafon: 1_000_000n, tenor: 12, angsuran: 100_000n, sisa: 600_000n, dueIn: -10, dpd: 10 },
+      { kode: 'N0001', nama: 'Nasabah A1', alamat: 'Jl. A', hp: '08111', petugasId: pet1.id, branchId: branchA.id, plafon: 1_000_000n, tenor: 12, angsuran: 100_000n, sisa: 500_000n, dueIn: 5, lat: -6.4825, lng: 106.8595 },
+      { kode: 'N0002', nama: 'Nasabah A2', alamat: 'Jl. B', hp: '08112', petugasId: pet1.id, branchId: branchA.id, plafon: 1_000_000n, tenor: 12, angsuran: 100_000n, sisa: 600_000n, dueIn: -10, dpd: 10, lat: -6.4825, lng: 106.8595 },
       { kode: 'N0003', nama: 'Nasabah A3', alamat: 'Jl. C', hp: '08113', petugasId: pet2.id, branchId: branchA.id, plafon: 1_000_000n, tenor: 12, angsuran: 100_000n, sisa: 700_000n, dueIn: 2 },
       { kode: 'N0004', nama: 'Nasabah B1', alamat: 'Jl. D', hp: '08114', petugasId: pet3.id, branchId: branchB.id, plafon: 1_000_000n, tenor: 12, angsuran: 100_000n, sisa: 800_000n, dueIn: 3 },
     ],

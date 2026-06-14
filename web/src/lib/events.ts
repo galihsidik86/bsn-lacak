@@ -10,6 +10,7 @@ type EventTopic =
   | 'ready'
   | 'petugas.position'
   | 'kunjungan.created'
+  | 'kunjungan.reviewed'
   | 'nasabah.reassign'
   | 'blast.completed'
   | 'notification.new';
@@ -37,7 +38,7 @@ async function connect(): Promise<void> {
     es = new EventSource(url);
 
     const topics: EventTopic[] = [
-      'ready', 'petugas.position', 'kunjungan.created',
+      'ready', 'petugas.position', 'kunjungan.created', 'kunjungan.reviewed',
       'nasabah.reassign', 'blast.completed', 'notification.new',
     ];
     for (const t of topics) {

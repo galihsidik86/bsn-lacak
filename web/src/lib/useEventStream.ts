@@ -16,6 +16,11 @@ export function useEventStream() {
         qc.invalidateQueries({ queryKey: ['nasabah'] });
         qc.invalidateQueries({ queryKey: ['payflow'] });
       }),
+      subscribe('kunjungan.reviewed', () => {
+        // Petugas needs to see status flip from PENDING → APPROVED/REJECTED
+        // without reload; supervisor view needs its filtered list refreshed.
+        qc.invalidateQueries({ queryKey: ['kunjungan'] });
+      }),
       subscribe('nasabah.reassign', () => {
         qc.invalidateQueries({ queryKey: ['nasabah'] });
       }),

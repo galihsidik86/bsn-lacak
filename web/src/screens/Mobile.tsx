@@ -153,7 +153,7 @@ export function ScreenMobile() {
         {isPetugasUser && <InstallPrompt />}
         {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} />}
         {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} here={hereFix} />}
-        {!reportFor && tab === 'riwayat' && <MRiwayat me={ME} />}
+        {!reportFor && tab === 'riwayat' && <MRiwayat me={ME} onLaporUlang={setReportFor} />}
         {!reportFor && tab === 'profil' && <MProfil me={ME} pendingOffline={offline.pending} />}
         {reportFor && <MLapor n={reportFor} me={ME} here={hereFix} onClose={() => setReportFor(null)}
           onDone={() => { setReportFor(null); setTab('riwayat'); }} />}
@@ -547,7 +547,7 @@ function MRute({ me: ME, tasks: MY_TASKS, onReport, here }: {
   );
 }
 
-function MRiwayat({ me: ME }: { me: Petugas }) {
+function MRiwayat({ me: ME, onLaporUlang }: { me: Petugas; onLaporUlang: (n: Nasabah) => void }) {
   const kunjunganQ = useKunjunganList();
   const nasabahQ = useNasabahList();
   const { data: ALL_K } = kunjunganQ;
@@ -640,6 +640,52 @@ function MRiwayat({ me: ME }: { me: Petugas }) {
                     <span style={{ opacity: 0.5 }}>·</span>
                     <Ic.clipboard size={11} />{k.jam}
                   </div>
+
+                  {k.reviewStatus === 'PENDING' && (
+                    <div className="center gap-2" style={{
+                      marginTop: 10, padding: '7px 10px', borderRadius: 10,
+                      background: 'var(--gold-soft)', color: 'var(--gold-ink)',
+                      fontSize: 12, fontWeight: 700,
+                    }}>
+                      <Ic.clock size={13} />Menunggu review supervisor
+                    </div>
+                  )}
+                  {k.reviewStatus === 'APPROVED' && (
+                    <div className="center gap-2" style={{
+                      marginTop: 10, padding: '7px 10px', borderRadius: 10,
+                      background: 'var(--accent-soft)', color: 'var(--accent-ink)',
+                      fontSize: 12, fontWeight: 700,
+                    }}>
+                      <Ic.checkCircle size={13} />Disetujui supervisor
+                      {k.reviewNote && (
+                        <span style={{ fontWeight: 500, opacity: 0.9, marginLeft: 4 }}>· {k.reviewNote}</span>
+                      )}
+                    </div>
+                  )}
+                  {k.reviewStatus === 'REJECTED' && (
+                    <div style={{
+                      marginTop: 10, padding: '8px 10px', borderRadius: 10,
+                      background: 'var(--col-macet-soft)', color: 'var(--col-macet)',
+                    }}>
+                      <div className="center gap-2" style={{ fontSize: 12, fontWeight: 700 }}>
+                        <Ic.alert size={13} />Ditolak supervisor
+                      </div>
+                      {k.reviewNote && (
+                        <div style={{ fontSize: 11.5, fontWeight: 500, marginTop: 4, lineHeight: 1.4 }}>
+                          {k.reviewNote}
+                        </div>
+                      )}
+                      {n && (
+                        <button onClick={() => onLaporUlang(n)} className="btn btn-sm"
+                          style={{
+                            marginTop: 8, background: 'var(--col-macet)', color: 'white',
+                            border: 'none', width: '100%',
+                          }}>
+                          <Ic.camera size={14} />Lapor Ulang
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );

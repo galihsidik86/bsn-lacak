@@ -200,7 +200,10 @@ router.get('/:id/pdf', async (req, res) => {
   const id = String(req.params.id);
   const k = await prisma.kunjungan.findFirst({
     where: { id, ...scope(req) },
-    include: { petugas: true, nasabah: true, fotos: true, branch: true },
+    include: {
+      petugas: true, nasabah: true, fotos: true, branch: true,
+      reviewer: { select: { nama: true, username: true } },
+    },
   });
   if (!k) return res.status(404).json({ error: 'not_found' });
 
@@ -212,6 +215,7 @@ router.get('/:id/pdf', async (req, res) => {
 
   const pdf = renderKunjunganPdf({
     kunjungan: k, petugas: k.petugas, nasabah: k.nasabah, branch: k.branch,
+    reviewer: k.reviewer ?? null,
   });
   pdf.pipe(res);
 });

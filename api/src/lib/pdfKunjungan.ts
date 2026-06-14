@@ -6,7 +6,8 @@
 import PDFDocument from 'pdfkit';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { Akad, HasilKunjungan, KolKey } from '@prisma/client';
+import type { Akad, HasilKunjungan, KolKey, ReviewStatus } from '@prisma/client';
+import { RISK_FLAG_META } from './antiFraud.js';
 
 const HASIL_LABEL: Record<HasilKunjungan, string> = {
   BAYAR: 'Bayar Lunas/Sebagian',
@@ -49,7 +50,13 @@ interface PdfInput {
     lat: number | null;
     lng: number | null;
     fotos: { path: string }[];
+    riskScore: number;
+    riskFlags: string[];
+    reviewStatus: ReviewStatus;
+    reviewNote: string | null;
+    reviewedAt: Date | null;
   };
+  reviewer?: { nama: string; username: string } | null;
   petugas: { kode: string; nama: string; wilayah: string; hp: string };
   nasabah: {
     kode: string; nama: string; alamat: string; hp: string;
@@ -158,6 +165,58 @@ export function renderKunjunganPdf(input: PdfInput): InstanceType<typeof PDFDocu
     input.kunjungan.nominal > 0n ? RP(Number(input.kunjungan.nominal)) : '—',
     colRight, y, colW);
   y += 44;
+
+  // ---- Anti-fraud flags (when any rule fired) ----
+  if (input.kunjungan.riskFlags.length > 0) {
+    drawSectionHeader(doc, 'ANTI-FRAUD · PERLU REVIEW', y);
+    y += 22;
+    doc.fillColor('#bb392c').font('Helvetica-Bold').fontSize(10)
+      .text(`Skor risiko: ${input.kunjungan.riskScore}`, doc.page.margins.left, y);
+    y += 16;
+    doc.font('Helvetica').fontSize(9).fillColor(COLORS.ink);
+    for (const flag of input.kunjungan.riskFlags) {
+      const meta = RISK_FLAG_META[flag];
+      const label = meta?.label ?? flag;
+      const hint = meta?.hint ?? '';
+      doc.font('Helvetica-Bold').fillColor('#bb392c').text(`• ${label}`,
+        doc.page.margins.left, y, { continued: !!hint });
+      if (hint) {
+        doc.font('Helvetica').fillColor(COLORS.ink2).text(` — ${hint}`);
+      }
+      y = doc.y + 4;
+    }
+    y += 10;
+  }
+
+  // ---- Review status (always shown, makes audit trail visible) ----
+  drawSectionHeader(doc, 'STATUS REVIEW', y);
+  y += 22;
+  const statusColor =
+    input.kunjungan.reviewStatus === 'APPROVED' ? COLORS.accent
+    : input.kunjungan.reviewStatus === 'REJECTED' ? '#bb392c'
+    : '#c39b1d';
+  const statusLabel =
+    input.kunjungan.reviewStatus === 'APPROVED' ? 'Disetujui'
+    : input.kunjungan.reviewStatus === 'REJECTED' ? 'Ditolak'
+    : 'Menunggu review';
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(statusColor)
+    .text(statusLabel, doc.page.margins.left, y);
+  if (input.reviewer && input.kunjungan.reviewedAt) {
+    const ts = input.kunjungan.reviewedAt.toLocaleString('id-ID');
+    doc.font('Helvetica').fontSize(9).fillColor(COLORS.ink2)
+      .text(`oleh ${input.reviewer.nama} (${input.reviewer.username}) · ${ts}`,
+        doc.page.margins.left, y + 14);
+  }
+  if (input.kunjungan.reviewNote) {
+    y += 32;
+    doc.font('Helvetica-Oblique').fontSize(10).fillColor(COLORS.ink)
+      .text(`"${input.kunjungan.reviewNote}"`, doc.page.margins.left, y,
+        { width: pageWidth, lineGap: 2 });
+    y = doc.y;
+  } else {
+    y += 28;
+  }
+  y += 16;
 
   // ---- Catatan ----
   drawSectionHeader(doc, 'CATATAN PETUGAS', y);

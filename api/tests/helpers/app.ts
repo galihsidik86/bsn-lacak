@@ -11,6 +11,7 @@ import nasabah from '../../src/routes/nasabah.js';
 import kunjungan from '../../src/routes/kunjungan.js';
 import blast from '../../src/routes/blast.js';
 import distribusi from '../../src/routes/distribusi.js';
+import push from '../../src/routes/push.js';
 
 export function buildApp() {
   const app = express();
@@ -24,6 +25,7 @@ export function buildApp() {
   app.use('/api/kunjungan', kunjungan);
   app.use('/api/blast', blast);
   app.use('/api/distribusi', distribusi);
+  app.use('/api/push', push);
   return app;
 }
 
@@ -35,6 +37,7 @@ export async function resetDb() {
     TRUNCATE TABLE
       "AuditLog",
       "Notification",
+      "PushSubscription",
       "BlastRecipient", "Blast",
       "Foto", "Kunjungan",
       "Pembayaran",
