@@ -79,7 +79,11 @@ export interface Kunjungan {
   catatan: string;
   lokasi: string;
   foto: number;
+  fotoUrls?: string[];
   valid: boolean;
+  riskScore?: number;
+  riskFlags?: string[];
+  tanggal?: string;
 }
 
 export interface PayflowPoint {

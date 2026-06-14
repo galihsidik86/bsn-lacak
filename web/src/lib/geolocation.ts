@@ -3,7 +3,7 @@
 // either moved a meaningful distance OR the cadence elapsed, so we don't
 // spam the API while the petugas is at a stop.
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { tokenStore } from './api';
 
@@ -35,20 +35,31 @@ function distMeters(a: { lat: number; lng: number }, b: { lat: number; lng: numb
   return Math.hypot(dLat, x) * R;
 }
 
+export interface GeoFix {
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+  ts: number;
+}
+
 export function useGeolocationStream({
   petugasId,
   enabled = true,
   minDistanceMeters = 50,
   maxIntervalMs = 60_000,
-}: Options) {
+}: Options): { latest: GeoFix | null } {
   const lastSent = useRef<LastSent | null>(null);
+  const [latest, setLatest] = useState<GeoFix | null>(null);
 
   useEffect(() => {
-    if (!enabled || !petugasId) return;
-    if (USE_MOCK) return;
+    if (!enabled) return;
     if (typeof navigator === 'undefined' || !navigator.geolocation) return;
 
     const send = async (lat: number, lng: number, accuracy: number | undefined) => {
+      // Backend POST is gated on having a real petugasId AND not being in
+      // mock mode — UI position tracking runs regardless so the route
+      // ordering still works in dev/preview.
+      if (USE_MOCK || !petugasId) return;
       const tok = tokenStore.get();
       if (!tok) return;
       try {
@@ -66,6 +77,7 @@ export function useGeolocationStream({
     const onPosition = (p: GeolocationPosition) => {
       const { latitude: lat, longitude: lng, accuracy } = p.coords;
       const now = Date.now();
+      setLatest({ lat, lng, accuracy: accuracy ?? null, ts: now });
       const last = lastSent.current;
       if (last) {
         const moved = distMeters(last, { lat, lng });
@@ -88,4 +100,6 @@ export function useGeolocationStream({
 
     return () => navigator.geolocation.clearWatch(id);
   }, [petugasId, enabled, minDistanceMeters, maxIntervalMs]);
+
+  return { latest };
 }

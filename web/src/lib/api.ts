@@ -85,6 +85,15 @@ function nasabahFromServer(x: any): Nasabah {
 }
 
 function kunjunganFromServer(x: any): Kunjungan {
+  // Foto rows store a relative server path like "uploads/2026/06/abc.jpg".
+  // The api server mounts the upload dir at /uploads, so prefix back with /
+  // and strip any leading "uploads/" so we always end up at /uploads/...
+  const urls: string[] = Array.isArray(x.fotos)
+    ? x.fotos.map((f: any) => {
+        const p = String(f.path ?? '').replace(/\\/g, '/').replace(/^\/?(?:uploads\/)?/, '');
+        return `/uploads/${p}`;
+      })
+    : [];
   return {
     id: x.id,
     petugas: x.petugasId,
@@ -95,8 +104,12 @@ function kunjunganFromServer(x: any): Kunjungan {
     dpd: x.nasabah?.dpd ?? 0,
     catatan: x.catatan ?? '',
     lokasi: x.lokasi ?? '',
-    foto: Array.isArray(x.fotos) ? x.fotos.length : 0,
+    foto: urls.length,
+    fotoUrls: urls,
     valid: x.valid ?? true,
+    riskScore: typeof x.riskScore === 'number' ? x.riskScore : 0,
+    riskFlags: Array.isArray(x.riskFlags) ? x.riskFlags : [],
+    tanggal: x.tanggal,
   };
 }
 
@@ -207,7 +220,7 @@ interface Api {
   payflow(): Promise<PayflowPoint[]>;
   reassign(nasabahId: string, petugasId: string): Promise<void>;
   sendBlast(args: { segment: string; channel: 'wa' | 'sms'; template: string; recipientIds: string[] }): Promise<{ jobId: string }>;
-  createKunjungan(args: Partial<Kunjungan> & { photos: File[] }): Promise<Kunjungan>;
+  createKunjungan(args: Partial<Kunjungan> & { photos: File[]; lat?: number; lng?: number }): Promise<Kunjungan>;
 }
 
 export const api: Api = USE_MOCK
@@ -246,11 +259,19 @@ export const api: Api = USE_MOCK
       },
       async sendBlast(args) { return (await http.post('/blast', args)).data; },
       async createKunjungan(args) {
+        // Map frontend field names to backend schema and uppercase the hasil
+        // enum (Prisma KolKey/HasilKunjungan literals).
         const fd = new FormData();
-        Object.entries(args).forEach(([k, v]) => {
-          if (k === 'photos' && Array.isArray(v)) v.forEach((f: File) => fd.append('photos', f));
-          else if (v != null) fd.append(k, String(v));
-        });
+        const a = args as any;
+        if (a.nasabah) fd.append('nasabahId', String(a.nasabah));
+        if (a.petugas) fd.append('petugasId', String(a.petugas));
+        if (a.hasil) fd.append('hasil', String(a.hasil).toUpperCase());
+        if (a.nominal != null) fd.append('nominal', String(a.nominal));
+        if (a.catatan != null) fd.append('catatan', String(a.catatan));
+        if (a.lokasi != null) fd.append('lokasi', String(a.lokasi));
+        if (a.lat != null) fd.append('lat', String(a.lat));
+        if (a.lng != null) fd.append('lng', String(a.lng));
+        if (Array.isArray(a.photos)) a.photos.forEach((f: File) => fd.append('photos', f));
         return (await http.post('/kunjungan', fd)).data;
       },
     };

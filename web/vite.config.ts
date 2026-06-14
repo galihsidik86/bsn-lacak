@@ -60,11 +60,24 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    // Bind to all interfaces so a phone on the same Wi-Fi can hit the dev
+    // server at http://<lan-ip>:5173. PWA install + geolocation still require
+    // a secure context, so those features won't work over plain HTTP/LAN —
+    // use a tunnel (cloudflared/ngrok) if you need to test them on device.
+    host: true,
+    // Accept arbitrary Host headers (cloudflared / ngrok forward the public
+    // hostname). Dev-only — production never sees this.
+    allowedHosts: true,
     proxy: {
       // The SPA itself sets VITE_API_URL='/api' so axios calls land on the
       // dev server, which forwards here. Keep the upstream target explicit so
       // it doesn't accidentally inherit the SPA value.
       '/api': {
+        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:4000',
+        changeOrigin: true,
+      },
+      // Static photo uploads from the API server.
+      '/uploads': {
         target: process.env.VITE_DEV_API_TARGET || 'http://localhost:4000',
         changeOrigin: true,
       },

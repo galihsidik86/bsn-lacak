@@ -237,6 +237,12 @@ model Kunjungan {
   lat        Float?
   lng        Float?
   valid      Boolean        @default(true)
+  // Anti-fraud surface. riskFlags lists detected anomalies (e.g. "gps_far",
+  // "photo_stale", "no_exif_date"); riskScore is the summed severity. A
+  // non-zero score flips `valid` to false at write time and surfaces a
+  // "perlu review" badge on the supervisor's report list.
+  riskScore  Int            @default(0)
+  riskFlags  String[]       @default([])
   fotos      Foto[]
   jam        String
   tanggal    DateTime       @default(now())

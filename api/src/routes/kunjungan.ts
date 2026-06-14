@@ -12,6 +12,8 @@ import { audit, fromReq } from '../lib/audit.js';
 import { bus } from '../lib/events.js';
 import { renderKunjunganPdf } from '../lib/pdfKunjungan.js';
 import { logger } from '../lib/logger.js';
+import { evalGps, evalPhotoExif, merge } from '../lib/antiFraud.js';
+import { watermarkPhoto } from '../lib/watermark.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -72,21 +74,52 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
   const petugasRow = await prisma.petugas.findUnique({ where: { id: parsed.data.petugasId }, select: { branchId: true } });
   if (!petugasRow) return res.status(400).json({ error: 'unknown_petugas' });
 
+  // Pull nasabah coords for GPS plausibility (lapis A) + name for watermark.
+  const nasabahRow = await prisma.nasabah.findUnique({
+    where: { id: parsed.data.nasabahId }, select: { lat: true, lng: true, nama: true },
+  });
+  const petugasInfo = await prisma.petugas.findUnique({
+    where: { id: parsed.data.petugasId }, select: { nama: true },
+  });
+
   const photos = (req.files as Express.Multer.File[] | undefined) ?? [];
 
-  // Magic-byte check + persist
+  // Magic-byte check + per-photo EXIF freshness (lapis C) + watermark + persist.
+  // Order matters: EXIF check first (on the original bytes), THEN watermark
+  // (which re-encodes and would strip EXIF). The watermark is JPEG always.
   const savedPaths: string[] = [];
+  const photoEvals = [];
+  const now = new Date();
   for (const f of photos) {
     const detected = await fileTypeFromBuffer(f.buffer).catch(() => null);
     if (!detected || !ALLOWED_MIMES.has(detected.mime)) {
       logger.warn({ original: f.originalname, declared: f.mimetype, detected: detected?.mime }, 'upload_rejected_magic_byte');
       return res.status(400).json({ error: 'invalid_file_type' });
     }
-    const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${detected.ext}`;
+    photoEvals.push(await evalPhotoExif(f.buffer));
+
+    const stamped = await watermarkPhoto(f.buffer, {
+      petugasNama: petugasInfo?.nama ?? '—',
+      nasabahNama: nasabahRow?.nama ?? '—',
+      timestamp: now,
+      lat: parsed.data.lat ?? null,
+      lng: parsed.data.lng ?? null,
+    });
+
+    const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
     const full = path.join(env.UPLOAD_DIR, filename);
-    await fs.promises.writeFile(full, f.buffer);
+    await fs.promises.writeFile(full, stamped);
     savedPaths.push(path.relative(process.cwd(), full).replace(/\\/g, '/'));
   }
+
+  // Run anti-fraud rules (A + C).
+  const risk = merge(
+    evalGps({
+      reportedLat: parsed.data.lat, reportedLng: parsed.data.lng,
+      nasabahLat: nasabahRow?.lat, nasabahLng: nasabahRow?.lng,
+    }),
+    ...photoEvals,
+  );
 
   const jam = new Date().toTimeString().slice(0, 5);
 
@@ -95,10 +128,23 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
       ...parsed.data,
       branchId: petugasRow.branchId,
       jam,
+      // Flip valid to false when any anomaly fired. Supervisors see a "perlu
+      // review" badge in the laporan list.
+      valid: risk.score === 0 && parsed.data.valid,
+      riskScore: risk.score,
+      riskFlags: risk.flags,
       fotos: { create: savedPaths.map(p => ({ path: p })) },
     },
     include: { fotos: true },
   });
+
+  // Surface every flagged report in the audit trail (lapis F).
+  if (risk.flags.length > 0) {
+    await audit({
+      action: 'kunjungan.risk_flagged', target: k.id, ...fromReq(req),
+      meta: { flags: risk.flags, score: risk.score, nasabahId: k.nasabahId },
+    });
+  }
 
   await audit({
     action: 'kunjungan.create', target: k.id, ...fromReq(req),

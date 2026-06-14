@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Map as MlMap, Marker, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Ic, type IconKey } from '../components/Icons';
@@ -8,13 +8,48 @@ import { IOSDevice } from '../components/IosFrame';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   HASIL_KUNJUNGAN, KOL, RP, RPjt,
-  useCreateKunjungan, useNasabahList, usePetugasList,
+  useCreateKunjungan, useKunjunganList, useNasabahList, usePetugasList,
 } from '../data/queries';
-import { useAuth } from '../lib/auth';
+import { doLogout, useAuth } from '../lib/auth';
 import { useGeolocationStream } from '../lib/geolocation';
 import type { HasilKunjungan, Nasabah, Petugas } from '../types';
 
 type Tab = 'beranda' | 'rute' | 'riwayat' | 'profil';
+
+const MOBILE_STATE_KEY = 'bsn_mobile_state';
+const LAPOR_DRAFT_KEY = 'bsn_lapor_draft';
+
+interface MobileState { tab: Tab; reportForId: string | null }
+interface LaporDraft {
+  nasabahId: string;
+  hasil: HasilKunjungan;
+  nominal: string;
+  catatan: string;
+}
+
+function loadMobileState(): MobileState | null {
+  try {
+    const v = sessionStorage.getItem(MOBILE_STATE_KEY);
+    return v ? JSON.parse(v) : null;
+  } catch { return null; }
+}
+function saveMobileState(s: MobileState) {
+  try { sessionStorage.setItem(MOBILE_STATE_KEY, JSON.stringify(s)); } catch { /* private mode */ }
+}
+function loadLaporDraft(nasabahId: string): LaporDraft | null {
+  try {
+    const v = sessionStorage.getItem(LAPOR_DRAFT_KEY);
+    if (!v) return null;
+    const d = JSON.parse(v) as LaporDraft;
+    return d.nasabahId === nasabahId ? d : null;
+  } catch { return null; }
+}
+function saveLaporDraft(d: LaporDraft) {
+  try { sessionStorage.setItem(LAPOR_DRAFT_KEY, JSON.stringify(d)); } catch { /* private mode */ }
+}
+function clearLaporDraft() {
+  try { sessionStorage.removeItem(LAPOR_DRAFT_KEY); } catch { /* ignore */ }
+}
 
 export function ScreenMobile() {
   const user = useAuth(s => s.user);
@@ -30,21 +65,65 @@ export function ScreenMobile() {
     ? PETUGAS.find(p => p.id === user?.petugasId) ?? PETUGAS[0]
     : PETUGAS[0];
 
-  // For PETUGAS the nasabah list is already server-scoped to their own
-  // assignments; for the supervisor preview we filter by ME.id locally.
-  const MY_TASKS = !ME
-    ? []
-    : isPetugasUser
-      ? NASABAH.slice(0, 6)
-      : NASABAH.filter(n => n.petugas === ME.id).slice(0, 6);
+  // Today's priority list: nasabah yang jatuh tempo minggu ini (dueIn <= 7)
+  // ATAU overdue, sortir paling kritis dulu (kol tertinggi → dpd terbesar).
+  // Tetap dibatasi 10 supaya layar HP tidak overwhelm — sisanya bisa diakses
+  // via dashboard. Definisi ini sinkron dengan `rencana` di petugasStats.
+  const MY_TASKS = useMemo(() => {
+    if (!ME) return [];
+    const base = isPetugasUser
+      ? NASABAH
+      : NASABAH.filter(n => n.petugas === ME.id);
+    return base
+      .filter(n => n.dueIn <= 7)
+      .sort((a, b) => (b.kol - a.kol) || (b.dpd - a.dpd) || (a.dueIn - b.dueIn))
+      .slice(0, 10);
+  }, [NASABAH, ME, isPetugasUser]);
 
-  const [tab, setTab] = useState<Tab>('beranda');
+  // Server-driven "done" set: nasabah yang sudah punya kunjungan hari ini.
+  // Pakai react-query kunjungan list yang sudah di-invalidate setelah submit
+  // — jadi konsisten dengan kartu hijau ME.kunjungan tanpa local state.
+  const kunjunganQ = useKunjunganList();
+  const doneSet = useMemo(() => {
+    if (!ME) return new Set<string>();
+    const today = new Date().toISOString().slice(0, 10);
+    const s = new Set<string>();
+    for (const k of kunjunganQ.data ?? []) {
+      if (k.petugas !== ME.id) continue;
+      if (k.tanggal && k.tanggal.slice(0, 10) !== today) continue;
+      s.add(k.nasabah);
+    }
+    return s;
+  }, [kunjunganQ.data, ME]);
+
+  // Mobile UI state survives a process-kill via sessionStorage. Android Chrome
+  // sometimes wipes the tab when the camera intent launches; without this
+  // persistence the user lands back on Beranda after taking a photo. We only
+  // restore IDs — the actual Nasabah object is looked up from MY_TASKS once
+  // the queries hydrate.
+  const persisted = loadMobileState();
+  const [tab, setTab] = useState<Tab>(persisted?.tab ?? 'beranda');
   const [reportFor, setReportFor] = useState<Nasabah | null>(null);
-  const [done, setDone] = useState<string[]>([]);
+
+  // Restore the open report form once tasks have loaded.
+  useEffect(() => {
+    if (reportFor) return;
+    const id = loadMobileState()?.reportForId;
+    if (!id) return;
+    const n = MY_TASKS.find(t => t.id === id);
+    if (n) setReportFor(n);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [MY_TASKS.length]);
+
+  useEffect(() => {
+    saveMobileState({ tab, reportForId: reportFor?.id ?? null });
+  }, [tab, reportFor]);
 
   // Stream GPS to the backend (no-op when the user isn't a petugas — the
-  // petugasId check inside the hook gates it out).
-  useGeolocationStream({
+  // petugasId check inside the hook gates it out). The hook also exposes the
+  // most recent fix so the Rute tab can order stops by nearest-neighbor from
+  // wherever the petugas actually is right now.
+  const { latest: hereFix } = useGeolocationStream({
     petugasId: isPetugasUser ? user?.petugasId : null,
     enabled: isPetugasUser && !!ME,
   });
@@ -63,14 +142,15 @@ export function ScreenMobile() {
     <div style={{ fontFamily: 'var(--font)', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--ink)' }}>
       <div style={{ flex: 1, overflowY: 'auto', paddingTop: isPetugasUser ? 12 : 54 }}>
         {isPetugasUser && <InstallPrompt />}
-        {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} done={done} />}
-        {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} />}
-        {!reportFor && tab === 'riwayat' && <MRiwayat tasks={MY_TASKS} done={done} />}
+        {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} />}
+        {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} here={hereFix} />}
+        {!reportFor && tab === 'riwayat' && <MRiwayat me={ME} />}
+        {!reportFor && tab === 'profil' && <MProfil me={ME} />}
         {reportFor && <MLapor n={reportFor} me={ME} onClose={() => setReportFor(null)}
-          onDone={(id) => { setDone(d => [...d, id]); setReportFor(null); setTab('riwayat'); }} />}
+          onDone={() => { setReportFor(null); setTab('riwayat'); }} />}
       </div>
       {!reportFor && <MTabBar tab={tab} setTab={setTab}
-        onReport={() => setReportFor(MY_TASKS.find(t => !done.includes(t.id)) || MY_TASKS[0])} />}
+        onReport={() => setReportFor(MY_TASKS.find(t => !doneSet.has(t.id)) || MY_TASKS[0])} />}
     </div>
   );
 
@@ -133,10 +213,14 @@ function MHeader({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
-function MBeranda({ me: ME, tasks: MY_TASKS, onReport, done }: {
-  me: Petugas; tasks: Nasabah[]; onReport: (n: Nasabah) => void; done: string[];
+function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet }: {
+  me: Petugas; tasks: Nasabah[]; onReport: (n: Nasabah) => void; doneSet: Set<string>;
 }) {
-  const pct = Math.round(ME.terkumpul / ME.target * 100);
+  const pct = ME.target > 0 ? Math.round(ME.terkumpul / ME.target * 100) : 0;
+  // "selesai" mengacu pada tugas hari ini (MY_TASKS) yang sudah dikunjungi —
+  // bukan total kunjungan ME.kunjungan, karena petugas bisa kunjungi nasabah
+  // di luar daftar prioritas.
+  const doneInTasks = MY_TASKS.filter(t => doneSet.has(t.id)).length;
   return (
     <div>
       <div style={{ padding: '8px 20px 0' }}>
@@ -171,18 +255,18 @@ function MBeranda({ me: ME, tasks: MY_TASKS, onReport, done }: {
           </div>
         </div>
         <div className="center gap-2" style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.2)', position: 'relative' }}>
-          <MiniStatW label="Kunjungan" value={`${ME.kunjungan}/${ME.rencana}`} />
+          <MiniStatW label="Kunjungan / Jadwal" value={`${ME.kunjungan}/${ME.rencana}`} />
           <MiniStatW label="Sisa target" value={RPjt(ME.target - ME.terkumpul)} />
         </div>
       </div>
 
       <div className="between" style={{ padding: '22px 20px 10px' }}>
-        <div style={{ fontWeight: 800, fontSize: 15 }}>Kunjungan Hari Ini</div>
-        <span className="muted" style={{ fontSize: 12.5, fontWeight: 700 }}>{done.length}/{MY_TASKS.length} selesai</span>
+        <div style={{ fontWeight: 800, fontSize: 15 }}>Jadwal Hari Ini</div>
+        <span className="muted" style={{ fontSize: 12.5, fontWeight: 700 }}>{doneInTasks}/{MY_TASKS.length} selesai</span>
       </div>
       <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
         {MY_TASKS.map((n, i) => {
-          const isDone = done.includes(n.id);
+          const isDone = doneSet.has(n.id);
           return (
             <button key={n.id} onClick={() => !isDone && onReport(n)} disabled={isDone}
               style={{
@@ -248,16 +332,73 @@ function stopCoords(n: Nasabah): { lat: number; lng: number } {
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY;
 const MAPTILER_STYLE = import.meta.env.VITE_MAPTILER_STYLE || 'streets-v2';
 
-function MRute({ me: ME, tasks: MY_TASKS, onReport }: {
+// Sum of consecutive distances along a sequence of stops — used to show the
+// distance saved when optimization is on.
+function tourLength(stops: { lat: number; lng: number }[]): number {
+  let total = 0;
+  for (let i = 1; i < stops.length; i++) total += distMeters(stops[i - 1], stops[i]);
+  return total;
+}
+
+// Equirectangular distance in meters — same approach as lib/geolocation.
+function distMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371_000;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const lat = ((a.lat + b.lat) / 2) * Math.PI / 180;
+  const x = dLng * Math.cos(lat);
+  return Math.hypot(dLat, x) * R;
+}
+
+// Greedy nearest-neighbor: from the start point, repeatedly pick the closest
+// unvisited stop. Cheap O(n²) — fine for ≤ ~20 stops. Returns the reordered
+// list plus total tour length in meters.
+function orderNearest<T extends { lat: number; lng: number }>(
+  start: { lat: number; lng: number }, stops: T[],
+): { ordered: T[]; meters: number } {
+  const remaining = [...stops];
+  const ordered: T[] = [];
+  let cur = start;
+  let total = 0;
+  while (remaining.length) {
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const d = distMeters(cur, remaining[i]);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    const next = remaining.splice(bestIdx, 1)[0];
+    total += bestDist;
+    ordered.push(next);
+    cur = next;
+  }
+  return { ordered, meters: total };
+}
+
+function MRute({ me: ME, tasks: MY_TASKS, onReport, here }: {
   me: Petugas; tasks: Nasabah[]; onReport: (n: Nasabah) => void;
+  here: { lat: number; lng: number } | null;
 }) {
   const accent = cssVar('--accent') || '#1f8a5b';
   const styleUrl = `https://api.maptiler.com/maps/${MAPTILER_STYLE}/style.json?key=${MAPTILER_KEY}`;
+  const [optimize, setOptimize] = useState(true);
 
-  const stops = useMemo(
+  const rawStops = useMemo(
     () => MY_TASKS.map(n => ({ n, ...stopCoords(n) })),
     [MY_TASKS],
   );
+
+  // Nearest-neighbor ordering from the current GPS fix; falls back to the
+  // first stop as the start so the recommendation still works before the
+  // first GPS fix arrives.
+  const { stops, totalMeters } = useMemo(() => {
+    if (!optimize || rawStops.length === 0) {
+      return { stops: rawStops, totalMeters: tourLength(rawStops) };
+    }
+    const start = here ?? rawStops[0];
+    const { ordered, meters } = orderNearest(start, rawStops);
+    return { stops: ordered, totalMeters: meters };
+  }, [rawStops, optimize, here]);
 
   const routeGeo = useMemo(() => ({
     type: 'FeatureCollection' as const,
@@ -272,14 +413,17 @@ function MRute({ me: ME, tasks: MY_TASKS, onReport }: {
   }), [stops]);
 
   const initialView = useMemo(() => {
-    if (stops.length === 0) {
+    // Include the live "here" pin in the initial fit when we have one.
+    const pts: { lat: number; lng: number }[] = [...stops];
+    if (here) pts.push(here);
+    if (pts.length === 0) {
       return { longitude: RUTE_HUB.lng, latitude: RUTE_HUB.lat, zoom: 12 };
     }
-    if (stops.length === 1) {
-      return { longitude: stops[0].lng, latitude: stops[0].lat, zoom: 13.5 };
+    if (pts.length === 1) {
+      return { longitude: pts[0].lng, latitude: pts[0].lat, zoom: 13.5 };
     }
-    const lats = stops.map(s => s.lat);
-    const lngs = stops.map(s => s.lng);
+    const lats = pts.map(s => s.lat);
+    const lngs = pts.map(s => s.lng);
     return {
       bounds: [
         [Math.min(...lngs), Math.min(...lats)],
@@ -287,7 +431,10 @@ function MRute({ me: ME, tasks: MY_TASKS, onReport }: {
       ] as [[number, number], [number, number]],
       fitBoundsOptions: { padding: 32 },
     };
-  }, [stops]);
+    // Only refit when the set of stop ids changes, not on every GPS update —
+    // otherwise the camera jumps every few seconds while the petugas walks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stops.map(s => s.n.id).join(',')]);
 
   return (
     <div>
@@ -317,6 +464,21 @@ function MRute({ me: ME, tasks: MY_TASKS, onReport }: {
                 }}>{i + 1}</div>
               </Marker>
             ))}
+            {here && (
+              <Marker longitude={here.lng} latitude={here.lat} anchor="center">
+                <div style={{ position: 'relative', width: 22, height: 22 }} title="Posisi Anda">
+                  <div style={{
+                    position: 'absolute', inset: 0, borderRadius: 99,
+                    background: '#3b82f6', opacity: 0.25, animation: 'mlpulse 2.2s ease-out infinite',
+                  }} />
+                  <div style={{
+                    position: 'absolute', inset: 5, borderRadius: 99,
+                    background: '#3b82f6', border: '3px solid white',
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+                  }} />
+                </div>
+              </Marker>
+            )}
           </MlMap>
         ) : (
           <div className="center gap-2" style={{ height: '100%', justifyContent: 'center', color: 'var(--ink-3)', fontSize: 12.5, fontWeight: 600, background: 'var(--surface-2)' }}>
@@ -324,8 +486,34 @@ function MRute({ me: ME, tasks: MY_TASKS, onReport }: {
           </div>
         )}
         <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'var(--ink)', color: 'white', borderRadius: 8, padding: '4px 9px', fontSize: 11, fontWeight: 700 }} className="center gap-2">
-          <Ic.nav size={12} />{stops.length} stop
+          <Ic.nav size={12} />{stops.length} stop · {(totalMeters / 1000).toFixed(1)} km
         </div>
+      </div>
+      <div style={{ margin: '0 16px 12px', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12 }}>
+        <div className="stat-ic" style={{ width: 30, height: 30, background: 'var(--accent-soft)', color: 'var(--accent)', flex: 'none' }}>
+          <Ic.route size={15} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700 }}>Rute terdekat</div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 1 }}>
+            {here
+              ? 'Urut dari posisi Anda · greedy nearest-neighbor'
+              : 'Menunggu GPS · sementara urut dari stop pertama'}
+          </div>
+        </div>
+        <button onClick={() => setOptimize(v => !v)}
+          aria-label={optimize ? 'Matikan optimasi rute' : 'Nyalakan optimasi rute'}
+          style={{
+            width: 40, height: 22, borderRadius: 99, border: 'none', cursor: 'pointer', flex: 'none',
+            background: optimize ? 'var(--accent)' : 'var(--line-2)',
+            position: 'relative', transition: 'background 0.15s',
+          }}>
+          <span style={{
+            position: 'absolute', top: 2, left: optimize ? 20 : 2,
+            width: 18, height: 18, borderRadius: 99, background: 'white',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.2)', transition: 'left 0.15s',
+          }} />
+        </button>
       </div>
       <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
         {MY_TASKS.map((n, i) => (
@@ -350,12 +538,52 @@ function MRute({ me: ME, tasks: MY_TASKS, onReport }: {
   );
 }
 
-function MRiwayat({ tasks: MY_TASKS, done }: { tasks: Nasabah[]; done: string[] }) {
-  const reported = MY_TASKS.filter(t => done.includes(t.id));
+function MRiwayat({ me: ME }: { me: Petugas }) {
+  const kunjunganQ = useKunjunganList();
+  const nasabahQ = useNasabahList();
+  const { data: ALL_K } = kunjunganQ;
+  const { data: ALL_N } = nasabahQ;
+  const [scope, setScope] = useState<'today' | 'all'>('today');
+
+  const nasabahById = useMemo(() => {
+    const m = new Map<string, Nasabah>();
+    for (const n of ALL_N) m.set(n.id, n);
+    return m;
+  }, [ALL_N]);
+
+  // Server already scopes to ME via PETUGAS role; the filter is defensive
+  // for supervisor preview and back-compat with mock mode.
+  const mine = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return ALL_K.filter(k => {
+      if (k.petugas !== ME.id) return false;
+      if (scope === 'today' && k.tanggal && k.tanggal.slice(0, 10) !== today) return false;
+      return true;
+    });
+  }, [ALL_K, ME.id, scope]);
+
+  if (kunjunganQ.isPending) {
+    return <div className="content"><Skeleton h={400} /></div>;
+  }
+
   return (
     <div>
-      <MHeader title="Riwayat" sub={`${reported.length} laporan dikirim hari ini`} />
-      {reported.length === 0 ? (
+      <MHeader title="Riwayat" sub={`${mine.length} laporan ${scope === 'today' ? 'hari ini' : 'tersimpan'}`} />
+      <div style={{ display: 'flex', gap: 6, padding: '0 16px 14px' }}>
+        {([
+          { k: 'today' as const, label: 'Hari Ini' },
+          { k: 'all' as const, label: 'Semua' },
+        ]).map(t => (
+          <button key={t.k} onClick={() => setScope(t.k)}
+            style={{
+              flex: 1, padding: '8px 12px', borderRadius: 99, fontWeight: 700, fontSize: 12.5,
+              border: scope === t.k ? '1.5px solid var(--accent)' : '1px solid var(--line)',
+              background: scope === t.k ? 'var(--accent-soft)' : 'var(--surface)',
+              color: scope === t.k ? 'var(--accent-ink)' : 'var(--ink-2)', cursor: 'pointer',
+            }}>{t.label}</button>
+        ))}
+      </div>
+      {mine.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 30px', color: 'var(--ink-4)' }}>
           <div className="stat-ic" style={{ width: 56, height: 56, margin: '0 auto 14px', background: 'var(--surface-2)', color: 'var(--ink-4)' }}>
             <Ic.clipboard size={26} />
@@ -364,23 +592,146 @@ function MRiwayat({ tasks: MY_TASKS, done }: { tasks: Nasabah[]; done: string[] 
           <div style={{ fontSize: 13, marginTop: 4 }}>Laporan kunjungan yang Anda kirim akan muncul di sini.</div>
         </div>
       ) : (
-        <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {reported.map(n => (
-            <div key={n.id} style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, overflow: 'hidden' }}>
-              <ImgPh label={`◦ foto · ${n.nama} ◦`} h={88} style={{ borderRadius: 0, border: 'none' }} />
-              <div style={{ padding: 12 }}>
-                <div className="between">
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{n.nama}</div>
-                  <Badge c="var(--accent)" soft="var(--accent-soft)" icon={Ic.checkCircle}>Terkirim</Badge>
-                </div>
-                <div className="muted center gap-2" style={{ fontSize: 12, marginTop: 4 }}>
-                  <Ic.location size={12} style={{ color: 'var(--accent)' }} />Lokasi tervalidasi · baru saja
+        <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {mine.map(k => {
+            const n = nasabahById.get(k.nasabah);
+            const meta = HASIL_KUNJUNGAN[k.hasil];
+            const photo = k.fotoUrls?.[0];
+            return (
+              <div key={k.id} style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, overflow: 'hidden' }}>
+                {photo ? (
+                  <img src={photo} alt={`Foto kunjungan ${n?.nama ?? ''}`}
+                    style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block', background: 'var(--ink)' }} />
+                ) : (
+                  <ImgPh label={`◦ tanpa foto ◦`} h={88} style={{ borderRadius: 0, border: 'none' }} />
+                )}
+                <div style={{ padding: 12 }}>
+                  <div className="between" style={{ alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{n?.nama ?? '—'}</div>
+                      <div className="muted" style={{ fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {k.lokasi || n?.alamat || '—'}
+                      </div>
+                    </div>
+                    <Badge c={meta.c} soft={meta.soft} icon={Ic.checkCircle}>{meta.label}</Badge>
+                  </div>
+                  {k.hasil === 'bayar' && k.nominal > 0 && (
+                    <div className="num" style={{ fontWeight: 800, fontSize: 16, color: 'var(--accent)', marginTop: 6 }}>
+                      {RP(k.nominal)}
+                    </div>
+                  )}
+                  {k.catatan && (
+                    <div style={{ fontSize: 12.5, color: 'var(--ink-2)', marginTop: 6, lineHeight: 1.45 }}>
+                      {k.catatan}
+                    </div>
+                  )}
+                  <div className="muted center gap-2" style={{ fontSize: 11.5, marginTop: 8 }}>
+                    <Ic.location size={11} style={{ color: 'var(--accent)' }} />
+                    {k.valid ? 'Lokasi tervalidasi' : 'Lokasi tidak tervalidasi'}
+                    <span style={{ opacity: 0.5 }}>·</span>
+                    <Ic.clipboard size={11} />{k.jam}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
+    </div>
+  );
+}
+
+function MProfil({ me: ME }: { me: Petugas }) {
+  const user = useAuth(s => s.user);
+  const pct = ME.target > 0 ? Math.round(ME.terkumpul / ME.target * 100) : 0;
+
+  const handleLogout = () => {
+    if (window.confirm('Keluar dari aplikasi?')) void doLogout();
+  };
+
+  return (
+    <div>
+      <MHeader title="Profil" sub={user?.branch?.nama ?? ME.wilayah} />
+
+      <div style={{ margin: '0 16px 16px' }}>
+        <div className="card card-pad" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <Avatar inisial={ME.inisial} hue={ME.hue} size={56} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: '-0.01em' }}>{ME.nama}</div>
+            <div className="muted mono" style={{ fontSize: 12, marginTop: 2 }}>
+              {user?.username ?? '—'} · {user?.role ?? 'PETUGAS'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '0 16px 16px' }}>
+        <div className="card card-pad">
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>
+            Capaian Hari Ini
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <ProfilStat label="Tertagih" value={RPjt(ME.terkumpul)} accent />
+            <ProfilStat label="Target" value={RPjt(ME.target)} />
+            <ProfilStat label="Kunjungan" value={`${ME.kunjungan}/${ME.rencana}`} />
+            <ProfilStat label="% Pencapaian" value={`${pct}%`} accent />
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '0 16px 16px' }}>
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <ProfilRow icon="user" label="Wilayah Binaan" value={ME.wilayah} />
+          <ProfilRow icon="phone" label="No. HP" value={ME.hp} />
+          <ProfilRow icon="layers" label="Cabang" value={user?.branch?.nama ?? '—'} last />
+        </div>
+      </div>
+
+      <div style={{ padding: '0 16px 28px' }}>
+        <button onClick={handleLogout} className="btn"
+          style={{
+            width: '100%', padding: 13, fontSize: 14, fontWeight: 700,
+            background: 'var(--col-macet-soft)', color: 'var(--col-macet)', border: 'none',
+          }}>
+          <Ic.logout size={16} />Keluar
+        </button>
+        <div className="muted" style={{ fontSize: 11, textAlign: 'center', marginTop: 14 }}>
+          BSN Lacak · v0.1.0
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfilStat({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div style={{
+      background: accent ? 'var(--accent-soft)' : 'var(--surface-2)',
+      borderRadius: 12, padding: '10px 12px',
+    }}>
+      <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>{label}</div>
+      <div className="num" style={{
+        fontSize: 16, fontWeight: 800, marginTop: 3,
+        color: accent ? 'var(--accent-ink)' : 'var(--ink)',
+      }}>{value}</div>
+    </div>
+  );
+}
+
+function ProfilRow({ icon, label, value, last = false }: { icon: IconKey; label: string; value: string; last?: boolean }) {
+  const Icon = Ic[icon];
+  return (
+    <div className="center gap-3" style={{
+      padding: '12px 14px',
+      borderBottom: last ? 'none' : '1px solid var(--line)',
+    }}>
+      <div className="stat-ic" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', flex: 'none', width: 32, height: 32 }}>
+        <Icon size={15} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>{label}</div>
+        <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
+      </div>
     </div>
   );
 }
@@ -389,12 +740,25 @@ function MLapor({ n, me: ME, onClose, onDone }: {
   n: Nasabah; me: Petugas; onClose: () => void; onDone: (id: string) => void;
 }) {
   const create = useCreateKunjungan();
-  const [hasil, setHasil] = useState<HasilKunjungan>('bayar');
-  const [nominal, setNominal] = useState(String(n.angsuran));
+  // Restore any draft from a prior tab-kill so the form survives an Android
+  // camera roundtrip. Photos are File objects and can't be persisted — those
+  // need to be retaken if the tab process was killed.
+  const draft = loadLaporDraft(n.id);
+  const [hasil, setHasil] = useState<HasilKunjungan>(draft?.hasil ?? 'bayar');
+  const [nominal, setNominal] = useState(draft?.nominal ?? String(n.angsuran));
   const [photos, setPhotos] = useState<File[]>([]);
-  const [catatan, setCatatan] = useState('');
+  const [catatan, setCatatan] = useState(draft?.catatan ?? '');
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Persist the draft on every change so a camera intent that kills the tab
+  // doesn't take the typed input with it.
+  useEffect(() => {
+    saveLaporDraft({ nasabahId: n.id, hasil, nominal, catatan });
+  }, [n.id, hasil, nominal, catatan]);
+
+  const handleClose = () => { clearLaporDraft(); onClose(); };
+  const handleDone = (id: string) => { clearLaporDraft(); onDone(id); };
 
   const foto = photos.length;
   const MAX_PHOTOS = 3;
@@ -416,16 +780,31 @@ function MLapor({ n, me: ME, onClose, onDone }: {
     setPhotos(p => p.filter((_, idx) => idx !== i));
   };
 
+  // Capture a fresh GPS fix at submit time so the server can run the
+  // gps-vs-nasabah plausibility check. Falls back silently if the user
+  // didn't grant permission — server records "gps_missing" instead.
+  const getCurrentPosition = (): Promise<{ lat: number; lng: number } | null> =>
+    new Promise((resolve) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) return resolve(null);
+      navigator.geolocation.getCurrentPosition(
+        p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 8_000, maximumAge: 15_000 },
+      );
+    });
+
   const submit = async () => {
     setErr(null);
     if (photos.length === 0) return;
     setSending(true);
     try {
+      const here = await getCurrentPosition();
       await create.mutateAsync({
         nasabah: n.id, petugas: ME.id, hasil, nominal: Number(nominal),
         catatan, lokasi: n.alamat, photos,
+        lat: here?.lat, lng: here?.lng,
       });
-      setTimeout(() => onDone(n.id), 600);
+      setTimeout(() => handleDone(n.id), 600);
     } catch (e: any) {
       const code = e?.response?.data?.error;
       if (code === 'invalid_file_type') setErr('File tidak dikenali sebagai foto. Coba foto ulang.');
@@ -438,7 +817,7 @@ function MLapor({ n, me: ME, onClose, onDone }: {
   return (
     <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
       <div className="between" style={{ padding: '8px 16px 12px' }}>
-        <button onClick={onClose} className="btn btn-ghost btn-sm"><Ic.x size={16} />Batal</button>
+        <button onClick={handleClose} className="btn btn-ghost btn-sm"><Ic.x size={16} />Batal</button>
         <div style={{ fontWeight: 800, fontSize: 15 }}>Lapor Kunjungan</div>
         <span style={{ width: 56 }} />
       </div>

@@ -69,13 +69,15 @@ export async function computeStatsFor(petugasIds: string[]): Promise<Map<string,
     if (s) s.kunjungan = v._count._all;
   }
 
-  // 3. Total nasabah binaan (used as a rough "rencana" target for daily visits).
-  const nasabahCounts = await prisma.nasabah.groupBy({
+  // 3. Rencana = nasabah yang perlu dikunjungi minggu ini (jatuh tempo
+  // dalam 7 hari ke depan ATAU sudah lewat tempo). Bukan jumlah binaan total —
+  // itu salah-konsep yang bikin angka "kunjungan/rencana" jadi misleading.
+  const rencanaCounts = await prisma.nasabah.groupBy({
     by: ['petugasId'],
-    where: { petugasId: { in: petugasIds } },
+    where: { petugasId: { in: petugasIds }, dueIn: { lte: 7 } },
     _count: { _all: true },
   });
-  for (const n of nasabahCounts) {
+  for (const n of rencanaCounts) {
     const s = out.get(n.petugasId);
     if (s) s.rencana = n._count._all;
   }

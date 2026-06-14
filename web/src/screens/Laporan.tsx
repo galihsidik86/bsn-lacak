@@ -8,6 +8,14 @@ import {
 } from '../data/queries';
 import type { HasilKunjungan, Kunjungan, Nasabah, Petugas } from '../types';
 
+const RISK_FLAG_META: Record<string, { label: string; hint: string }> = {
+  gps_far: { label: 'GPS jauh dari nasabah', hint: 'Lokasi laporan > 200m dari alamat nasabah.' },
+  gps_missing: { label: 'GPS tidak dikirim', hint: 'Klien tidak melampirkan koordinat saat submit.' },
+  photo_no_exif: { label: 'Foto tanpa metadata', hint: 'Foto tidak punya EXIF — kemungkinan dari galeri / di-edit.' },
+  photo_stale: { label: 'Foto lama', hint: 'Foto diambil > 1 jam sebelum laporan dikirim.' },
+  speed_jump: { label: 'Lonjakan kecepatan', hint: 'Petugas berpindah > 150 km/h antara dua ping GPS.' },
+};
+
 export function ScreenLaporan() {
   const kunjunganQ = useKunjunganList();
   const petugasQ = usePetugasList();
@@ -95,6 +103,11 @@ export function ScreenLaporan() {
                 <span style={{ position: 'absolute', top: 10, right: 10, background: 'var(--ink)', color: 'white', borderRadius: 8, padding: '3px 8px', fontSize: 11, fontWeight: 700 }} className="center gap-2">
                   <Ic.camera size={12} />{k.foto}
                 </span>
+                {(k.riskFlags?.length ?? 0) > 0 && (
+                  <span style={{ position: 'absolute', top: 40, right: 10, background: 'var(--col-macet)', color: 'white', borderRadius: 8, padding: '3px 8px', fontSize: 10.5, fontWeight: 700 }} className="center gap-2">
+                    <Ic.alert size={12} />Perlu review
+                  </span>
+                )}
                 <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'color-mix(in oklch, var(--ink) 78%, transparent)', color: 'white', borderRadius: 7, padding: '3px 8px', fontSize: 10.5, fontWeight: 600 }} className="center gap-2">
                   <Ic.pin size={11} />{k.lokasi}
                 </span>
@@ -176,6 +189,23 @@ function LaporanDetail({ k, onClose, petugasById, nasabahById }: {
           <Kv label="Tunggakan saat ini" value={k.dpd > 0 ? k.dpd + ' hari' : 'Lancar'} />
           <Kv label="Validasi GPS" value={k.valid ? '✓ Sesuai lokasi nasabah' : '⚠ Di luar radius'} />
         </div>
+
+        {(k.riskFlags?.length ?? 0) > 0 && (
+          <div className="card card-pad" style={{
+            marginBottom: 16, boxShadow: 'none',
+            background: 'var(--col-macet-soft)', border: '1px solid var(--col-macet)',
+          }}>
+            <div className="center gap-2" style={{ fontWeight: 800, fontSize: 13, color: 'var(--col-macet)', marginBottom: 6 }}>
+              <Ic.alert size={15} />Perlu review · skor risiko {k.riskScore ?? 0}
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--col-macet)', lineHeight: 1.55 }}>
+              {(k.riskFlags ?? []).map(f => {
+                const meta = RISK_FLAG_META[f];
+                return <li key={f}><strong>{meta?.label ?? f}</strong>{meta ? ` — ${meta.hint}` : null}</li>;
+              })}
+            </ul>
+          </div>
+        )}
 
         <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 6 }}>CATATAN PETUGAS</div>
         <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: 'var(--ink-2)' }}>{k.catatan}</p>

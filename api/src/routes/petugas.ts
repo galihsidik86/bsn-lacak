@@ -5,6 +5,7 @@ import { requireAuth, scopedBranchId } from '../auth.js';
 import { audit, fromReq } from '../lib/audit.js';
 import { bus } from '../lib/events.js';
 import { computeStatsFor } from '../lib/petugasStats.js';
+import { evalSpeed } from '../lib/antiFraud.js';
 
 const router = Router();
 
@@ -46,9 +47,26 @@ router.post('/:id/position', async (req, res) => {
       return res.status(403).json({ error: 'forbidden' });
     }
   }
+  // Lapis B: deteksi lonjakan kecepatan vs ping terakhir. Tidak menolak —
+  // hanya catat audit, supervisor bisa review pola.
+  const prevRow = await prisma.petugasPosition.findFirst({
+    where: { petugasId: id },
+    orderBy: { recordedAt: 'desc' },
+    select: { lat: true, lng: true, recordedAt: true },
+  });
   const pos = await prisma.petugasPosition.create({
     data: { petugasId: id, lat, lng, accuracy: accuracy ?? null },
   });
+  const speed = evalSpeed({
+    prev: prevRow ? { lat: prevRow.lat, lng: prevRow.lng, recordedAt: prevRow.recordedAt } : null,
+    next: { lat, lng, recordedAt: pos.recordedAt },
+  });
+  if (speed.flags.length > 0) {
+    await audit({
+      action: 'petugas.position.speed_jump', target: id, ...fromReq(req),
+      meta: { flags: speed.flags },
+    });
+  }
   bus.publish('petugas.position', { petugasId: id, lat, lng, accuracy, ts: pos.recordedAt });
   res.status(201).json(pos);
 });
