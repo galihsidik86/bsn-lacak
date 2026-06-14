@@ -5,7 +5,9 @@ import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   HASIL_KUNJUNGAN, RP,
   useKunjunganList, useNasabahFinder, usePetugasFinder, usePetugasList,
+  useReviewKunjungan,
 } from '../data/queries';
+import { useAuth } from '../lib/auth';
 import type { HasilKunjungan, Kunjungan, Nasabah, Petugas } from '../types';
 
 const RISK_FLAG_META: Record<string, { label: string; hint: string }> = {
@@ -26,12 +28,16 @@ export function ScreenLaporan() {
 
   const [fPet, setFPet] = useState<'all' | string>('all');
   const [fHasil, setFHasil] = useState<'all' | HasilKunjungan>('all');
+  const [fReview, setFReview] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [sel, setSel] = useState<Kunjungan | null>(null);
 
   const rows = KUNJUNGAN.filter(k =>
     (fPet === 'all' || k.petugas === fPet) &&
-    (fHasil === 'all' || k.hasil === fHasil)
+    (fHasil === 'all' || k.hasil === fHasil) &&
+    (fReview === 'all' || k.reviewStatus?.toLowerCase() === fReview)
   );
+
+  const pendingCount = KUNJUNGAN.filter(k => k.reviewStatus === 'PENDING').length;
 
   const counts = (Object.keys(HASIL_KUNJUNGAN) as HasilKunjungan[])
     .map(h => ({ h, n: KUNJUNGAN.filter(k => k.hasil === h).length }));
@@ -83,6 +89,14 @@ export function ScreenLaporan() {
               ))}
             </div>
           </div>
+          <div className="seg" role="tablist" aria-label="Filter status review">
+            <button className={fReview === 'all' ? 'on' : ''} onClick={() => setFReview('all')}>Semua status</button>
+            <button className={fReview === 'pending' ? 'on' : ''} onClick={() => setFReview('pending')}>
+              Pending {pendingCount > 0 && <span className="num" style={{ marginLeft: 4 }}>· {pendingCount}</span>}
+            </button>
+            <button className={fReview === 'approved' ? 'on' : ''} onClick={() => setFReview('approved')}>Disetujui</button>
+            <button className={fReview === 'rejected' ? 'on' : ''} onClick={() => setFReview('rejected')}>Ditolak</button>
+          </div>
           <span className="chip"><Ic.calendar size={13} />11 Juni 2026</span>
         </div>
       </div>
@@ -103,9 +117,14 @@ export function ScreenLaporan() {
                 <span style={{ position: 'absolute', top: 10, right: 10, background: 'var(--ink)', color: 'white', borderRadius: 8, padding: '3px 8px', fontSize: 11, fontWeight: 700 }} className="center gap-2">
                   <Ic.camera size={12} />{k.foto}
                 </span>
-                {(k.riskFlags?.length ?? 0) > 0 && (
+                {k.reviewStatus === 'PENDING' && (
                   <span style={{ position: 'absolute', top: 40, right: 10, background: 'var(--col-macet)', color: 'white', borderRadius: 8, padding: '3px 8px', fontSize: 10.5, fontWeight: 700 }} className="center gap-2">
-                    <Ic.alert size={12} />Perlu review
+                    <Ic.alert size={12} />Pending review
+                  </span>
+                )}
+                {k.reviewStatus === 'REJECTED' && (
+                  <span style={{ position: 'absolute', top: 40, right: 10, background: 'var(--ink)', color: 'white', borderRadius: 8, padding: '3px 8px', fontSize: 10.5, fontWeight: 700 }} className="center gap-2">
+                    <Ic.x size={12} />Ditolak
                   </span>
                 )}
                 <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'color-mix(in oklch, var(--ink) 78%, transparent)', color: 'white', borderRadius: 7, padding: '3px 8px', fontSize: 10.5, fontWeight: 600 }} className="center gap-2">
@@ -147,8 +166,27 @@ function LaporanDetail({ k, onClose, petugasById, nasabahById }: {
 }) {
   const p = petugasById(k.petugas);
   const n = nasabahById(k.nasabah);
+  const role = useAuth(s => s.user?.role);
+  const canReview = role === 'SUPERVISOR' || role === 'ADMIN';
+  const review = useReviewKunjungan();
+  const [note, setNote] = useState(k.reviewNote ?? '');
+  const [reviewErr, setReviewErr] = useState<string | null>(null);
   if (!p || !n) return null;
   const h = HASIL_KUNJUNGAN[k.hasil];
+
+  const submitReview = (status: 'APPROVED' | 'REJECTED') => {
+    setReviewErr(null);
+    review.mutate(
+      { id: k.id, status, note: note || undefined },
+      {
+        onSuccess: () => onClose(),
+        onError: (e: any) => {
+          if (e?.response?.data?.error === 'already_reviewed') setReviewErr('Laporan ini sudah direview.');
+          else setReviewErr('Gagal menyimpan review.');
+        },
+      },
+    );
+  };
   return (
     <Modal onClose={onClose} max={620}>
       <div className="modal-head">
@@ -221,9 +259,57 @@ function LaporanDetail({ k, onClose, petugasById, nasabahById }: {
             : <Badge c="var(--col-macet)" soft="var(--col-macet-soft)" icon={Ic.alert}>Perlu cek</Badge>}
         </div>
       </div>
+      {canReview && k.reviewStatus === 'PENDING' && (
+        <div style={{ padding: '0 24px 14px' }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 6, marginTop: 8 }}>CATATAN REVIEW (opsional)</div>
+          <textarea className="input" rows={2} value={note} onChange={e => setNote(e.target.value)}
+            placeholder="Alasan persetujuan / penolakan…" style={{ resize: 'none' }} />
+          {reviewErr && (
+            <div className="center gap-2" style={{ marginTop: 8, background: 'var(--col-macet-soft)', color: 'var(--col-macet)', borderRadius: 8, padding: '8px 10px', fontSize: 12, fontWeight: 600 }}>
+              <Ic.alert size={14} />{reviewErr}
+            </div>
+          )}
+        </div>
+      )}
+      {k.reviewStatus && k.reviewStatus !== 'PENDING' && (
+        <div style={{ padding: '0 24px 14px' }}>
+          <div className="card card-pad" style={{
+            boxShadow: 'none',
+            background: k.reviewStatus === 'APPROVED' ? 'var(--accent-soft)' : 'var(--col-macet-soft)',
+            border: `1px solid ${k.reviewStatus === 'APPROVED' ? 'var(--accent)' : 'var(--col-macet)'}`,
+          }}>
+            <div className="between">
+              <div className="center gap-2" style={{ fontWeight: 800, fontSize: 13, color: k.reviewStatus === 'APPROVED' ? 'var(--accent-ink)' : 'var(--col-macet)' }}>
+                {k.reviewStatus === 'APPROVED' ? <Ic.checkCircle size={15} /> : <Ic.x size={15} />}
+                {k.reviewStatus === 'APPROVED' ? 'Disetujui' : 'Ditolak'}
+              </div>
+              {k.reviewedAt && (
+                <span className="muted mono" style={{ fontSize: 11 }}>{new Date(k.reviewedAt).toLocaleString('id-ID')}</span>
+              )}
+            </div>
+            {k.reviewNote && (
+              <div style={{ fontSize: 12.5, marginTop: 6, color: 'var(--ink-2)' }}>{k.reviewNote}</div>
+            )}
+          </div>
+        </div>
+      )}
       <div className="modal-foot">
-        <button className="btn"><Ic.download size={15} />Unduh PDF</button>
-        <button className="btn btn-primary"><Ic.phone size={15} />Hubungi {p.nama.split(' ')[0]}</button>
+        {canReview && k.reviewStatus === 'PENDING' ? (
+          <>
+            <button className="btn" onClick={() => submitReview('REJECTED')} disabled={review.isPending}
+              style={{ background: 'var(--col-macet-soft)', color: 'var(--col-macet)', border: 'none' }}>
+              <Ic.x size={15} />Tolak
+            </button>
+            <button className="btn btn-primary" onClick={() => submitReview('APPROVED')} disabled={review.isPending}>
+              <Ic.checkCircle size={15} />Setujui
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn"><Ic.download size={15} />Unduh PDF</button>
+            <button className="btn btn-primary"><Ic.phone size={15} />Hubungi {p.nama.split(' ')[0]}</button>
+          </>
+        )}
       </div>
     </Modal>
   );

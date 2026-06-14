@@ -95,6 +95,8 @@ model User {
   active              Boolean        @default(true)
   refreshTokens       RefreshToken[]
   notifications       Notification[]
+  reviewedKunjungan   Kunjungan[]
+  pushSubscriptions   PushSubscription[]
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -243,6 +245,13 @@ model Kunjungan {
   // "perlu review" badge on the supervisor's report list.
   riskScore  Int            @default(0)
   riskFlags  String[]       @default([])
+  // Review pipeline. Laporan dengan riskScore > 0 mulai dari PENDING; yang
+  // bersih auto-APPROVED. Supervisor bisa Setujui / Tolak dengan catatan.
+  reviewStatus ReviewStatus @default(APPROVED)
+  reviewerId   String?
+  reviewer     User?        @relation(fields: [reviewerId], references: [id])
+  reviewedAt   DateTime?
+  reviewNote   String?
   fotos      Foto[]
   jam        String
   tanggal    DateTime       @default(now())
@@ -250,6 +259,28 @@ model Kunjungan {
   @@index([petugasId, tanggal])
   @@index([nasabahId, tanggal])
   @@index([branchId, tanggal])
+  @@index([reviewStatus])
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Web Push subscription per user/browser. One user can have multiple
+// devices, so we de-dupe on endpoint (unique across users).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  authKey   String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Foto {

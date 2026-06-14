@@ -14,6 +14,9 @@ import { renderKunjunganPdf } from '../lib/pdfKunjungan.js';
 import { logger } from '../lib/logger.js';
 import { evalGps, evalPhotoExif, merge } from '../lib/antiFraud.js';
 import { watermarkPhoto } from '../lib/watermark.js';
+import { requireRole } from '../auth.js';
+import { pushToUsers } from '../lib/webPush.js';
+import { enqueueNotification } from './notifications.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -123,6 +126,10 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
 
   const jam = new Date().toTimeString().slice(0, 5);
 
+  // Auto-route: clean reports skip the review queue; flagged ones land
+  // in PENDING until a supervisor decides.
+  const reviewStatus = risk.score > 0 ? 'PENDING' as const : 'APPROVED' as const;
+
   const k = await prisma.kunjungan.create({
     data: {
       ...parsed.data,
@@ -133,17 +140,41 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
       valid: risk.score === 0 && parsed.data.valid,
       riskScore: risk.score,
       riskFlags: risk.flags,
+      reviewStatus,
       fotos: { create: savedPaths.map(p => ({ path: p })) },
     },
     include: { fotos: true },
   });
 
-  // Surface every flagged report in the audit trail (lapis F).
+  // Surface every flagged report in the audit trail (lapis F) and ping the
+  // branch's supervisors so they can review without polling.
   if (risk.flags.length > 0) {
     await audit({
       action: 'kunjungan.risk_flagged', target: k.id, ...fromReq(req),
       meta: { flags: risk.flags, score: risk.score, nasabahId: k.nasabahId },
     });
+    const supervisors = await prisma.user.findMany({
+      where: { role: 'SUPERVISOR', branchId: petugasRow.branchId, active: true },
+      select: { id: true },
+    });
+    const supIds = supervisors.map(s => s.id);
+    if (supIds.length > 0) {
+      await enqueueNotification({
+        userIds: supIds,
+        type: 'kunjungan.flagged',
+        title: 'Laporan perlu review',
+        body: `Skor risiko ${risk.score} — ${risk.flags.length} flag terdeteksi.`,
+        severity: 'WARN',
+        link: 'laporan',
+      }).catch(() => undefined);
+      // Fire-and-forget web push so phones can wake even if tab is closed.
+      void pushToUsers(supIds, {
+        title: 'Laporan perlu review',
+        body: `Risk score ${risk.score} · ${risk.flags.join(', ')}`,
+        link: '/#laporan',
+        tag: `flagged-${k.id}`,
+      });
+    }
   }
 
   await audit({
@@ -183,6 +214,67 @@ router.get('/:id/pdf', async (req, res) => {
     kunjungan: k, petugas: k.petugas, nasabah: k.nasabah, branch: k.branch,
   });
   pdf.pipe(res);
+});
+
+const reviewSchema = z.object({
+  status: z.enum(['APPROVED', 'REJECTED']),
+  note: z.string().max(2000).optional(),
+});
+
+// Supervisor & ADMIN may approve/reject. Petugas may not — their own
+// reports stay PENDING until reviewed.
+router.patch('/:id/review', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const parsed = reviewSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request' });
+
+  const id = String(req.params.id);
+  const k = await prisma.kunjungan.findFirst({
+    where: { id, ...scope(req) },
+    select: { id: true, petugasId: true, nasabahId: true, reviewStatus: true },
+  });
+  if (!k) return res.status(404).json({ error: 'not_found' });
+  if (k.reviewStatus !== 'PENDING') {
+    return res.status(409).json({ error: 'already_reviewed' });
+  }
+
+  const updated = await prisma.kunjungan.update({
+    where: { id },
+    data: {
+      reviewStatus: parsed.data.status,
+      reviewerId: req.user!.sub,
+      reviewedAt: new Date(),
+      reviewNote: parsed.data.note ?? null,
+    },
+  });
+
+  await audit({
+    action: `kunjungan.review.${parsed.data.status.toLowerCase()}`,
+    target: id, ...fromReq(req),
+    meta: { note: parsed.data.note, riskScore: updated.riskScore },
+  });
+
+  // Tell the assigned petugas the outcome.
+  const petUser = await prisma.user.findFirst({ where: { petugasId: k.petugasId } });
+  if (petUser) {
+    const isApproved = parsed.data.status === 'APPROVED';
+    await enqueueNotification({
+      userIds: [petUser.id],
+      type: isApproved ? 'kunjungan.approved' : 'kunjungan.rejected',
+      title: isApproved ? 'Laporan disetujui' : 'Laporan ditolak',
+      body: parsed.data.note || (isApproved ? 'Laporan Anda telah disetujui supervisor.' : 'Laporan perlu diperbaiki — cek catatan supervisor.'),
+      severity: isApproved ? 'INFO' : 'WARN',
+      link: 'laporan',
+    }).catch(() => undefined);
+    void pushToUsers([petUser.id], {
+      title: isApproved ? '✓ Laporan disetujui' : '⚠ Laporan ditolak',
+      body: parsed.data.note ?? '',
+      link: '/#riwayat',
+      tag: `review-${id}`,
+    });
+  }
+
+  bus.publish('kunjungan.reviewed', { kunjunganId: id, status: parsed.data.status, by: req.user!.sub });
+  res.json(updated);
 });
 
 export default router;

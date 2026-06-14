@@ -9,9 +9,27 @@ import { fetchMe, useAuth } from './lib/auth';
 import './styles.css';
 
 // Register the service worker so Chrome's installability check passes —
-// without this, beforeinstallprompt never fires. autoUpdate is configured
-// on the plugin side.
-registerSW({ immediate: true });
+// without this, beforeinstallprompt never fires. We deliberately ignore
+// onNeedRefresh so a new SW version (frequent in dev when HMR rebuilds the
+// worker) never triggers an auto-reload mid-form.
+registerSW({
+  immediate: true,
+  onNeedRefresh: () => { /* swallow — user can hard-reload to take updates */ },
+  onOfflineReady: () => { /* no UI hookup */ },
+});
+
+// SW relays a message to the active tab when the user taps a notification.
+// We translate it into a hash-route change so App's existing router picks
+// it up without a reload.
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
+    const data = e.data as { type?: string; link?: string } | undefined;
+    if (data?.type === 'navigate' && typeof data.link === 'string') {
+      const clean = data.link.replace(/^\/?#?/, '');
+      if (clean) window.location.hash = clean;
+    }
+  });
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -118,6 +118,15 @@ export function useCreateKunjungan() {
   });
 }
 
+export function useReviewKunjungan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status, note }: { id: string; status: 'APPROVED' | 'REJECTED'; note?: string }) =>
+      api.reviewKunjungan(id, status, note),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['kunjungan'] }),
+  });
+}
+
 // Combined loading/error flags from the core data the dashboard depends on.
 // Screens use these to decide whether to render skeletons or empty states.
 export function useDataStatus() {

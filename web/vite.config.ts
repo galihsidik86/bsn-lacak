@@ -12,7 +12,20 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' instead of 'autoUpdate' so a fresh SW (HMR-regenerated in
+      // dev) never auto-claims clients + reloads the page. The mobile camera
+      // intent already kills the tab; an additional SW-driven reload would
+      // pop the user back to Beranda mid-form. We swallow the update event
+      // in main.tsx so dev sessions stay sticky.
+      registerType: 'prompt',
+      // injectManifest lets us own the SW so we can wire up Web Push +
+      // notificationclick handlers alongside the precache.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+      },
       includeAssets: ['favicon.svg', 'robots.txt'],
       manifest: {
         name: 'BSN Lacak — Sistem Tracking Penagihan',

@@ -11,7 +11,12 @@ import {
   useCreateKunjungan, useKunjunganList, useNasabahList, usePetugasList,
 } from '../data/queries';
 import { doLogout, useAuth } from '../lib/auth';
-import { useGeolocationStream } from '../lib/geolocation';
+import { useGeolocationStream, type GeoFix } from '../lib/geolocation';
+import { makeWatermarkedPreview } from '../lib/watermarkPreview';
+import { clearPhotos, loadPhotos, savePhotos } from '../lib/photoStore';
+import { enqueue as enqueueOffline } from '../lib/submitQueue';
+import { useOfflineQueue } from '../lib/useOfflineQueue';
+import { pushState, subscribePush, unsubscribePush } from '../lib/webPush';
 import type { HasilKunjungan, Nasabah, Petugas } from '../types';
 
 type Tab = 'beranda' | 'rute' | 'riwayat' | 'profil';
@@ -128,6 +133,10 @@ export function ScreenMobile() {
     enabled: isPetugasUser && !!ME,
   });
 
+  // Drain any kunjungan that got queued offline. Returns pending count
+  // for surfacing in the profile tab.
+  const offline = useOfflineQueue();
+
   if (petugasQ.isPending || nasabahQ.isPending) {
     return <div className="content" style={{ maxWidth: 980, margin: '0 auto' }}><Skeleton h={600} /></div>;
   }
@@ -145,8 +154,8 @@ export function ScreenMobile() {
         {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} />}
         {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} here={hereFix} />}
         {!reportFor && tab === 'riwayat' && <MRiwayat me={ME} />}
-        {!reportFor && tab === 'profil' && <MProfil me={ME} />}
-        {reportFor && <MLapor n={reportFor} me={ME} onClose={() => setReportFor(null)}
+        {!reportFor && tab === 'profil' && <MProfil me={ME} pendingOffline={offline.pending} />}
+        {reportFor && <MLapor n={reportFor} me={ME} here={hereFix} onClose={() => setReportFor(null)}
           onDone={() => { setReportFor(null); setTab('riwayat'); }} />}
       </div>
       {!reportFor && <MTabBar tab={tab} setTab={setTab}
@@ -641,9 +650,31 @@ function MRiwayat({ me: ME }: { me: Petugas }) {
   );
 }
 
-function MProfil({ me: ME }: { me: Petugas }) {
+function MProfil({ me: ME, pendingOffline }: { me: Petugas; pendingOffline: number }) {
   const user = useAuth(s => s.user);
   const pct = ME.target > 0 ? Math.round(ME.terkumpul / ME.target * 100) : 0;
+  const [push, setPush] = useState<{ supported: boolean; permission: NotificationPermission; subscribed: boolean } | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+
+  useEffect(() => {
+    void (async () => setPush(await pushState()))();
+  }, []);
+
+  const togglePush = async () => {
+    if (pushBusy || !push) return;
+    setPushBusy(true);
+    try {
+      if (push.subscribed) {
+        await unsubscribePush();
+      } else {
+        const r = await subscribePush();
+        if (!r.ok && r.reason === 'permission') alert('Anda harus mengizinkan notifikasi di pengaturan browser.');
+      }
+      setPush(await pushState());
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const handleLogout = () => {
     if (window.confirm('Keluar dari aplikasi?')) void doLogout();
@@ -684,6 +715,51 @@ function MProfil({ me: ME }: { me: Petugas }) {
           <ProfilRow icon="user" label="Wilayah Binaan" value={ME.wilayah} />
           <ProfilRow icon="phone" label="No. HP" value={ME.hp} />
           <ProfilRow icon="layers" label="Cabang" value={user?.branch?.nama ?? '—'} last />
+        </div>
+      </div>
+
+      <div style={{ padding: '0 16px 16px' }}>
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <div className="center gap-3" style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)' }}>
+            <div className="stat-ic" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', flex: 'none', width: 32, height: 32 }}>
+              <Ic.send size={15} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>Antrian Offline</div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 1 }}>
+                {pendingOffline === 0 ? 'Tidak ada laporan tertunda' : `${pendingOffline} laporan menunggu kirim`}
+              </div>
+            </div>
+          </div>
+          <div className="center gap-3" style={{ padding: '12px 14px' }}>
+            <div className="stat-ic" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', flex: 'none', width: 32, height: 32 }}>
+              <Ic.bell size={15} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>Notifikasi Push</div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 1 }}>
+                {!push?.supported ? 'Tidak didukung di browser ini'
+                  : push.subscribed ? 'Aktif — Anda akan dapat alert OS'
+                  : push.permission === 'denied' ? 'Diblokir — buka pengaturan browser'
+                  : 'Nyalakan untuk dapat notifikasi review/assignment'}
+              </div>
+            </div>
+            {push?.supported && push.permission !== 'denied' && (
+              <button onClick={togglePush} disabled={pushBusy}
+                aria-label={push.subscribed ? 'Matikan notifikasi push' : 'Nyalakan notifikasi push'}
+                style={{
+                  width: 40, height: 22, borderRadius: 99, border: 'none', cursor: 'pointer', flex: 'none',
+                  background: push.subscribed ? 'var(--accent)' : 'var(--line-2)',
+                  position: 'relative', transition: 'background 0.15s',
+                }}>
+                <span style={{
+                  position: 'absolute', top: 2, left: push.subscribed ? 20 : 2,
+                  width: 18, height: 18, borderRadius: 99, background: 'white',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.2)', transition: 'left 0.15s',
+                }} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -736,8 +812,9 @@ function ProfilRow({ icon, label, value, last = false }: { icon: IconKey; label:
   );
 }
 
-function MLapor({ n, me: ME, onClose, onDone }: {
-  n: Nasabah; me: Petugas; onClose: () => void; onDone: (id: string) => void;
+function MLapor({ n, me: ME, here, onClose, onDone }: {
+  n: Nasabah; me: Petugas; here: GeoFix | null;
+  onClose: () => void; onDone: (id: string) => void;
 }) {
   const create = useCreateKunjungan();
   // Restore any draft from a prior tab-kill so the form survives an Android
@@ -746,7 +823,12 @@ function MLapor({ n, me: ME, onClose, onDone }: {
   const draft = loadLaporDraft(n.id);
   const [hasil, setHasil] = useState<HasilKunjungan>(draft?.hasil ?? 'bayar');
   const [nominal, setNominal] = useState(draft?.nominal ?? String(n.angsuran));
+  // `photos` keeps the ORIGINAL camera bytes so the server's EXIF check
+  // (lapis C) still sees real metadata. `previews` holds canvas-watermarked
+  // data URLs purely for the in-form thumbnail so the petugas can see the
+  // stamp immediately after taking the photo.
   const [photos, setPhotos] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
   const [catatan, setCatatan] = useState(draft?.catatan ?? '');
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -757,14 +839,46 @@ function MLapor({ n, me: ME, onClose, onDone }: {
     saveLaporDraft({ nasabahId: n.id, hasil, nominal, catatan });
   }, [n.id, hasil, nominal, catatan]);
 
-  const handleClose = () => { clearLaporDraft(); onClose(); };
-  const handleDone = (id: string) => { clearLaporDraft(); onDone(id); };
+  // Restore photos from IndexedDB if the tab was killed mid-form. We
+  // regenerate previews from the loaded files (data URLs aren't persisted).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const restored = await loadPhotos(n.id);
+      if (cancelled || restored.length === 0) return;
+      setPhotos(restored);
+      const ps = await Promise.all(restored.map(f => makeWatermarkedPreview(f, {
+        petugasNama: ME.nama,
+        nasabahNama: n.nama,
+        timestamp: new Date(),
+        lat: here?.lat,
+        lng: here?.lng,
+      })));
+      if (!cancelled) setPreviews(ps);
+    })();
+    return () => { cancelled = true; };
+    // Only restore once per form open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [n.id]);
+
+  // Mirror the live photo array to IDB so a tab-kill mid-capture doesn't
+  // lose the photos already taken. Cleared on submit / cancel.
+  useEffect(() => {
+    if (photos.length === 0) {
+      void clearPhotos(n.id);
+    } else {
+      void savePhotos(n.id, photos);
+    }
+  }, [photos, n.id]);
+
+  const handleClose = () => { clearLaporDraft(); void clearPhotos(n.id); onClose(); };
+  const handleDone = (id: string) => { clearLaporDraft(); void clearPhotos(n.id); onDone(id); };
 
   const foto = photos.length;
   const MAX_PHOTOS = 3;
   const MAX_BYTES = 8 * 1024 * 1024;   // matches backend multer limit
 
-  const addPhoto = (file: File) => {
+  const addPhoto = async (file: File) => {
     setErr(null);
     if (!/^image\//.test(file.type)) {
       setErr('File harus berupa gambar.');
@@ -774,10 +888,19 @@ function MLapor({ n, me: ME, onClose, onDone }: {
       setErr('Foto maksimum 8 MB.');
       return;
     }
+    const preview = await makeWatermarkedPreview(file, {
+      petugasNama: ME.nama,
+      nasabahNama: n.nama,
+      timestamp: new Date(),
+      lat: here?.lat,
+      lng: here?.lng,
+    });
     setPhotos(p => [...p, file].slice(0, MAX_PHOTOS));
+    setPreviews(p => [...p, preview].slice(0, MAX_PHOTOS));
   };
   const removePhoto = (i: number) => {
     setPhotos(p => p.filter((_, idx) => idx !== i));
+    setPreviews(p => p.filter((_, idx) => idx !== i));
   };
 
   // Capture a fresh GPS fix at submit time so the server can run the
@@ -807,9 +930,29 @@ function MLapor({ n, me: ME, onClose, onDone }: {
       setTimeout(() => handleDone(n.id), 600);
     } catch (e: any) {
       const code = e?.response?.data?.error;
-      if (code === 'invalid_file_type') setErr('File tidak dikenali sebagai foto. Coba foto ulang.');
-      else if (e?.response?.status === 413) setErr('Foto terlalu besar.');
-      else setErr('Gagal mengirim laporan. Periksa koneksi.');
+      const status = e?.response?.status;
+      // Surface unambiguous validation errors immediately.
+      if (code === 'invalid_file_type') { setErr('File tidak dikenali sebagai foto. Coba foto ulang.'); setSending(false); return; }
+      if (status === 413) { setErr('Foto terlalu besar.'); setSending(false); return; }
+      // If there's no HTTP response at all, treat as offline and queue.
+      const isOffline = !status || (typeof navigator !== 'undefined' && navigator.onLine === false);
+      if (isOffline) {
+        try {
+          const here2 = await getCurrentPosition();
+          await enqueueOffline({
+            nasabah: n.id, petugas: ME.id, hasil, nominal: Number(nominal),
+            catatan, lokasi: n.alamat, lat: here2?.lat, lng: here2?.lng,
+          }, photos);
+          setErr('Tersimpan offline. Akan dikirim otomatis saat online.');
+          setTimeout(() => handleDone(n.id), 1200);
+          return;
+        } catch {
+          setErr('Tidak online dan gagal menyimpan offline. Coba lagi.');
+          setSending(false);
+          return;
+        }
+      }
+      setErr('Gagal mengirim laporan. Periksa koneksi.');
       setSending(false);
     }
   };
@@ -837,14 +980,15 @@ function MLapor({ n, me: ME, onClose, onDone }: {
             {[0, 1, 2].map(i => {
               const file = photos[i];
               if (file) {
-                const url = URL.createObjectURL(file);
+                // previews[i] is a data URL produced by the canvas watermarker;
+                // fall back to the raw object URL while it's still resolving.
+                const src = previews[i] ?? URL.createObjectURL(file);
                 return (
                   <div key={i} style={{
                     position: 'relative', height: 76, borderRadius: 12, overflow: 'hidden',
                     background: 'var(--ink)', boxShadow: 'inset 0 0 0 1.5px var(--accent)',
                   }}>
-                    <img src={url} alt={`Foto ${i + 1}`}
-                      onLoad={() => URL.revokeObjectURL(url)}
+                    <img src={src} alt={`Foto ${i + 1}`}
                       style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     <button type="button" onClick={() => removePhoto(i)}
                       aria-label={`Hapus foto ${i + 1}`}

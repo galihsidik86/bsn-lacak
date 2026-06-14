@@ -109,6 +109,10 @@ function kunjunganFromServer(x: any): Kunjungan {
     valid: x.valid ?? true,
     riskScore: typeof x.riskScore === 'number' ? x.riskScore : 0,
     riskFlags: Array.isArray(x.riskFlags) ? x.riskFlags : [],
+    reviewStatus: x.reviewStatus ?? 'APPROVED',
+    reviewerId: x.reviewerId ?? null,
+    reviewedAt: x.reviewedAt ?? null,
+    reviewNote: x.reviewNote ?? null,
     tanggal: x.tanggal,
   };
 }
@@ -221,6 +225,7 @@ interface Api {
   reassign(nasabahId: string, petugasId: string): Promise<void>;
   sendBlast(args: { segment: string; channel: 'wa' | 'sms'; template: string; recipientIds: string[] }): Promise<{ jobId: string }>;
   createKunjungan(args: Partial<Kunjungan> & { photos: File[]; lat?: number; lng?: number }): Promise<Kunjungan>;
+  reviewKunjungan(id: string, status: 'APPROVED' | 'REJECTED', note?: string): Promise<Kunjungan>;
 }
 
 export const api: Api = USE_MOCK
@@ -247,6 +252,9 @@ export const api: Api = USE_MOCK
           valid: true,
         };
       },
+      async reviewKunjungan(_id, _status, _note) {
+        return mock.KUNJUNGAN[0] as any;
+      },
     }
   : {
       async listPetugas() { return ((await http.get('/petugas')).data as any[]).map(petugasFromServer); },
@@ -258,6 +266,11 @@ export const api: Api = USE_MOCK
         await http.patch(`/nasabah/${nasabahId}/petugas`, { petugasId });
       },
       async sendBlast(args) { return (await http.post('/blast', args)).data; },
+      async reviewKunjungan(id, status, note) {
+        return kunjunganFromServer(
+          (await http.patch(`/kunjungan/${id}/review`, { status, note })).data,
+        );
+      },
       async createKunjungan(args) {
         // Map frontend field names to backend schema and uppercase the hasil
         // enum (Prisma KolKey/HasilKunjungan literals).

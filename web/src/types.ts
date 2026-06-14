@@ -83,6 +83,10 @@ export interface Kunjungan {
   valid: boolean;
   riskScore?: number;
   riskFlags?: string[];
+  reviewStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewerId?: string | null;
+  reviewedAt?: string | null;
+  reviewNote?: string | null;
   tanggal?: string;
 }
 

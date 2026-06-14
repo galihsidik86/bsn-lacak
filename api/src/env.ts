@@ -21,6 +21,11 @@ const schema = z.object({
   TWILIO_WA_FROM: z.string().optional(),
   AUDIT_RETENTION_DAYS: z.coerce.number().int().positive().default(365),
   AUDIT_ARCHIVE_DIR: z.string().default('./audit-archive'),
+  // Web Push (VAPID). All three optional in dev — push silently no-ops if
+  // unset. In prod they must be present or push delivery is dropped.
+  VAPID_PUBLIC: z.string().optional(),
+  VAPID_PRIVATE: z.string().optional(),
+  VAPID_CONTACT: z.string().default('mailto:admin@example.com'),
 });
 
 const parsed = schema.safeParse(process.env);

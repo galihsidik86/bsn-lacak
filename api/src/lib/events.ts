@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 export type EventTopic =
   | 'petugas.position'      // { petugasId, lat, lng, ts }
   | 'kunjungan.created'     // { kunjunganId, petugasId, nasabahId, hasil }
+  | 'kunjungan.reviewed'    // { kunjunganId, status, by }
   | 'nasabah.reassign'      // { nasabahId, from, to }
   | 'blast.completed'       // { blastId, terkirim, gagal }
   | 'notification.new';     // { id, type, title, body, severity }
