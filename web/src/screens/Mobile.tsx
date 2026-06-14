@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Ic, type IconKey } from '../components/Icons';
+import { InstallPrompt } from '../components/InstallPrompt';
 import { Avatar, Badge, ImgPh, KolBadge } from '../components/UI';
 import { IOSDevice } from '../components/IosFrame';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
@@ -7,21 +8,44 @@ import {
   HASIL_KUNJUNGAN, KOL, RP, RPjt,
   useCreateKunjungan, useNasabahList, usePetugasList,
 } from '../data/queries';
+import { useAuth } from '../lib/auth';
+import { useGeolocationStream } from '../lib/geolocation';
 import type { HasilKunjungan, Nasabah, Petugas } from '../types';
 
 type Tab = 'beranda' | 'rute' | 'riwayat' | 'profil';
 
 export function ScreenMobile() {
+  const user = useAuth(s => s.user);
   const petugasQ = usePetugasList();
   const nasabahQ = useNasabahList();
   const { data: PETUGAS } = petugasQ;
   const { data: NASABAH } = nasabahQ;
-  const ME = PETUGAS[0];
-  const MY_TASKS = ME ? NASABAH.filter(n => n.petugas === ME.id).slice(0, 6) : [];
+
+  // For a real petugas user we look up their own row; supervisors previewing
+  // the screen see the first petugas in their scope (the original demo).
+  const isPetugasUser = user?.role === 'PETUGAS';
+  const ME = isPetugasUser
+    ? PETUGAS.find(p => p.id === user?.petugasId) ?? PETUGAS[0]
+    : PETUGAS[0];
+
+  // For PETUGAS the nasabah list is already server-scoped to their own
+  // assignments; for the supervisor preview we filter by ME.id locally.
+  const MY_TASKS = !ME
+    ? []
+    : isPetugasUser
+      ? NASABAH.slice(0, 6)
+      : NASABAH.filter(n => n.petugas === ME.id).slice(0, 6);
 
   const [tab, setTab] = useState<Tab>('beranda');
   const [reportFor, setReportFor] = useState<Nasabah | null>(null);
   const [done, setDone] = useState<string[]>([]);
+
+  // Stream GPS to the backend (no-op when the user isn't a petugas — the
+  // petugasId check inside the hook gates it out).
+  useGeolocationStream({
+    petugasId: isPetugasUser ? user?.petugasId : null,
+    enabled: isPetugasUser && !!ME,
+  });
 
   if (petugasQ.isPending || nasabahQ.isPending) {
     return <div className="content" style={{ maxWidth: 980, margin: '0 auto' }}><Skeleton h={600} /></div>;
@@ -30,25 +54,40 @@ export function ScreenMobile() {
     return <div className="content"><ErrorState onRetry={() => { petugasQ.refetch(); nasabahQ.refetch(); }} /></div>;
   }
   if (!ME) {
-    return <div className="content"><EmptyState title="Belum ada petugas" hint="Seed database dulu." /></div>;
+    return <div className="content"><EmptyState title="Belum ada petugas terhubung" hint="Hubungi admin untuk menghubungkan akun Anda ke data petugas." /></div>;
   }
 
+  const app = (
+    <div style={{ fontFamily: 'var(--font)', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--ink)' }}>
+      <div style={{ flex: 1, overflowY: 'auto', paddingTop: isPetugasUser ? 12 : 54 }}>
+        {isPetugasUser && <InstallPrompt />}
+        {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} done={done} />}
+        {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} />}
+        {!reportFor && tab === 'riwayat' && <MRiwayat tasks={MY_TASKS} done={done} />}
+        {reportFor && <MLapor n={reportFor} me={ME} onClose={() => setReportFor(null)}
+          onDone={(id) => { setDone(d => [...d, id]); setReportFor(null); setTab('riwayat'); }} />}
+      </div>
+      {!reportFor && <MTabBar tab={tab} setTab={setTab}
+        onReport={() => setReportFor(MY_TASKS.find(t => !done.includes(t.id)) || MY_TASKS[0])} />}
+    </div>
+  );
+
+  // Petugas user → full-screen app (no iOS frame, no marketing column).
+  // The shell topbar still chrome's the page; the page body fills with the
+  // mobile UI flush. Mobile-first stylesheet handles the small viewport.
+  if (isPetugasUser) {
+    return (
+      <div style={{ height: '100%', minHeight: 'calc(100vh - 64px)', background: 'var(--bg)' }}>
+        {app}
+      </div>
+    );
+  }
+
+  // Supervisor preview: keep the iOS frame + marketing column.
   return (
     <div className="content" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 32, alignItems: 'start', maxWidth: 980, margin: '0 auto' }}>
       <div style={{ position: 'relative' }}>
-        <IOSDevice width={372} height={806}>
-          <div style={{ fontFamily: 'var(--font)', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--ink)' }}>
-            <div style={{ flex: 1, overflowY: 'auto', paddingTop: 54 }}>
-              {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} done={done} />}
-              {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} />}
-              {!reportFor && tab === 'riwayat' && <MRiwayat tasks={MY_TASKS} done={done} />}
-              {reportFor && <MLapor n={reportFor} me={ME} onClose={() => setReportFor(null)}
-                onDone={(id) => { setDone(d => [...d, id]); setReportFor(null); setTab('riwayat'); }} />}
-            </div>
-            {!reportFor && <MTabBar tab={tab} setTab={setTab}
-              onReport={() => setReportFor(MY_TASKS.find(t => !done.includes(t.id)) || MY_TASKS[0])} />}
-          </div>
-        </IOSDevice>
+        <IOSDevice width={372} height={806}>{app}</IOSDevice>
       </div>
 
       <div style={{ paddingTop: 20, maxWidth: 420 }}>

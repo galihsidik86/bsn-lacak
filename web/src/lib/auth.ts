@@ -68,6 +68,7 @@ export async function doLogin(username: string, password: string): Promise<Login
   tokenStore.set(data.token);
   useAuth.getState().setUser({
     nama: data.nama, role: data.role, username,
+    petugasId: data.petugasId ?? null,
     branchId: data.branchId ?? null,
     branch: data.branchName ? { id: data.branchId, kode: '', nama: data.branchName } : null,
     mustChangePassword: !!data.mustChangePassword,

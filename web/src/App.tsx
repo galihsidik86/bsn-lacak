@@ -127,7 +127,9 @@ export function App() {
   const [showChangePw, setShowChangePw] = useState(false);
   const [page, setPage] = useState<PageKey>(() => {
     const h = location.hash.slice(1);
-    return isPage(h) ? h : 'dashboard';
+    if (isPage(h)) return h;
+    // PETUGAS lands on the mobile app by default — they don't use the desktop shell.
+    return useAuth.getState().user?.role === 'PETUGAS' ? 'mobile' : 'dashboard';
   });
 
   const go = (k: string) => {
@@ -170,6 +172,21 @@ export function App() {
   }
   if (!user) return <Login />;
   const forceChange = !!user.mustChangePassword;
+
+  // PETUGAS gets a chrome-less full-screen mobile experience. No sidebar,
+  // no topbar — the device IS the app shell.
+  if (user.role === 'PETUGAS') {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+        <Suspense fallback={<ScreenFallback />}>
+          <ScreenMobile />
+        </Suspense>
+        {(forceChange || showChangePw) && (
+          <ChangePassword forced={forceChange} onClose={() => setShowChangePw(false)} />
+        )}
+      </div>
+    );
+  }
 
   const [title, sub] = TITLES[page];
 

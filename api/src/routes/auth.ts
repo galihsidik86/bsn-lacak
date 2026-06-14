@@ -84,6 +84,7 @@ router.post('/login', async (req, res) => {
     token: access,
     role: user.role,
     nama: user.nama,
+    petugasId: user.petugasId,
     branchId: user.branchId,
     branchName,
     mustChangePassword: user.mustChangePassword,
