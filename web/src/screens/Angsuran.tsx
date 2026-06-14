@@ -5,6 +5,7 @@ import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   RP, RPjt, useNasabahList, usePayflow, usePetugasFinder,
 } from '../data/queries';
+import { downloadAuthed } from '../lib/download';
 import type { Nasabah, Petugas } from '../types';
 
 interface Metode { k: 'tunai' | 'transfer' | 'autodebet'; label: string; c: string }
@@ -131,7 +132,7 @@ export function ScreenAngsuran() {
       <div className="card fade-up" style={{ overflow: 'hidden' }}>
         <div className="between card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
           <div className="section-title">Ledger Transaksi Hari Ini</div>
-          <button className="btn btn-sm"><Ic.download size={14} />Ekspor CSV</button>
+          <ExportCsvButton range={range} />
         </div>
         <div style={{ maxHeight: 360, overflowY: 'auto' }}>
           <table className="table">
@@ -164,5 +165,31 @@ export function ScreenAngsuran() {
         </div>
       </div>
     </div>
+  );
+}
+
+function ExportCsvButton({ range }: { range: '7h' | '14h' | '30h' }) {
+  const [busy, setBusy] = useState(false);
+  const click = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const days = range === '7h' ? 7 : range === '14h' ? 14 : 30;
+      const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+      const stamp = new Date().toISOString().slice(0, 10);
+      await downloadAuthed(
+        `/angsuran/export.csv?since=${encodeURIComponent(since)}`,
+        `angsuran-ledger-${stamp}.csv`,
+      );
+    } catch {
+      alert('Gagal mengunduh CSV. Coba lagi.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button className="btn btn-sm" onClick={click} disabled={busy}>
+      <Ic.download size={14} />{busy ? 'Menyiapkan…' : 'Ekspor CSV'}
+    </button>
   );
 }

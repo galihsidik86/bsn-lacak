@@ -10,6 +10,7 @@ import { env } from '../env.js';
 import { scopedBranchId } from '../auth.js';
 import { audit, fromReq } from '../lib/audit.js';
 import { bus } from '../lib/events.js';
+import { renderKunjunganPdf } from '../lib/pdfKunjungan.js';
 import { logger } from '../lib/logger.js';
 
 const router = Router();
@@ -114,6 +115,28 @@ router.post('/', upload.array('photos', 5), async (req, res) => {
   });
 
   res.status(201).json(k);
+});
+
+// PDF for one kunjungan. Branch scope applied — supervisors can only print
+// their own branch's reports; ADMIN can print across branches.
+router.get('/:id/pdf', async (req, res) => {
+  const id = String(req.params.id);
+  const k = await prisma.kunjungan.findFirst({
+    where: { id, ...scope(req) },
+    include: { petugas: true, nasabah: true, fotos: true, branch: true },
+  });
+  if (!k) return res.status(404).json({ error: 'not_found' });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition',
+    `attachment; filename="laporan-kunjungan-${k.id}.pdf"`);
+
+  await audit({ action: 'kunjungan.pdf_export', target: k.id, ...fromReq(req) });
+
+  const pdf = renderKunjunganPdf({
+    kunjungan: k, petugas: k.petugas, nasabah: k.nasabah, branch: k.branch,
+  });
+  pdf.pipe(res);
 });
 
 export default router;

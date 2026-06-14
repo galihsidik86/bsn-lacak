@@ -21,6 +21,7 @@ const ScreenMobile = lazy(() => import('./screens/Mobile').then(m => ({ default:
 const ScreenTracking = lazy(() => import('./screens/Tracking').then(m => ({ default: m.ScreenTracking })));
 const ScreenBranch = lazy(() => import('./screens/Branch').then(m => ({ default: m.ScreenBranch })));
 const ScreenAudit = lazy(() => import('./screens/Audit').then(m => ({ default: m.ScreenAudit })));
+const ScreenSettings = lazy(() => import('./screens/Settings').then(m => ({ default: m.ScreenSettings })));
 
 function ScreenFallback() {
   return (
@@ -33,7 +34,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit';
+  | 'branch' | 'audit' | 'settings';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -77,6 +78,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   mobile: ['Aplikasi Petugas Lapangan', 'Pratinjau aplikasi mobile kolektor'],
   branch: ['Kelola Cabang', 'Kelola cabang BSN — hanya ADMIN HQ'],
   audit: ['Audit Log', 'Audit trail aktivitas sistem (login, mutasi data, dll)'],
+  settings: ['Pengaturan Akun', 'Profil, password, dan preferensi pribadi'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -205,17 +207,23 @@ export function App() {
           ))}
         </nav>
 
-        <div className="sidebar-foot">
+        <button onClick={() => go('settings')} className="sidebar-foot"
+          aria-label="Buka pengaturan akun"
+          style={{
+            border: 'none', textAlign: 'left', cursor: 'pointer',
+            background: page === 'settings' ? 'var(--accent-soft)' : 'var(--surface-2)',
+          }}>
           <Avatar inisial={user.nama.slice(0, 2).toUpperCase()} hue={162} size={36} />
           <div style={{ flex: 1, minWidth: 0 }} className="brand-text">
             <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.nama}</div>
             <div className="muted" style={{ fontSize: 11.5 }}>{user.role}</div>
           </div>
-          <button onClick={() => doLogout()} className="btn btn-ghost btn-sm" title="Keluar"
-            style={{ padding: 6, border: 'none' }}>
+          <span onClick={(e) => { e.stopPropagation(); doLogout(); }}
+            title="Keluar" aria-label="Keluar"
+            style={{ padding: 6, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
             <Ic.logout size={17} style={{ color: 'var(--ink-4)' }} />
-          </button>
-        </div>
+          </span>
+        </button>
       </aside>
 
       <div className="main">
@@ -261,6 +269,7 @@ export function App() {
             {page === 'mobile' && <ScreenMobile />}
             {page === 'branch' && <ScreenBranch />}
             {page === 'audit' && <ScreenAudit />}
+            {page === 'settings' && <ScreenSettings />}
           </Suspense>
         </main>
       </div>
