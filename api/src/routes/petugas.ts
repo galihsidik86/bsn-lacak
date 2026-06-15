@@ -5,6 +5,7 @@ import { requireAuth, scopedBranchId } from '../auth.js';
 import { audit, fromReq } from '../lib/audit.js';
 import { bus } from '../lib/events.js';
 import { computeStatsFor } from '../lib/petugasStats.js';
+import { computePetugasPerformance } from '../lib/petugasPerformance.js';
 import { evalSpeed } from '../lib/antiFraud.js';
 
 const router = Router();
@@ -19,6 +20,22 @@ router.get('/', async (req, res) => {
   });
   const stats = await computeStatsFor(list.map(p => p.id));
   res.json(list.map(p => ({ ...p, ...(stats.get(p.id) ?? {}) })));
+});
+
+// Per-petugas performance rollup (SUPERVISOR + ADMIN). Returns approval /
+// rejection / risk metrics over the configurable window (default 30 days).
+// Mount before `/:id` so 'performance' is not consumed as an id.
+router.get('/performance', async (req, res) => {
+  if (req.user?.role === 'PETUGAS') return res.status(403).json({ error: 'forbidden' });
+  const branchId = scopedBranchId(req);
+  const days = Number.parseInt(String(req.query.days ?? '30'), 10);
+  const window = Number.isFinite(days) && days > 0 && days <= 365 ? days : 30;
+  const since = new Date(Date.now() - window * 24 * 60 * 60 * 1000);
+  const rows = await computePetugasPerformance({
+    branchId: branchId === null ? null : branchId,
+    since,
+  });
+  res.json({ since: since.toISOString(), windowDays: window, rows });
 });
 
 router.get('/:id', async (req, res) => {

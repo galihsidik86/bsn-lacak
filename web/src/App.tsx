@@ -24,6 +24,7 @@ const ScreenAudit = lazy(() => import('./screens/Audit').then(m => ({ default: m
 const ScreenSettings = lazy(() => import('./screens/Settings').then(m => ({ default: m.ScreenSettings })));
 const ScreenUsers = lazy(() => import('./screens/Users').then(m => ({ default: m.ScreenUsers })));
 const ScreenPetugas = lazy(() => import('./screens/Petugas').then(m => ({ default: m.ScreenPetugas })));
+const ScreenPerforma = lazy(() => import('./screens/Performa').then(m => ({ default: m.ScreenPerforma })));
 
 function ScreenFallback() {
   return (
@@ -36,7 +37,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'performa';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -55,6 +56,7 @@ function useNav(): NavGroup[] {
       { k: 'blast', label: 'Blast SMS / WA', icon: 'send', badge: seg.lewat.length },
       { k: 'laporan', label: 'Laporan Kunjungan', icon: 'clipboard' },
       { k: 'distribusi', label: 'Distribusi Nasabah', icon: 'users' },
+      { k: 'performa', label: 'Performa Petugas', icon: 'chart' },
     ] },
     { group: 'Lapangan', items: [
       { k: 'mobile', label: 'Aplikasi Petugas', icon: 'phone' },
@@ -87,6 +89,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   settings: ['Pengaturan Akun', 'Profil, password, dan preferensi pribadi'],
   users: ['Kelola User', 'Tambah / edit / nonaktifkan akun login pengguna sistem'],
   petugas: ['Kelola Petugas', 'Tambah / edit data petugas lapangan'],
+  performa: ['Performa Petugas', 'Approval rate, flag rate, dan respon supervisor per petugas'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -232,23 +235,30 @@ export function App() {
           ))}
         </nav>
 
-        <button onClick={() => go('settings')} className="sidebar-foot"
-          aria-label="Buka pengaturan akun"
-          style={{
-            border: 'none', textAlign: 'left', cursor: 'pointer',
-            background: page === 'settings' ? 'var(--accent-soft)' : 'var(--surface-2)',
-          }}>
-          <Avatar inisial={user.nama.slice(0, 2).toUpperCase()} hue={162} size={36} />
-          <div style={{ flex: 1, minWidth: 0 }} className="brand-text">
-            <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.nama}</div>
-            <div className="muted" style={{ fontSize: 11.5 }}>{user.role}</div>
-          </div>
-          <span onClick={(e) => { e.stopPropagation(); doLogout(); }}
+        <div className="sidebar-foot"
+          style={{ background: page === 'settings' ? 'var(--accent-soft)' : 'var(--surface-2)' }}>
+          <button onClick={() => go('settings')} type="button"
+            aria-label="Buka pengaturan akun"
+            style={{
+              flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10,
+              background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer',
+              padding: 0,
+            }}>
+            <Avatar inisial={user.nama.slice(0, 2).toUpperCase()} hue={162} size={36} />
+            <div style={{ flex: 1, minWidth: 0 }} className="brand-text">
+              <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.nama}</div>
+              <div className="muted" style={{ fontSize: 11.5 }}>{user.role}</div>
+            </div>
+          </button>
+          <button type="button" onClick={doLogout}
             title="Keluar" aria-label="Keluar"
-            style={{ padding: 6, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+            style={{
+              padding: 6, cursor: 'pointer', display: 'grid', placeItems: 'center',
+              background: 'transparent', border: 'none',
+            }}>
             <Ic.logout size={17} style={{ color: 'var(--ink-4)' }} />
-          </span>
-        </button>
+          </button>
+        </div>
       </aside>
 
       <div className="main">
@@ -297,6 +307,7 @@ export function App() {
             {page === 'settings' && <ScreenSettings />}
             {page === 'users' && <ScreenUsers />}
             {page === 'petugas' && <ScreenPetugas />}
+            {page === 'performa' && <ScreenPerforma />}
           </Suspense>
         </main>
       </div>
