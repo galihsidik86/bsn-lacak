@@ -67,4 +67,25 @@ router.post('/', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
   res.status(201).json({ jobId: blast.id });
 });
 
+// Cancel an unfired blast. Only allowed while it's still TERJADWAL — once
+// the worker flips it to BERJALAN, individual recipients have already begun
+// dispatching and partial cancellation is messier than we want to model.
+router.patch('/:id/cancel', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const branchId = scopedBranchId(req);
+  const blast = await prisma.blast.findFirst({
+    where: { id, ...(branchId ? { branchId } : {}) },
+  });
+  if (!blast) return res.status(404).json({ error: 'not_found' });
+  if (blast.status !== 'TERJADWAL') {
+    return res.status(409).json({ error: 'not_cancellable', currentStatus: blast.status });
+  }
+  const updated = await prisma.blast.update({
+    where: { id },
+    data: { status: 'DIBATALKAN' },
+  });
+  await audit({ action: 'blast.cancel', target: id, ...fromReq(req) });
+  res.json(updated);
+});
+
 export default router;

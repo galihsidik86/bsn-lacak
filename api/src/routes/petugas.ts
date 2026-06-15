@@ -14,8 +14,12 @@ router.use(requireAuth);
 
 router.get('/', async (req, res) => {
   const branchId = scopedBranchId(req);
+  const includeInactive = String(req.query.includeInactive) === '1';
   const list = await prisma.petugas.findMany({
-    where: branchId ? { branchId } : {},
+    where: {
+      ...(branchId ? { branchId } : {}),
+      ...(includeInactive ? {} : { active: true }),
+    },
     orderBy: { kode: 'asc' },
   });
   const stats = await computeStatsFor(list.map(p => p.id));
@@ -130,6 +134,7 @@ const patchSchema = createSchema.partial().extend({
   // Kode is immutable — tying historical Kunjungan/Pembayaran to an old kode
   // and renaming it later would mismatch printed receipts in the wild.
   kode: z.never().optional(),
+  active: z.boolean().optional(),
 });
 
 router.patch('/:id', async (req, res) => {
@@ -166,6 +171,23 @@ router.get('/:id/route', async (req, res) => {
     orderBy: { recordedAt: 'asc' },
   });
   res.json(route);
+});
+
+// Soft-delete via active flag — historical kunjungan/pembayaran FKs stay
+// intact. SUPERVISOR limited to their own branch.
+router.delete('/:id', async (req, res) => {
+  const id = String(req.params.id);
+  if (req.user?.role === 'PETUGAS') return res.status(403).json({ error: 'forbidden' });
+
+  const branchId = scopedBranchId(req);
+  const before = await prisma.petugas.findFirst({
+    where: { id, ...(branchId ? { branchId } : {}) },
+  });
+  if (!before) return res.status(404).json({ error: 'not_found' });
+
+  await prisma.petugas.update({ where: { id }, data: { active: false } });
+  await audit({ action: 'petugas.deactivate', target: id, ...fromReq(req) });
+  res.json({ ok: true });
 });
 
 export default router;

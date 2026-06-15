@@ -75,6 +75,7 @@ enum BlastStatus {
   BERJALAN
   SELESAI
   GAGAL
+  DIBATALKAN
 }
 
 model User {
@@ -168,6 +169,9 @@ model Petugas {
   status    PetugasStatus @default(LAPANGAN)
   target    BigInt        @default(0)
   hue       Int           @default(156)
+  // Soft delete — resigned petugas stay in the DB so their historical
+  // kunjungan keep their FK. UI filters by default to active=true.
+  active    Boolean       @default(true)
   branch    Branch        @relation(fields: [branchId], references: [id])
   branchId  String
   user      User?
@@ -213,6 +217,9 @@ model Nasabah {
   petugasId  String
   branch     Branch      @relation(fields: [branchId], references: [id])
   branchId   String
+  // Soft delete — pensiun / lunas / wanprestasi-final masuk inactive
+  // tapi histori kunjungan + pembayaran tetap terjaga.
+  active     Boolean     @default(true)
   kunjungan      Kunjungan[]
   pembayaran     Pembayaran[]
   blastRecipient BlastRecipient[]
@@ -222,6 +229,7 @@ model Nasabah {
   @@index([petugasId])
   @@index([kol])
   @@index([branchId])
+  @@index([active])
 }
 
 model Kunjungan {

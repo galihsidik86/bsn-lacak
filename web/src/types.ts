@@ -105,7 +105,7 @@ export interface BlastEntry {
   terkirim: number;
   dibaca: number | null;
   tgl: string;
-  status: 'selesai' | 'terjadwal';
+  status: 'selesai' | 'terjadwal' | 'berjalan' | 'gagal' | 'dibatalkan';
 }
 
 export interface PosturItem {

@@ -126,7 +126,7 @@ function blastFromServer(x: any): BlastEntry {
     terkirim: x.terkirim,
     dibaca: x.dibaca,
     tgl: x.scheduledAt ?? x.createdAt ?? '',
-    status: String(x.status).toLowerCase() === 'terjadwal' ? 'terjadwal' : 'selesai',
+    status: String(x.status).toLowerCase() as any,
   };
 }
 
@@ -226,6 +226,7 @@ interface Api {
   sendBlast(args: { segment: string; channel: 'wa' | 'sms'; template: string; recipientIds: string[] }): Promise<{ jobId: string }>;
   createKunjungan(args: Partial<Kunjungan> & { photos: File[]; lat?: number; lng?: number }): Promise<Kunjungan>;
   reviewKunjungan(id: string, status: 'APPROVED' | 'REJECTED', note?: string): Promise<Kunjungan>;
+  cancelBlast(id: string): Promise<BlastEntry>;
 }
 
 export const api: Api = USE_MOCK
@@ -255,6 +256,9 @@ export const api: Api = USE_MOCK
       async reviewKunjungan(_id, _status, _note) {
         return mock.KUNJUNGAN[0] as any;
       },
+      async cancelBlast(_id) {
+        return mock.BLAST_HISTORY[0] as any;
+      },
     }
   : {
       async listPetugas() { return ((await http.get('/petugas')).data as any[]).map(petugasFromServer); },
@@ -270,6 +274,9 @@ export const api: Api = USE_MOCK
         return kunjunganFromServer(
           (await http.patch(`/kunjungan/${id}/review`, { status, note })).data,
         );
+      },
+      async cancelBlast(id) {
+        return blastFromServer((await http.patch(`/blast/${id}/cancel`)).data);
       },
       async createKunjungan(args) {
         // Map frontend field names to backend schema and uppercase the hasil

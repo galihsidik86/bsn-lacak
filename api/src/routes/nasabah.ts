@@ -26,10 +26,12 @@ router.get('/', async (req, res) => {
   const kol = str(req.query.kol);
   const petugasId = str(req.query.petugasId);
   const akad = str(req.query.akad);
+  const includeInactive = str(req.query.includeInactive) === '1';
 
   const list = await prisma.nasabah.findMany({
     where: {
       ...scope(req),
+      ...(includeInactive ? {} : { active: true }),
       ...(q ? { OR: [{ nama: { contains: q, mode: 'insensitive' } }, { kode: { contains: q, mode: 'insensitive' } }] } : {}),
       ...(kol ? { kol: kol as any } : {}),
       ...(petugasId ? { petugasId } : {}),
@@ -104,6 +106,113 @@ router.patch('/:id/petugas', requireRole('SUPERVISOR', 'ADMIN'), async (req, res
   }
 
   res.json(updated);
+});
+
+// ---- Nasabah CRUD (SUPERVISOR + ADMIN) ---------------------------------
+//
+// SUPERVISOR can create/edit/deactivate only within their own branch; the
+// receiving petugas must also live in that branch. ADMIN ranges freely but
+// any nasabah is forced to inherit the petugas's branch.
+
+const createSchema = z.object({
+  kode: z.string().min(2).max(20).regex(/^N[A-Z0-9]+$/, 'Awali dengan N (huruf besar + angka)'),
+  nama: z.string().min(1).max(200),
+  alamat: z.string().min(1).max(500),
+  hp: z.string().min(1).max(40),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+  kol: z.enum(['K1', 'K2', 'K3', 'K4', 'K5']).default('K1'),
+  akad: z.enum(['MURABAHAH', 'MUSYARAKAH', 'IJARAH', 'MUSYARAKAH_MUTANAQISAH', 'ISTISHNA']).default('MURABAHAH'),
+  plafon: z.coerce.bigint().nonnegative(),
+  tenor: z.number().int().min(1).max(360),
+  angsuran: z.coerce.bigint().nonnegative(),
+  sisa: z.coerce.bigint().nonnegative(),
+  dpd: z.number().int().min(0).max(3650).default(0),
+  dueIn: z.number().int().min(-3650).max(3650).default(0),
+  petugasId: z.string().min(1).max(64),
+});
+
+async function canManageNasabah(req: any, targetPetugasId: string): Promise<{ ok: boolean; branchId?: string; error?: string }> {
+  if (req.user?.role === 'PETUGAS') return { ok: false, error: 'forbidden' };
+  const petugas = await prisma.petugas.findUnique({
+    where: { id: targetPetugasId },
+    select: { id: true, branchId: true, active: true },
+  });
+  if (!petugas) return { ok: false, error: 'unknown_petugas' };
+  if (req.user?.role === 'SUPERVISOR' && petugas.branchId !== req.user.branchId) {
+    return { ok: false, error: 'cross_branch_forbidden' };
+  }
+  if (!petugas.active) return { ok: false, error: 'petugas_inactive' };
+  return { ok: true, branchId: petugas.branchId };
+}
+
+router.post('/', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const parsed = createSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request', details: parsed.error.flatten() });
+
+  const guard = await canManageNasabah(req, parsed.data.petugasId);
+  if (!guard.ok) return res.status(guard.error === 'forbidden' ? 403 : 400).json({ error: guard.error });
+
+  const exists = await prisma.nasabah.findUnique({ where: { kode: parsed.data.kode } });
+  if (exists) return res.status(409).json({ error: 'kode_taken' });
+
+  const n = await prisma.nasabah.create({
+    data: { ...parsed.data, branchId: guard.branchId! },
+  });
+  await audit({
+    action: 'nasabah.create', target: n.id, ...fromReq(req),
+    meta: { kode: n.kode, petugasId: n.petugasId },
+  });
+  res.status(201).json(n);
+});
+
+const patchSchema = createSchema.partial().extend({
+  kode: z.string().optional(), // kode immutable
+  active: z.boolean().optional(),
+});
+
+router.patch('/:id', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const before = await prisma.nasabah.findFirst({ where: { id, ...scope(req) } });
+  if (!before) return res.status(404).json({ error: 'not_found' });
+
+  const parsed = patchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request', details: parsed.error.flatten() });
+
+  // kode is immutable.
+  const { kode: _kode, ...patch } = parsed.data;
+
+  // If petugasId changes, re-run the branch guard so nasabah follows the
+  // new petugas's branch (cross-branch only allowed for ADMIN).
+  let nextBranchId = before.branchId;
+  if (patch.petugasId && patch.petugasId !== before.petugasId) {
+    const guard = await canManageNasabah(req, patch.petugasId);
+    if (!guard.ok) return res.status(guard.error === 'forbidden' ? 403 : 400).json({ error: guard.error });
+    nextBranchId = guard.branchId!;
+  }
+
+  const updated = await prisma.nasabah.update({
+    where: { id },
+    data: { ...patch, branchId: nextBranchId },
+  });
+
+  await audit({
+    action: 'nasabah.update', target: id, ...fromReq(req),
+    meta: { changes: Object.keys(patch) },
+  });
+  res.json(updated);
+});
+
+// Soft-delete via active flag. We never hard-delete a nasabah because their
+// kunjungan + pembayaran FKs would orphan; the ledger has to stay intact.
+router.delete('/:id', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const before = await prisma.nasabah.findFirst({ where: { id, ...scope(req) } });
+  if (!before) return res.status(404).json({ error: 'not_found' });
+
+  await prisma.nasabah.update({ where: { id }, data: { active: false } });
+  await audit({ action: 'nasabah.deactivate', target: id, ...fromReq(req) });
+  res.json({ ok: true });
 });
 
 export default router;

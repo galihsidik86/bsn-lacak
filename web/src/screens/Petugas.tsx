@@ -23,6 +23,7 @@ interface PetugasRow {
   branchId: string;
   target: number;
   hue: number;
+  active?: boolean;
   kunjungan?: number;
   rencana?: number;
   terkumpul?: number;
@@ -59,8 +60,11 @@ interface CreatePayload {
 async function createPetugas(p: CreatePayload) {
   return (await axios.post(`${BASE}/petugas`, p, { withCredentials: true, headers: headers() })).data;
 }
-async function patchPetugas(id: string, p: Partial<CreatePayload>) {
+async function patchPetugas(id: string, p: Partial<CreatePayload & { active: boolean }>) {
   return (await axios.patch(`${BASE}/petugas/${id}`, p, { withCredentials: true, headers: headers() })).data;
+}
+async function deletePetugas(id: string) {
+  return (await axios.delete(`${BASE}/petugas/${id}`, { withCredentials: true, headers: headers() })).data;
 }
 
 function normalizeStatus(s: PetugasRow['status']): PetugasStatus {
@@ -176,7 +180,9 @@ function PetugasForm({ mode, initial, isAdmin, myBranchId, branches, onClose, on
     String(initial?.status ?? 'LAPANGAN').toUpperCase() as 'LAPANGAN' | 'ISTIRAHAT' | 'KANTOR'
   );
   const [hue, setHue] = useState(initial?.hue ?? 156);
+  const [active, setActive] = useState(initial?.active ?? true);
   const [err, setErr] = useState<string | null>(null);
+  const qc = useQueryClient();
 
   const save = useMutation({
     mutationFn: () => {
@@ -189,7 +195,7 @@ function PetugasForm({ mode, initial, isAdmin, myBranchId, branches, onClose, on
       return mode === 'create'
         ? createPetugas(payload)
         // For edit, omit kode (immutable on the server).
-        : patchPetugas(initial!.id, { ...payload, kode: undefined as any });
+        : patchPetugas(initial!.id, { ...payload, kode: undefined as any, active });
     },
     onSuccess: onSaved,
     onError: (e: any) => {
@@ -198,6 +204,12 @@ function PetugasForm({ mode, initial, isAdmin, myBranchId, branches, onClose, on
       else if (c === 'forbidden') setErr('Anda tidak punya wewenang di cabang ini.');
       else setErr('Gagal menyimpan. Periksa input.');
     },
+  });
+
+  const deactivate = useMutation({
+    mutationFn: () => deletePetugas(initial!.id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['petugas'] }); onClose(); },
+    onError: () => setErr('Gagal non-aktifkan.'),
   });
 
   const submit = (e: FormEvent) => { e.preventDefault(); setErr(null); save.mutate(); };
@@ -251,6 +263,14 @@ function PetugasForm({ mode, initial, isAdmin, myBranchId, branches, onClose, on
           <Field label="Warna avatar (hue 0–360)">
             <input className="input" type="number" min={0} max={360} value={hue} onChange={e => setHue(Number(e.target.value))} />
           </Field>
+          {mode === 'edit' && (
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label className="center gap-2" style={{ fontSize: 13, fontWeight: 600 }}>
+                <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} />
+                Aktif (uncheck untuk non-aktifkan)
+              </label>
+            </div>
+          )}
         </div>
 
         {err && (
@@ -262,6 +282,14 @@ function PetugasForm({ mode, initial, isAdmin, myBranchId, branches, onClose, on
         )}
 
         <div className="modal-foot">
+          {mode === 'edit' && active && (
+            <button type="button" className="btn"
+              onClick={() => { if (window.confirm(`Non-aktifkan ${initial!.nama}?`)) deactivate.mutate(); }}
+              disabled={deactivate.isPending}
+              style={{ background: 'var(--col-macet-soft)', color: 'var(--col-macet)', border: 'none' }}>
+              <Ic.x size={15} />Non-aktifkan
+            </button>
+          )}
           <button type="button" className="btn" onClick={onClose}>Batal</button>
           <button type="submit" className="btn btn-primary" disabled={save.isPending}>
             {save.isPending ? 'Menyimpan…' : 'Simpan'}

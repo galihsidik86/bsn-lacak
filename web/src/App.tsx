@@ -24,6 +24,7 @@ const ScreenAudit = lazy(() => import('./screens/Audit').then(m => ({ default: m
 const ScreenSettings = lazy(() => import('./screens/Settings').then(m => ({ default: m.ScreenSettings })));
 const ScreenUsers = lazy(() => import('./screens/Users').then(m => ({ default: m.ScreenUsers })));
 const ScreenPetugas = lazy(() => import('./screens/Petugas').then(m => ({ default: m.ScreenPetugas })));
+const ScreenNasabah = lazy(() => import('./screens/Nasabah').then(m => ({ default: m.ScreenNasabah })));
 const ScreenPerforma = lazy(() => import('./screens/Performa').then(m => ({ default: m.ScreenPerforma })));
 
 function ScreenFallback() {
@@ -37,7 +38,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'performa';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -68,6 +69,7 @@ function useNav(): NavGroup[] {
   if (role === 'ADMIN') adminItems.push({ k: 'branch', label: 'Kelola Cabang', icon: 'layers' });
   if (role === 'ADMIN' || role === 'SUPERVISOR') {
     adminItems.push({ k: 'petugas', label: 'Kelola Petugas', icon: 'user' });
+    adminItems.push({ k: 'nasabah', label: 'Kelola Nasabah', icon: 'users' });
     adminItems.push({ k: 'users', label: 'Kelola User', icon: 'users' });
     adminItems.push({ k: 'audit', label: 'Audit Log', icon: 'eye' });
   }
@@ -89,6 +91,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   settings: ['Pengaturan Akun', 'Profil, password, dan preferensi pribadi'],
   users: ['Kelola User', 'Tambah / edit / nonaktifkan akun login pengguna sistem'],
   petugas: ['Kelola Petugas', 'Tambah / edit data petugas lapangan'],
+  nasabah: ['Kelola Nasabah', 'Tambah / edit / non-aktifkan data nasabah binaan'],
   performa: ['Performa Petugas', 'Approval rate, flag rate, dan respon supervisor per petugas'],
 };
 
@@ -307,6 +310,7 @@ export function App() {
             {page === 'settings' && <ScreenSettings />}
             {page === 'users' && <ScreenUsers />}
             {page === 'petugas' && <ScreenPetugas />}
+            {page === 'nasabah' && <ScreenNasabah />}
             {page === 'performa' && <ScreenPerforma />}
           </Suspense>
         </main>

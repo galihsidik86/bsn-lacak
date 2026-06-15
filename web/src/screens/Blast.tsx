@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Ic, type IconKey } from '../components/Icons';
 import { Badge, KolBadge, Modal, Ring } from '../components/UI';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
-import { RP, TEMPLATES, useBlastHistory, useNasabahList, useSegmen } from '../data/queries';
+import { RP, TEMPLATES, useBlastHistory, useCancelBlast, useNasabahList, useSegmen } from '../data/queries';
 import { api } from '../lib/api';
 import type { Nasabah } from '../types';
 
@@ -32,6 +32,7 @@ type Stage = null | 'confirm' | 'progress' | 'done';
 export function ScreenBlast() {
   const nasabahQ = useNasabahList();
   const blastQ = useBlastHistory();
+  const cancelBlast = useCancelBlast();
   const SEGMEN = useSegmen();
   const { data: BLAST_HISTORY } = blastQ;
 
@@ -186,12 +187,31 @@ export function ScreenBlast() {
                       <div className="muted" style={{ fontSize: 11.5 }}>{b.tgl}</div>
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    {b.status === 'terjadwal'
-                      ? <Badge c="var(--col-dpk)" soft="var(--col-dpk-soft)" icon={Ic.clock}>Terjadwal</Badge>
-                      : <div className="num" style={{ fontSize: 12, fontWeight: 700 }}>
+                  <div className="center gap-2" style={{ justifyContent: 'flex-end' }}>
+                    {b.status === 'terjadwal' && (
+                      <>
+                        <Badge c="var(--col-dpk)" soft="var(--col-dpk-soft)" icon={Ic.clock}>Terjadwal</Badge>
+                        <button className="btn btn-sm btn-ghost"
+                          title="Batalkan blast"
+                          onClick={() => {
+                            if (window.confirm(`Batalkan blast "${b.judul}"?`)) cancelBlast.mutate(b.id);
+                          }}
+                          disabled={cancelBlast.isPending}>
+                          <Ic.x size={13} />
+                        </button>
+                      </>
+                    )}
+                    {b.status === 'dibatalkan' && (
+                      <Badge c="var(--col-macet)" soft="var(--col-macet-soft)" icon={Ic.x}>Dibatalkan</Badge>
+                    )}
+                    {(b.status === 'selesai' || b.status === 'berjalan') && (
+                      <div className="num" style={{ fontSize: 12, fontWeight: 700 }}>
                         {b.terkirim}/{b.target} <span className="muted" style={{ fontWeight: 600 }}>terkirim</span>
-                      </div>}
+                      </div>
+                    )}
+                    {b.status === 'gagal' && (
+                      <Badge c="var(--col-macet)" soft="var(--col-macet-soft)" icon={Ic.alert}>Gagal</Badge>
+                    )}
                   </div>
                 </div>
               ))}

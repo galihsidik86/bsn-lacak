@@ -127,6 +127,14 @@ export function useReviewKunjungan() {
   });
 }
 
+export function useCancelBlast() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.cancelBlast(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['blast'] }),
+  });
+}
+
 // Combined loading/error flags from the core data the dashboard depends on.
 // Screens use these to decide whether to render skeletons or empty states.
 export function useDataStatus() {
