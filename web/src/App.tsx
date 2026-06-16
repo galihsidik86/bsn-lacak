@@ -26,6 +26,7 @@ const ScreenUsers = lazy(() => import('./screens/Users').then(m => ({ default: m
 const ScreenPetugas = lazy(() => import('./screens/Petugas').then(m => ({ default: m.ScreenPetugas })));
 const ScreenNasabah = lazy(() => import('./screens/Nasabah').then(m => ({ default: m.ScreenNasabah })));
 const ScreenPerforma = lazy(() => import('./screens/Performa').then(m => ({ default: m.ScreenPerforma })));
+const ScreenAnalytics = lazy(() => import('./screens/Analytics').then(m => ({ default: m.ScreenAnalytics })));
 
 function ScreenFallback() {
   return (
@@ -38,7 +39,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -49,6 +50,7 @@ function useNav(): NavGroup[] {
   const groups: NavGroup[] = [
     { group: 'Monitoring', items: [
       { k: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+      { k: 'analytics', label: 'Analytics & Closing', icon: 'trend' },
       { k: 'tracking', label: 'Tracking Petugas', icon: 'map' },
       { k: 'kolektabilitas', label: 'Kolektabilitas', icon: 'layers' },
       { k: 'angsuran', label: 'Pergerakan Angsuran', icon: 'chart' },
@@ -93,6 +95,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   petugas: ['Kelola Petugas', 'Tambah / edit data petugas lapangan'],
   nasabah: ['Kelola Nasabah', 'Tambah / edit / non-aktifkan data nasabah binaan'],
   performa: ['Performa Petugas', 'Approval rate, flag rate, dan respon supervisor per petugas'],
+  analytics: ['Analytics & Closing', 'Tren penagihan bulanan, leaderboard, dan ekspor closing CSV'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -312,6 +315,7 @@ export function App() {
             {page === 'petugas' && <ScreenPetugas />}
             {page === 'nasabah' && <ScreenNasabah />}
             {page === 'performa' && <ScreenPerforma />}
+            {page === 'analytics' && <ScreenAnalytics />}
           </Suspense>
         </main>
       </div>

@@ -27,6 +27,7 @@ import branches from './routes/branches.js';
 import auditLogs from './routes/audit.js';
 import users from './routes/users.js';
 import push from './routes/push.js';
+import analytics from './routes/analytics.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -109,6 +110,7 @@ app.use('/api/branches', branches);
 app.use('/api/audit', auditLogs);
 app.use('/api/users', users);
 app.use('/api/push', push);
+app.use('/api/analytics', analytics);
 
 // Static uploads — Cache-Control prevents stale photo IDs from sticking.
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {

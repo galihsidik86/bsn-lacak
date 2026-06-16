@@ -12,6 +12,7 @@ import kunjungan from '../../src/routes/kunjungan.js';
 import blast from '../../src/routes/blast.js';
 import distribusi from '../../src/routes/distribusi.js';
 import push from '../../src/routes/push.js';
+import analytics from '../../src/routes/analytics.js';
 
 export function buildApp() {
   const app = express();
@@ -26,6 +27,7 @@ export function buildApp() {
   app.use('/api/blast', blast);
   app.use('/api/distribusi', distribusi);
   app.use('/api/push', push);
+  app.use('/api/analytics', analytics);
   return app;
 }
 
