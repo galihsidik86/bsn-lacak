@@ -33,6 +33,7 @@ model Branch {
   pembayaran   Pembayaran[]
   attendance   Attendance[]
   wilayah      Wilayah[]
+  feedback     CustomerFeedback[]
   blast        Blast[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -191,11 +192,36 @@ model Petugas {
   kunjungan   Kunjungan[]
   positions   PetugasPosition[]
   attendance  Attendance[]
+  feedback    CustomerFeedback[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
   @@index([branchId])
   @@index([wilayahZoneId])
+}
+
+// Independent customer signal — nasabah dapat link tokenized via SMS
+// pasca-kunjungan, isi rating 1-5 + komentar opsional. Petugas dengan
+// rating rata-rata rendah konsisten ke-flag. Token random 64-char hex
+// dipakai sebagai shareable URL, jadi tidak butuh nasabah login.
+model CustomerFeedback {
+  id          String    @id @default(cuid())
+  token       String    @unique
+  kunjungan   Kunjungan @relation(fields: [kunjunganId], references: [id])
+  kunjunganId String    @unique
+  nasabah     Nasabah   @relation(fields: [nasabahId], references: [id])
+  nasabahId   String
+  petugas     Petugas   @relation(fields: [petugasId], references: [id])
+  petugasId   String
+  branch      Branch    @relation(fields: [branchId], references: [id])
+  branchId    String
+  sentAt      DateTime  @default(now())
+  rating      Int?      // 1..5; null sampai nasabah submit
+  comment     String?
+  repliedAt   DateTime?
+
+  @@index([petugasId, repliedAt])
+  @@index([branchId, sentAt])
 }
 
 // Geofence polygon per cabang. Drawn by supervisor on a map; vertex list
@@ -281,6 +307,7 @@ model Nasabah {
   kunjungan      Kunjungan[]
   pembayaran     Pembayaran[]
   blastRecipient BlastRecipient[]
+  feedback       CustomerFeedback[]
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -319,6 +346,7 @@ model Kunjungan {
   reviewedAt   DateTime?
   reviewNote   String?
   fotos      Foto[]
+  feedback     CustomerFeedback?
   jam        String
   tanggal    DateTime       @default(now())
 

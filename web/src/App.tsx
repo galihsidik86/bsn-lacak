@@ -30,6 +30,8 @@ const ScreenAnalytics = lazy(() => import('./screens/Analytics').then(m => ({ de
 const ScreenNotifikasi = lazy(() => import('./screens/Notifikasi').then(m => ({ default: m.ScreenNotifikasi })));
 const ScreenPengumuman = lazy(() => import('./screens/Pengumuman').then(m => ({ default: m.ScreenPengumuman })));
 const ScreenWilayah = lazy(() => import('./screens/Wilayah').then(m => ({ default: m.ScreenWilayah })));
+const ScreenFeedbackPublic = lazy(() => import('./screens/FeedbackPublic').then(m => ({ default: m.ScreenFeedbackPublic })));
+const ScreenFeedback = lazy(() => import('./screens/Feedback').then(m => ({ default: m.ScreenFeedback })));
 
 function ScreenFallback() {
   return (
@@ -42,7 +44,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi' | 'pengumuman' | 'wilayah';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -64,6 +66,7 @@ function useNav(): NavGroup[] {
       { k: 'laporan', label: 'Laporan Kunjungan', icon: 'clipboard' },
       { k: 'distribusi', label: 'Distribusi Nasabah', icon: 'users' },
       { k: 'performa', label: 'Performa Petugas', icon: 'chart' },
+      { k: 'feedback', label: 'Feedback Nasabah', icon: 'wa' },
     ] },
     { group: 'Lapangan', items: [
       { k: 'wilayah', label: 'Wilayah Binaan', icon: 'map' },
@@ -104,6 +107,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   notifikasi: ['Notifikasi', 'Riwayat semua notifikasi sistem dan supervisor'],
   pengumuman: ['Pengumuman', 'Broadcast notifikasi ke seluruh petugas di cabang'],
   wilayah: ['Wilayah Binaan', 'Gambar polygon geofence per wilayah dan tugaskan ke petugas'],
+  feedback: ['Feedback Nasabah', 'Rating + komentar nasabah pasca-kunjungan, plus petugas yang konsisten rating rendah'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -178,6 +182,18 @@ export function App() {
   // this also runs before the conditional returns; the underlying connect
   // is no-op without a token.
   useEventStream();
+
+  // Public feedback page — opened from an SMS link by the nasabah, who has
+  // no account. Bypass auth + nav entirely; only the hash matters.
+  const hash = typeof location !== 'undefined' ? location.hash.slice(1) : '';
+  const fbMatch = hash.match(/^feedback\/([a-f0-9]+)$/);
+  if (fbMatch) {
+    return (
+      <Suspense fallback={<ScreenFallback />}>
+        <ScreenFeedbackPublic token={fbMatch[1]} />
+      </Suspense>
+    );
+  }
 
   // Wait for the silent bootstrap to settle before deciding what to render.
   if (!bootstrapped) {
@@ -327,6 +343,7 @@ export function App() {
             {page === 'notifikasi' && <ScreenNotifikasi go={go} />}
             {page === 'pengumuman' && <ScreenPengumuman />}
             {page === 'wilayah' && <ScreenWilayah />}
+            {page === 'feedback' && <ScreenFeedback />}
           </Suspense>
         </main>
       </div>

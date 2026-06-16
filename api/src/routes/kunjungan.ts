@@ -13,6 +13,7 @@ import { bus } from '../lib/events.js';
 import { renderKunjunganPdf } from '../lib/pdfKunjungan.js';
 import { logger } from '../lib/logger.js';
 import { evalGeofence, evalGps, evalPhotoExif, merge } from '../lib/antiFraud.js';
+import { enqueueFeedbackRequest } from './feedback.js';
 import { watermarkPhoto } from '../lib/watermark.js';
 import { requireRole } from '../auth.js';
 import { pushToUsers } from '../lib/webPush.js';
@@ -198,6 +199,10 @@ router.post('/', kunjunganLimiter, upload.array('photos', 5), async (req, res) =
     nominal: Number(k.nominal),
     jam: k.jam,
   });
+
+  // Fire-and-forget customer feedback SMS. The function swallows its own
+  // failures so a downed gateway never blocks the laporan submission.
+  void enqueueFeedbackRequest(k.id);
 
   res.status(201).json(k);
 });

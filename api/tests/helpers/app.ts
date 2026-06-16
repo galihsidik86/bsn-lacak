@@ -16,6 +16,7 @@ import analytics from '../../src/routes/analytics.js';
 import attendance from '../../src/routes/attendance.js';
 import announcements from '../../src/routes/announcements.js';
 import wilayah from '../../src/routes/wilayah.js';
+import feedback from '../../src/routes/feedback.js';
 
 export function buildApp() {
   const app = express();
@@ -34,6 +35,7 @@ export function buildApp() {
   app.use('/api/attendance', attendance);
   app.use('/api/announcements', announcements);
   app.use('/api/wilayah', wilayah);
+  app.use('/api/feedback', feedback);
   return app;
 }
 
@@ -47,6 +49,7 @@ export async function resetDb() {
       "Notification",
       "PushSubscription",
       "BlastRecipient", "Blast",
+      "CustomerFeedback",
       "Foto", "Kunjungan",
       "Pembayaran",
       "RefreshToken",

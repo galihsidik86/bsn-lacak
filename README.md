@@ -59,6 +59,7 @@ BSN/
   .github/workflows/   — CI: typecheck, build, audit, docker build
   prototype/           — HTML/CSS/JS prototype (referensi)
   docker-compose.yml
+  DEPLOYMENT.md        — deployment runbook + secrets rotation
   OPERATIONS.md        — runbook untuk on-call
 ```
 
