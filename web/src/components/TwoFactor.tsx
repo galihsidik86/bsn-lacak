@@ -185,7 +185,7 @@ export function TwoFactorCard() {
               </div>
               {err && (
                 <div className="center gap-2" style={{
-                  marginTop: 10, background: 'white', color: 'var(--col-macet)',
+                  marginTop: 10, background: 'var(--surface)', color: 'var(--col-macet)',
                   borderRadius: 10, padding: '8px 10px', fontSize: 12, fontWeight: 600,
                 }}>
                   <Ic.alert size={14} />{err}

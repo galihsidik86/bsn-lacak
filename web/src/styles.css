@@ -89,9 +89,33 @@
   --col-dr-soft:     oklch(0.36 0.05 40);
   --col-macet-soft:  oklch(0.36 0.05 25);
 
+  /* Gold / amber: same warm hue, dimmed for dark backgrounds. Otherwise
+     hardcoded `--gold-soft` chips in admin chrome would stay snow-white. */
+  --gold-soft:       oklch(0.34 0.06 86);
+  --gold-ink:        oklch(0.82 0.10 78);
+
   --sh-1: 0 1px 2px oklch(0 0 0 / 0.3);
   --sh-2: 0 2px 8px oklch(0 0 0 / 0.35), 0 10px 30px oklch(0 0 0 / 0.3);
   --sh-3: 0 16px 50px oklch(0 0 0 / 0.5);
+}
+
+/* Maps and inline media should adapt: dim the maplibre-gl attribution
+   bar so it doesn't burn out against a dark surface. */
+[data-theme="dark"] .maplibregl-ctrl-attrib {
+  background: rgba(0, 0, 0, 0.55) !important;
+  color: var(--ink-2) !important;
+}
+[data-theme="dark"] .maplibregl-ctrl-attrib a { color: var(--accent-ink) !important; }
+
+/* Input autofill — Chrome paints a yellow background on autofilled fields
+   which clashes hard with the dark surface. Override with a transparent
+   fake-fill via box-shadow hack. */
+[data-theme="dark"] .input:-webkit-autofill,
+[data-theme="dark"] .input:-webkit-autofill:hover,
+[data-theme="dark"] .input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink);
+  box-shadow: 0 0 0 1000px var(--surface) inset;
+  caret-color: var(--ink);
 }
 
 * { box-sizing: border-box; }

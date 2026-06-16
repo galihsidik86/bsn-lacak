@@ -3,8 +3,12 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+import fs from 'node:fs';
+import path from 'node:path';
+import zlib from 'node:zlib';
 import { prisma } from '../db.js';
 import { requireAuth, requireRole, scopedBranchId } from '../auth.js';
+import { env } from '../env.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -77,5 +81,65 @@ async function scopedActorIds(branchId: string): Promise<string[]> {
   });
   return users.map(u => u.id);
 }
+
+// ---- Archive (ADMIN-only) -----------------------------------------------
+//
+// audit retention worker archives old rows to JSONL files under
+// AUDIT_ARCHIVE_DIR. ADMIN can list + read them via the UI without
+// SSH-ing into the host. Filenames are validated to live inside the
+// archive dir — never trust client-supplied paths.
+
+function archiveDir(): string {
+  return path.resolve(env.AUDIT_ARCHIVE_DIR);
+}
+
+function isSafeArchiveName(name: string): boolean {
+  // Restrict to the YYYY-MM-DD pattern we generate, optionally .gz.
+  return /^audit-\d{4}-\d{2}-\d{2}\.(jsonl|jsonl\.gz)$/.test(name);
+}
+
+router.get('/archive', requireRole('ADMIN'), async (_req, res) => {
+  const dir = archiveDir();
+  if (!fs.existsSync(dir)) return res.json({ dir, files: [] });
+  const entries = await fs.promises.readdir(dir);
+  const files = await Promise.all(
+    entries.filter(isSafeArchiveName).map(async (name) => {
+      const stat = await fs.promises.stat(path.join(dir, name)).catch(() => null);
+      return stat ? { name, size: stat.size, mtime: stat.mtime } : null;
+    }),
+  );
+  res.json({
+    dir,
+    files: files
+      .filter((f): f is { name: string; size: number; mtime: Date } => f !== null)
+      .sort((a, b) => b.name.localeCompare(a.name)),
+  });
+});
+
+router.get('/archive/:name', requireRole('ADMIN'), async (req, res) => {
+  const name = String(req.params.name);
+  if (!isSafeArchiveName(name)) return res.status(400).json({ error: 'bad_name' });
+  const file = path.join(archiveDir(), name);
+  if (!fs.existsSync(file)) return res.status(404).json({ error: 'not_found' });
+
+  // Cap response to avoid blowing up the browser with multi-MB JSONL.
+  const limitParam = Number.parseInt(String(req.query.limit ?? '500'), 10);
+  const limit = Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 5000 ? limitParam : 500;
+
+  const raw = await fs.promises.readFile(file);
+  let text: string;
+  try {
+    text = name.endsWith('.gz') ? zlib.gunzipSync(raw).toString('utf-8') : raw.toString('utf-8');
+  } catch {
+    return res.status(500).json({ error: 'decompress_failed' });
+  }
+
+  const lines = text.split('\n').filter(l => l.length > 0);
+  const items = lines.slice(0, limit).map((l, i) => {
+    try { return JSON.parse(l); }
+    catch { return { _parseError: true, line: i, raw: l.slice(0, 500) }; }
+  });
+  res.json({ file: name, totalLines: lines.length, returned: items.length, items });
+});
 
 export default router;

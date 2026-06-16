@@ -4,6 +4,7 @@ import axios from 'axios';
 import { Ic } from '../components/Icons';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import { tokenStore } from '../lib/api';
+import { useAuth } from '../lib/auth';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -55,6 +56,8 @@ function formatTime(iso: string): string {
 }
 
 export function ScreenAudit() {
+  const role = useAuth(s => s.user?.role);
+  const [tab, setTab] = useState<'live' | 'archive'>('live');
   const [action, setAction] = useState('');
   const [actor, setActor] = useState('');
   const [since, setSince] = useState('');
@@ -79,6 +82,16 @@ export function ScreenAudit() {
 
   return (
     <div className="content">
+      {role === 'ADMIN' && (
+        <div className="seg" style={{ marginBottom: 12 }}>
+          <button className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>Live (DB)</button>
+          <button className={tab === 'archive' ? 'on' : ''} onClick={() => setTab('archive')}>Arsip (file)</button>
+        </div>
+      )}
+
+      {tab === 'archive' ? <ArchiveBrowser /> : null}
+      {tab === 'live' && (
+      <>
       {/* filters */}
       <div className="card fade-up" style={{ padding: 14, marginBottom: 16 }}>
         <div className="center gap-3" style={{ flexWrap: 'wrap' }}>
@@ -160,6 +173,102 @@ export function ScreenAudit() {
           )}
         </>
       )}
+      </>
+      )}
+    </div>
+  );
+}
+
+interface ArchiveFile { name: string; size: number; mtime: string }
+interface ArchiveResponse { dir: string; files: ArchiveFile[] }
+interface ArchiveContent { file: string; totalLines: number; returned: number; items: any[] }
+
+function archiveHeaders(): Record<string, string> {
+  const t = tokenStore.get();
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
+function ArchiveBrowser() {
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const listQ = useQuery<ArchiveResponse>({
+    queryKey: ['audit-archive'],
+    queryFn: async () => (await axios.get(`${BASE}/audit/archive`, { withCredentials: true, headers: archiveHeaders() })).data,
+  });
+  const fileQ = useQuery<ArchiveContent>({
+    queryKey: ['audit-archive-file', selected],
+    queryFn: async () => (await axios.get(`${BASE}/audit/archive/${selected}`, { withCredentials: true, headers: archiveHeaders() })).data,
+    enabled: !!selected,
+  });
+
+  if (listQ.isPending) return <Skeleton h={300} />;
+  if (listQ.error) return <ErrorState onRetry={() => listQ.refetch()} />;
+
+  const files = listQ.data?.files ?? [];
+
+  return (
+    <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(260px, 320px) 1fr' }}>
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card-pad" style={{ paddingBottom: 10 }}>
+          <div className="section-title">File Arsip</div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>{listQ.data?.dir}</div>
+        </div>
+        {files.length === 0 ? (
+          <EmptyState title="Tidak ada arsip" hint="Arsip baru akan muncul setelah retention worker jalan." />
+        ) : (
+          <div style={{ borderTop: '1px solid var(--line)' }}>
+            {files.map(f => (
+              <button key={f.name} onClick={() => setSelected(f.name)}
+                className="between" style={{
+                  width: '100%', textAlign: 'left', background: selected === f.name ? 'var(--accent-soft)' : 'transparent',
+                  border: 'none', borderBottom: '1px solid var(--line)', cursor: 'pointer',
+                  padding: '10px 16px',
+                }}>
+                <div className="mono" style={{ fontSize: 12, fontWeight: 700 }}>{f.name}</div>
+                <div className="muted num" style={{ fontSize: 11 }}>
+                  {(f.size / 1024).toFixed(1)} KB
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ overflow: 'hidden' }}>
+        {!selected ? (
+          <EmptyState title="Pilih file arsip" hint="Klik nama file di sebelah kiri untuk lihat isinya." />
+        ) : fileQ.isPending ? (
+          <div className="card-pad"><Skeleton h={300} /></div>
+        ) : fileQ.error ? (
+          <ErrorState onRetry={() => fileQ.refetch()} />
+        ) : (
+          <>
+            <div className="between" style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>
+              <div>
+                <div className="section-title">{fileQ.data!.file}</div>
+                <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
+                  Menampilkan {fileQ.data!.returned} dari {fileQ.data!.totalLines} entry
+                </div>
+              </div>
+            </div>
+            <div style={{ maxHeight: 540, overflow: 'auto' }}>
+              <table className="table">
+                <thead><tr><th>Waktu</th><th>Aksi</th><th>Actor</th><th>Target</th></tr></thead>
+                <tbody>
+                  {fileQ.data!.items.map((it: any, i: number) => (
+                    <tr key={i}>
+                      <td className="mono" style={{ fontSize: 11 }}>{it.createdAt ? new Date(it.createdAt).toLocaleString('id-ID') : '—'}</td>
+                      <td><span className="badge">{it.action}</span></td>
+                      <td className="mono" style={{ fontSize: 11.5 }}>{it.actor ?? it.actorId ?? '—'}</td>
+                      <td className="mono" style={{ fontSize: 11.5 }}>{it.target ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

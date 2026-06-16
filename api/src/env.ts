@@ -30,6 +30,13 @@ const schema = z.object({
   // key. In production, set this to a dedicated 32-byte key so rotating JWT
   // signing keys doesn't invalidate 2FA secrets.
   TOTP_ENCRYPTION_KEY: z.string().optional(),
+  // SLA monitor — fire a supervisor alert for kunjungan that have been
+  // PENDING longer than this. Default 24 hours so dailies stay caught up.
+  SLA_PENDING_HOURS: z.coerce.number().int().positive().default(24),
+  SLA_POLL_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
+  // pg_dump backup directory (mounted from the backup container's volume).
+  // Empty / unmounted = backup UI shows "not configured".
+  BACKUP_DIR: z.string().default('./backups'),
 });
 
 const parsed = schema.safeParse(process.env);

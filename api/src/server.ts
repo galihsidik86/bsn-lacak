@@ -12,6 +12,7 @@ import { buildOpenApi } from './lib/openapi.js';
 import { apiLimiter, loginLimiter } from './lib/rateLimit.js';
 import { startAuditRetention } from './workers/auditRetention.js';
 import { startBlastWorker } from './workers/blastWorker.js';
+import { startSlaWorker } from './workers/slaWorker.js';
 import { prisma } from './db.js';
 
 import auth from './routes/auth.js';
@@ -32,6 +33,7 @@ import attendance from './routes/attendance.js';
 import announcements from './routes/announcements.js';
 import wilayah from './routes/wilayah.js';
 import feedback from './routes/feedback.js';
+import backup from './routes/backup.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -119,6 +121,7 @@ app.use('/api/attendance', attendance);
 app.use('/api/announcements', announcements);
 app.use('/api/wilayah', wilayah);
 app.use('/api/feedback', feedback);
+app.use('/api/backup', backup);
 
 // Static uploads — Cache-Control prevents stale photo IDs from sticking.
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {
@@ -149,6 +152,7 @@ const server = app.listen(env.PORT, () => {
 });
 
 const stopWorker = startBlastWorker();
+startSlaWorker();
 const stopSamplers = startMetricsSamplers();
 const stopRetention = startAuditRetention();
 

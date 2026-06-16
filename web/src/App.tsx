@@ -32,6 +32,7 @@ const ScreenPengumuman = lazy(() => import('./screens/Pengumuman').then(m => ({ 
 const ScreenWilayah = lazy(() => import('./screens/Wilayah').then(m => ({ default: m.ScreenWilayah })));
 const ScreenFeedbackPublic = lazy(() => import('./screens/FeedbackPublic').then(m => ({ default: m.ScreenFeedbackPublic })));
 const ScreenFeedback = lazy(() => import('./screens/Feedback').then(m => ({ default: m.ScreenFeedback })));
+const ScreenBackup = lazy(() => import('./screens/Backup').then(m => ({ default: m.ScreenBackup })));
 
 function ScreenFallback() {
   return (
@@ -44,7 +45,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -77,6 +78,7 @@ function useNav(): NavGroup[] {
   // only ADMIN gets the cabang manager.
   const adminItems: NavItem[] = [];
   if (role === 'ADMIN') adminItems.push({ k: 'branch', label: 'Kelola Cabang', icon: 'layers' });
+  if (role === 'ADMIN') adminItems.push({ k: 'backup', label: 'Backup DB', icon: 'download' });
   if (role === 'ADMIN' || role === 'SUPERVISOR') {
     adminItems.push({ k: 'petugas', label: 'Kelola Petugas', icon: 'user' });
     adminItems.push({ k: 'nasabah', label: 'Kelola Nasabah', icon: 'users' });
@@ -108,6 +110,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   pengumuman: ['Pengumuman', 'Broadcast notifikasi ke seluruh petugas di cabang'],
   wilayah: ['Wilayah Binaan', 'Gambar polygon geofence per wilayah dan tugaskan ke petugas'],
   feedback: ['Feedback Nasabah', 'Rating + komentar nasabah pasca-kunjungan, plus petugas yang konsisten rating rendah'],
+  backup: ['Backup Database', 'Status backup pg_dump + verifikasi integritas file'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -344,6 +347,7 @@ export function App() {
             {page === 'pengumuman' && <ScreenPengumuman />}
             {page === 'wilayah' && <ScreenWilayah />}
             {page === 'feedback' && <ScreenFeedback />}
+            {page === 'backup' && <ScreenBackup />}
           </Suspense>
         </main>
       </div>

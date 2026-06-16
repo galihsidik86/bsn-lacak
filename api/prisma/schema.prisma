@@ -345,6 +345,10 @@ model Kunjungan {
   reviewer     User?        @relation(fields: [reviewerId], references: [id])
   reviewedAt   DateTime?
   reviewNote   String?
+  // SLA monitor — set the first time the alert worker has notified the
+  // branch supervisors that this PENDING row has gone past the SLA
+  // threshold, so we don't double-page them every poll cycle.
+  slaAlertedAt DateTime?
   fotos      Foto[]
   feedback     CustomerFeedback?
   jam        String
