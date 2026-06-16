@@ -95,6 +95,12 @@ model User {
   passwordChangedAt   DateTime       @default(now())
   mustChangePassword  Boolean        @default(false)
   active              Boolean        @default(true)
+  // TOTP 2FA. `totpSecret` stores AES-GCM ciphertext (IV + tag + ct hex-
+  // concatenated) of the shared secret. `totpEnabledAt` is null while
+  // setup is in flight; flipped to a timestamp on first successful
+  // verification. ADMIN/SUPERVISOR strongly encouraged; PETUGAS optional.
+  totpSecret          String?
+  totpEnabledAt       DateTime?
   refreshTokens       RefreshToken[]
   notifications       Notification[]
   reviewedKunjungan   Kunjungan[]

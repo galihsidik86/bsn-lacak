@@ -45,6 +45,24 @@ export function verify(token: string): JwtPayload {
   return jwt.verify(token, env.JWT_SECRET) as JwtPayload;
 }
 
+// Short-lived (5 min) token issued after a successful username+password
+// check when the user has 2FA enabled. The client trades it for a real
+// access token via POST /auth/totp/login by also supplying a valid TOTP
+// code. We sign with a separate audience claim so a stolen `totpChallenge`
+// can never be replayed against the main token verifier (which would
+// reject it for the missing `role` claim anyway, but defense in depth).
+const TOTP_AUD = 'bsn-lacak/totp-challenge';
+
+export function signTotpChallenge(userId: string): string {
+  return jwt.sign({ sub: userId }, env.JWT_SECRET, {
+    expiresIn: '5m', audience: TOTP_AUD,
+  });
+}
+
+export function verifyTotpChallenge(token: string): { sub: string } {
+  return jwt.verify(token, env.JWT_SECRET, { audience: TOTP_AUD }) as { sub: string };
+}
+
 declare global {
   namespace Express {
     interface Request { user?: JwtPayload }

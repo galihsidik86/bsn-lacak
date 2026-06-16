@@ -55,16 +55,11 @@ export const useAuth = create<AuthState>((set) => ({
   },
 }));
 
-export interface LoginResult { mustChangePassword: boolean }
+export type LoginResult =
+  | { kind: 'ok'; mustChangePassword: boolean }
+  | { kind: 'totp'; totpChallenge: string; username: string };
 
-export async function doLogin(username: string, password: string): Promise<LoginResult> {
-  if (USE_MOCK) {
-    const role: Role = username === 'supervisor' ? 'SUPERVISOR' : 'PETUGAS';
-    tokenStore.set('mock.' + btoa(JSON.stringify({ u: username, t: Date.now() })));
-    useAuth.getState().setUser({ username, nama: username, role, mustChangePassword: false });
-    return { mustChangePassword: false };
-  }
-  const { data } = await axios.post(`${BASE}/auth/login`, { username, password }, { withCredentials: true });
+function applySessionFromLogin(data: any, username: string) {
   tokenStore.set(data.token);
   useAuth.getState().setUser({
     nama: data.nama, role: data.role, username,
@@ -73,6 +68,27 @@ export async function doLogin(username: string, password: string): Promise<Login
     branch: data.branchName ? { id: data.branchId, kode: '', nama: data.branchName } : null,
     mustChangePassword: !!data.mustChangePassword,
   });
+}
+
+export async function doLogin(username: string, password: string): Promise<LoginResult> {
+  if (USE_MOCK) {
+    const role: Role = username === 'supervisor' ? 'SUPERVISOR' : 'PETUGAS';
+    tokenStore.set('mock.' + btoa(JSON.stringify({ u: username, t: Date.now() })));
+    useAuth.getState().setUser({ username, nama: username, role, mustChangePassword: false });
+    return { kind: 'ok', mustChangePassword: false };
+  }
+  const { data } = await axios.post(`${BASE}/auth/login`, { username, password }, { withCredentials: true });
+  if (data?.requireTotp) {
+    return { kind: 'totp', totpChallenge: data.totpChallenge, username };
+  }
+  applySessionFromLogin(data, username);
+  return { kind: 'ok', mustChangePassword: !!data.mustChangePassword };
+}
+
+export async function doTotpLogin(totpChallenge: string, code: string, username: string): Promise<{ mustChangePassword: boolean }> {
+  const { data } = await axios.post(`${BASE}/auth/totp/login`,
+    { totpChallenge, code }, { withCredentials: true });
+  applySessionFromLogin(data, username);
   return { mustChangePassword: !!data.mustChangePassword };
 }
 

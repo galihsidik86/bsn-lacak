@@ -33,6 +33,7 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.0",
+    "otpauth": "^9.5.1",
     "pdfkit": "^0.19.1",
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",

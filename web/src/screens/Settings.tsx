@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Ic } from '../components/Icons';
+import { TwoFactorCard } from '../components/TwoFactor';
 import { changePassword, doLogout, useAuth } from '../lib/auth';
 
 const MIN_LEN = 12;
@@ -63,6 +64,8 @@ export function ScreenSettings() {
           <ProfileField label="Cabang" value={user.branch?.nama ?? (user.role === 'ADMIN' ? 'Semua Cabang (HQ)' : '—')} />
         </div>
       </div>
+
+      <TwoFactorCard />
 
       {/* ---- Change password ---- */}
       <form onSubmit={submit} className="card card-pad fade-up">

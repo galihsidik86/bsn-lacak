@@ -26,6 +26,10 @@ const schema = z.object({
   VAPID_PUBLIC: z.string().optional(),
   VAPID_PRIVATE: z.string().optional(),
   VAPID_CONTACT: z.string().default('mailto:admin@example.com'),
+  // TOTP secret encryption key. Optional — falls back to JWT_SECRET-derived
+  // key. In production, set this to a dedicated 32-byte key so rotating JWT
+  // signing keys doesn't invalidate 2FA secrets.
+  TOTP_ENCRYPTION_KEY: z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);

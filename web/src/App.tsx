@@ -28,6 +28,7 @@ const ScreenNasabah = lazy(() => import('./screens/Nasabah').then(m => ({ defaul
 const ScreenPerforma = lazy(() => import('./screens/Performa').then(m => ({ default: m.ScreenPerforma })));
 const ScreenAnalytics = lazy(() => import('./screens/Analytics').then(m => ({ default: m.ScreenAnalytics })));
 const ScreenNotifikasi = lazy(() => import('./screens/Notifikasi').then(m => ({ default: m.ScreenNotifikasi })));
+const ScreenPengumuman = lazy(() => import('./screens/Pengumuman').then(m => ({ default: m.ScreenPengumuman })));
 
 function ScreenFallback() {
   return (
@@ -40,7 +41,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi' | 'pengumuman';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -58,6 +59,7 @@ function useNav(): NavGroup[] {
     ] },
     { group: 'Operasional', items: [
       { k: 'blast', label: 'Blast SMS / WA', icon: 'send', badge: seg.lewat.length },
+      { k: 'pengumuman', label: 'Pengumuman', icon: 'bell' },
       { k: 'laporan', label: 'Laporan Kunjungan', icon: 'clipboard' },
       { k: 'distribusi', label: 'Distribusi Nasabah', icon: 'users' },
       { k: 'performa', label: 'Performa Petugas', icon: 'chart' },
@@ -98,6 +100,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   performa: ['Performa Petugas', 'Approval rate, flag rate, dan respon supervisor per petugas'],
   analytics: ['Analytics & Closing', 'Tren penagihan bulanan, leaderboard, dan ekspor closing CSV'],
   notifikasi: ['Notifikasi', 'Riwayat semua notifikasi sistem dan supervisor'],
+  pengumuman: ['Pengumuman', 'Broadcast notifikasi ke seluruh petugas di cabang'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -319,6 +322,7 @@ export function App() {
             {page === 'performa' && <ScreenPerforma />}
             {page === 'analytics' && <ScreenAnalytics />}
             {page === 'notifikasi' && <ScreenNotifikasi go={go} />}
+            {page === 'pengumuman' && <ScreenPengumuman />}
           </Suspense>
         </main>
       </div>
