@@ -15,6 +15,7 @@ import push from '../../src/routes/push.js';
 import analytics from '../../src/routes/analytics.js';
 import attendance from '../../src/routes/attendance.js';
 import announcements from '../../src/routes/announcements.js';
+import wilayah from '../../src/routes/wilayah.js';
 
 export function buildApp() {
   const app = express();
@@ -32,6 +33,7 @@ export function buildApp() {
   app.use('/api/analytics', analytics);
   app.use('/api/attendance', attendance);
   app.use('/api/announcements', announcements);
+  app.use('/api/wilayah', wilayah);
   return app;
 }
 
@@ -53,6 +55,7 @@ export async function resetDb() {
       "Nasabah",
       "User",
       "Petugas",
+      "Wilayah",
       "Branch"
     RESTART IDENTITY CASCADE
   `);

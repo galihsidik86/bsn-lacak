@@ -1,4 +1,6 @@
 import exifr from 'exifr';
+import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
+import { point as turfPoint, polygon as turfPolygon } from '@turf/helpers';
 import { logger } from './logger.js';
 
 // Anti-fraud scoring for petugas reports. Each rule that fires adds a string
@@ -17,6 +19,7 @@ export const RISK_FLAG_META: Record<string, { label: string; severity: number; h
   photo_no_exif: { label: 'Foto tanpa metadata', severity: 3, hint: 'Foto tidak punya EXIF — mungkin dari galeri / di-edit.' },
   photo_stale: { label: 'Foto lama', severity: 8, hint: 'Foto diambil > 1 jam sebelum laporan dikirim.' },
   speed_jump: { label: 'Lonjakan kecepatan', severity: 7, hint: 'Petugas berpindah > 150 km/h antara dua ping GPS.' },
+  outside_wilayah: { label: 'Di luar wilayah binaan', severity: 9, hint: 'Posisi laporan berada di luar polygon wilayah petugas.' },
 };
 
 // Equirectangular approximation — accurate enough at metro-scale (~50m).
@@ -112,6 +115,25 @@ export function evalSpeed({ prev, next, maxKmh = 150 }: SpeedCheckInput): RiskEv
     score += RISK_FLAG_META.speed_jump.severity;
   }
   return { flags, score };
+}
+
+// Point-in-polygon check against a GeoJSON Polygon. Returns no flag if the
+// polygon is absent (zone not yet drawn) or reported coords missing.
+export function evalGeofence(
+  reportedLat: number | null | undefined,
+  reportedLng: number | null | undefined,
+  polygon: { type: 'Polygon'; coordinates: number[][][] } | null,
+): RiskEval {
+  if (!polygon || typeof reportedLat !== 'number' || typeof reportedLng !== 'number') {
+    return { flags: [], score: 0 };
+  }
+  const pt = turfPoint([reportedLng, reportedLat]);
+  const pg = turfPolygon(polygon.coordinates);
+  if (booleanPointInPolygon(pt, pg)) return { flags: [], score: 0 };
+  return {
+    flags: ['outside_wilayah'],
+    score: RISK_FLAG_META.outside_wilayah.severity,
+  };
 }
 
 // Merge two evaluations (dedupe flags, sum score).

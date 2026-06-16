@@ -20,6 +20,8 @@
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@prisma/client": "^6.2.1",
+    "@turf/boolean-point-in-polygon": "^7.3.5",
+    "@turf/helpers": "^7.3.5",
     "@types/cookie-parser": "^1.4.10",
     "@types/swagger-ui-express": "^4.1.8",
     "bcryptjs": "^2.4.3",

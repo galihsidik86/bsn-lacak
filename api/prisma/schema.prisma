@@ -32,6 +32,7 @@ model Branch {
   kunjungan    Kunjungan[]
   pembayaran   Pembayaran[]
   attendance   Attendance[]
+  wilayah      Wilayah[]
   blast        Blast[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -181,6 +182,10 @@ model Petugas {
   active    Boolean       @default(true)
   branch    Branch        @relation(fields: [branchId], references: [id])
   branchId  String
+  // Optional geofence — set when a wilayah polygon has been drawn for the
+  // petugas. Anti-fraud uses it to flag laporan submitted outside the zone.
+  wilayahZone   Wilayah? @relation(fields: [wilayahZoneId], references: [id])
+  wilayahZoneId String?
   user      User?
   nasabah     Nasabah[]
   kunjungan   Kunjungan[]
@@ -190,6 +195,29 @@ model Petugas {
   updatedAt   DateTime      @updatedAt
 
   @@index([branchId])
+  @@index([wilayahZoneId])
+}
+
+// Geofence polygon per cabang. Drawn by supervisor on a map; vertex list
+// stored as JSON (GeoJSON Polygon). Each Wilayah can be assigned to
+// multiple petugas (e.g. shared coverage area). Soft delete preserves
+// historical kunjungan that referenced the zone.
+model Wilayah {
+  id        String   @id @default(cuid())
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  branchId  String
+  nama      String
+  // GeoJSON Polygon: { type: "Polygon", coordinates: [[[lng, lat], ...]] }
+  // Stored as Json so Postgres jsonb gives us fast equality on the shape;
+  // point-in-polygon happens in app code via turf.
+  polygon   Json
+  active    Boolean  @default(true)
+  petugas   Petugas[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@index([active])
 }
 
 // Clock-in/out untuk hari ini. Satu petugas hanya boleh punya satu sesi

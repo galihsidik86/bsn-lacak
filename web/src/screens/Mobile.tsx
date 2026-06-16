@@ -18,6 +18,7 @@ import { enqueue as enqueueOffline } from '../lib/submitQueue';
 import { useOfflineQueue } from '../lib/useOfflineQueue';
 import { pushState, subscribePush, unsubscribePush } from '../lib/webPush';
 import { clockIn, clockOut, getMyAttendance, type MyAttendance } from '../lib/attendance';
+import { getMyZone, pointInPolygon, type ZoneInfo } from '../lib/wilayah';
 import type { HasilKunjungan, Nasabah, Petugas } from '../types';
 
 type Tab = 'beranda' | 'rute' | 'riwayat' | 'profil';
@@ -134,6 +135,19 @@ export function ScreenMobile() {
     enabled: isPetugasUser && !!ME,
   });
 
+  // Fetch the petugas's assigned wilayah polygon (if any) so we can draw it
+  // on the rute map and surface a live "Anda di luar wilayah" warning.
+  const [zone, setZone] = useState<ZoneInfo | null>(null);
+  useEffect(() => {
+    if (!isPetugasUser) return;
+    (async () => {
+      try {
+        const r = await getMyZone();
+        setZone(r.zone);
+      } catch { /* ignore */ }
+    })();
+  }, [isPetugasUser]);
+
   // Drain any kunjungan that got queued offline. Returns pending count
   // for surfacing in the profile tab.
   const offline = useOfflineQueue();
@@ -152,8 +166,8 @@ export function ScreenMobile() {
     <div style={{ fontFamily: 'var(--font)', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--ink)' }}>
       <div style={{ flex: 1, overflowY: 'auto', paddingTop: isPetugasUser ? 12 : 54 }}>
         {isPetugasUser && <InstallPrompt />}
-        {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} />}
-        {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} here={hereFix} />}
+        {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} here={hereFix} zone={zone} />}
+        {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} here={hereFix} zone={zone} />}
         {!reportFor && tab === 'riwayat' && <MRiwayat me={ME} onLaporUlang={setReportFor} />}
         {!reportFor && tab === 'profil' && <MProfil me={ME} here={hereFix} pendingOffline={offline.pending} />}
         {reportFor && <MLapor n={reportFor} me={ME} here={hereFix} onClose={() => setReportFor(null)}
@@ -223,16 +237,39 @@ function MHeader({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
-function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet }: {
+function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone }: {
   me: Petugas; tasks: Nasabah[]; onReport: (n: Nasabah) => void; doneSet: Set<string>;
+  here: { lat: number; lng: number } | null; zone: ZoneInfo | null;
 }) {
   const pct = ME.target > 0 ? Math.round(ME.terkumpul / ME.target * 100) : 0;
+  // Live "Anda di dalam zona?" computed from the latest GPS fix vs the
+  // petugas's assigned polygon. Falls back silently if either is missing.
+  const inZone = zone && here ? pointInPolygon(here.lat, here.lng, zone.polygon) : null;
   // "selesai" mengacu pada tugas hari ini (MY_TASKS) yang sudah dikunjungi —
   // bukan total kunjungan ME.kunjungan, karena petugas bisa kunjungi nasabah
   // di luar daftar prioritas.
   const doneInTasks = MY_TASKS.filter(t => doneSet.has(t.id)).length;
   return (
     <div>
+      {zone && inZone === false && (
+        <div className="center gap-2" style={{
+          margin: '10px 16px 0', padding: '10px 12px', borderRadius: 12,
+          background: 'var(--col-macet-soft)', color: 'var(--col-macet)',
+          fontSize: 12.5, fontWeight: 700,
+        }}>
+          <Ic.alert size={15} />
+          <span>Anda berada <u>di luar</u> wilayah binaan <strong>{zone.nama}</strong> — laporan akan ditandai untuk review.</span>
+        </div>
+      )}
+      {zone && inZone === true && (
+        <div className="center gap-2" style={{
+          margin: '10px 16px 0', padding: '8px 12px', borderRadius: 12,
+          background: 'var(--accent-soft)', color: 'var(--accent-ink)',
+          fontSize: 12, fontWeight: 700,
+        }}>
+          <Ic.checkCircle size={14} />Di dalam wilayah {zone.nama}
+        </div>
+      )}
       <div style={{ padding: '8px 20px 0' }}>
         <div className="center gap-3">
           <Avatar inisial={ME.inisial} hue={ME.hue} size={44} />
@@ -385,9 +422,10 @@ function orderNearest<T extends { lat: number; lng: number }>(
   return { ordered, meters: total };
 }
 
-function MRute({ me: ME, tasks: MY_TASKS, onReport, here }: {
+function MRute({ me: ME, tasks: MY_TASKS, onReport, here, zone }: {
   me: Petugas; tasks: Nasabah[]; onReport: (n: Nasabah) => void;
   here: { lat: number; lng: number } | null;
+  zone: ZoneInfo | null;
 }) {
   const accent = cssVar('--accent') || '#1f8a5b';
   const styleUrl = `https://api.maptiler.com/maps/${MAPTILER_STYLE}/style.json?key=${MAPTILER_KEY}`;
@@ -456,6 +494,15 @@ function MRute({ me: ME, tasks: MY_TASKS, onReport, here }: {
             style={{ width: '100%', height: '100%' }}
             mapStyle={styleUrl}
             attributionControl={{ compact: true }}>
+            {zone && (
+              <Source id="rute-zone" type="geojson"
+                data={{ type: 'Feature', properties: {}, geometry: zone.polygon }}>
+                <Layer id="rute-zone-fill" type="fill"
+                  paint={{ 'fill-color': accent, 'fill-opacity': 0.10 }} />
+                <Layer id="rute-zone-line" type="line"
+                  paint={{ 'line-color': accent, 'line-width': 1.5, 'line-dasharray': [2, 2] }} />
+              </Source>
+            )}
             <Source id="rute-line" type="geojson" data={routeGeo}>
               <Layer
                 id="rute-line-stroke"

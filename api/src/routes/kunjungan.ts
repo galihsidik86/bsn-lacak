@@ -12,7 +12,7 @@ import { audit, fromReq } from '../lib/audit.js';
 import { bus } from '../lib/events.js';
 import { renderKunjunganPdf } from '../lib/pdfKunjungan.js';
 import { logger } from '../lib/logger.js';
-import { evalGps, evalPhotoExif, merge } from '../lib/antiFraud.js';
+import { evalGeofence, evalGps, evalPhotoExif, merge } from '../lib/antiFraud.js';
 import { watermarkPhoto } from '../lib/watermark.js';
 import { requireRole } from '../auth.js';
 import { pushToUsers } from '../lib/webPush.js';
@@ -82,8 +82,10 @@ router.post('/', kunjunganLimiter, upload.array('photos', 5), async (req, res) =
   const nasabahRow = await prisma.nasabah.findUnique({
     where: { id: parsed.data.nasabahId }, select: { lat: true, lng: true, nama: true },
   });
+  // Petugas + their assigned wilayah polygon for geofence check (lapis G).
   const petugasInfo = await prisma.petugas.findUnique({
-    where: { id: parsed.data.petugasId }, select: { nama: true },
+    where: { id: parsed.data.petugasId },
+    select: { nama: true, wilayahZone: { select: { polygon: true } } },
   });
 
   const photos = (req.files as Express.Multer.File[] | undefined) ?? [];
@@ -116,12 +118,17 @@ router.post('/', kunjunganLimiter, upload.array('photos', 5), async (req, res) =
     savedPaths.push(path.relative(process.cwd(), full).replace(/\\/g, '/'));
   }
 
-  // Run anti-fraud rules (A + C).
+  // Run anti-fraud rules (A + C + geofence).
   const risk = merge(
     evalGps({
       reportedLat: parsed.data.lat, reportedLng: parsed.data.lng,
       nasabahLat: nasabahRow?.lat, nasabahLng: nasabahRow?.lng,
     }),
+    evalGeofence(
+      parsed.data.lat ?? null,
+      parsed.data.lng ?? null,
+      petugasInfo?.wilayahZone?.polygon as any ?? null,
+    ),
     ...photoEvals,
   );
 

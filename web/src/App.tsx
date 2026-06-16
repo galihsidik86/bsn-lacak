@@ -29,6 +29,7 @@ const ScreenPerforma = lazy(() => import('./screens/Performa').then(m => ({ defa
 const ScreenAnalytics = lazy(() => import('./screens/Analytics').then(m => ({ default: m.ScreenAnalytics })));
 const ScreenNotifikasi = lazy(() => import('./screens/Notifikasi').then(m => ({ default: m.ScreenNotifikasi })));
 const ScreenPengumuman = lazy(() => import('./screens/Pengumuman').then(m => ({ default: m.ScreenPengumuman })));
+const ScreenWilayah = lazy(() => import('./screens/Wilayah').then(m => ({ default: m.ScreenWilayah })));
 
 function ScreenFallback() {
   return (
@@ -41,7 +42,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi' | 'pengumuman';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi' | 'pengumuman' | 'wilayah';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -65,6 +66,7 @@ function useNav(): NavGroup[] {
       { k: 'performa', label: 'Performa Petugas', icon: 'chart' },
     ] },
     { group: 'Lapangan', items: [
+      { k: 'wilayah', label: 'Wilayah Binaan', icon: 'map' },
       { k: 'mobile', label: 'Aplikasi Petugas', icon: 'phone' },
     ] },
   ];
@@ -101,6 +103,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   analytics: ['Analytics & Closing', 'Tren penagihan bulanan, leaderboard, dan ekspor closing CSV'],
   notifikasi: ['Notifikasi', 'Riwayat semua notifikasi sistem dan supervisor'],
   pengumuman: ['Pengumuman', 'Broadcast notifikasi ke seluruh petugas di cabang'],
+  wilayah: ['Wilayah Binaan', 'Gambar polygon geofence per wilayah dan tugaskan ke petugas'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -323,6 +326,7 @@ export function App() {
             {page === 'analytics' && <ScreenAnalytics />}
             {page === 'notifikasi' && <ScreenNotifikasi go={go} />}
             {page === 'pengumuman' && <ScreenPengumuman />}
+            {page === 'wilayah' && <ScreenWilayah />}
           </Suspense>
         </main>
       </div>
