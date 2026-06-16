@@ -21,6 +21,8 @@ import search from '../../src/routes/search.js';
 import notifications from '../../src/routes/notifications.js';
 import apiKeys from '../../src/routes/apiKeys.js';
 import savedFilters from '../../src/routes/savedFilters.js';
+import webhooks from '../../src/routes/webhooks.js';
+import foto from '../../src/routes/foto.js';
 import { apiKeyAuth } from '../../src/lib/apiKey.js';
 
 export function buildApp() {
@@ -46,6 +48,8 @@ export function buildApp() {
   app.use('/api/notifications', notifications);
   app.use('/api/api-keys', apiKeys);
   app.use('/api/saved-filters', savedFilters);
+  app.use('/api/webhooks', webhooks);
+  app.use('/api/foto', foto);
   return app;
 }
 
@@ -71,6 +75,8 @@ export async function resetDb() {
       "Wilayah",
       "ApiKey",
       "SavedFilter",
+      "WebhookDelivery",
+      "WebhookSubscription",
       "Branch"
     RESTART IDENTITY CASCADE
   `);

@@ -37,6 +37,9 @@ import backup from './routes/backup.js';
 import search from './routes/search.js';
 import apiKeys from './routes/apiKeys.js';
 import savedFilters from './routes/savedFilters.js';
+import webhooks from './routes/webhooks.js';
+import foto from './routes/foto.js';
+import { startWebhookDispatcher } from './lib/webhookDispatcher.js';
 import { initSentry, sentryErrorHandler, setupSentryRequest } from './lib/sentry.js';
 import { apiKeyAuth } from './lib/apiKey.js';
 
@@ -138,6 +141,8 @@ app.use('/api/backup', backup);
 app.use('/api/search', search);
 app.use('/api/api-keys', apiKeys);
 app.use('/api/saved-filters', savedFilters);
+app.use('/api/webhooks', webhooks);
+app.use('/api/foto', foto);
 
 // Static uploads — Cache-Control prevents stale photo IDs from sticking.
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {
@@ -176,6 +181,7 @@ const server = app.listen(env.PORT, () => {
 
 const stopWorker = startBlastWorker();
 startSlaWorker();
+if (env.NODE_ENV !== 'test') startWebhookDispatcher();
 const stopSamplers = startMetricsSamplers();
 const stopRetention = startAuditRetention();
 

@@ -88,12 +88,17 @@ function kunjunganFromServer(x: any): Kunjungan {
   // Foto rows store a relative server path like "uploads/2026/06/abc.jpg".
   // The api server mounts the upload dir at /uploads, so prefix back with /
   // and strip any leading "uploads/" so we always end up at /uploads/...
-  const urls: string[] = Array.isArray(x.fotos)
+  const fotos: { id: string; url: string; annotations: any[] }[] = Array.isArray(x.fotos)
     ? x.fotos.map((f: any) => {
         const p = String(f.path ?? '').replace(/\\/g, '/').replace(/^\/?(?:uploads\/)?/, '');
-        return `/uploads/${p}`;
+        return {
+          id: f.id,
+          url: `/uploads/${p}`,
+          annotations: Array.isArray(f.annotations) ? f.annotations : [],
+        };
       })
     : [];
+  const urls = fotos.map(f => f.url);
   return {
     id: x.id,
     petugas: x.petugasId,
@@ -106,6 +111,7 @@ function kunjunganFromServer(x: any): Kunjungan {
     lokasi: x.lokasi ?? '',
     foto: urls.length,
     fotoUrls: urls,
+    fotos,
     valid: x.valid ?? true,
     riskScore: typeof x.riskScore === 'number' ? x.riskScore : 0,
     riskFlags: Array.isArray(x.riskFlags) ? x.riskFlags : [],

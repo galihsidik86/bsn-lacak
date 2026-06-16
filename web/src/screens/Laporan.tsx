@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Ic } from '../components/Icons';
 import { SavedFilters } from '../components/SavedFilters';
+import { PhotoAnnotator, saveAnnotations } from '../components/PhotoAnnotator';
 import { Avatar, Badge, ImgPh, KolBadge, Kv, Modal, Stat } from '../components/UI';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
@@ -229,13 +230,25 @@ export function ScreenLaporan() {
   );
 }
 
-// Photo strip with click-to-zoom lightbox. The hero photo gets a 2:1 layout
-// when there are extras; alone it spans the modal. Thumbnails are clickable
-// to swap the hero, and the hero clicks open the lightbox at the selected
-// index. Keyboard ← → navigate; Esc closes — handled inline.
-function FotoGallery({ urls, nasabahNama }: { urls: string[]; nasabahNama: string }) {
+// Photo strip with click-to-zoom lightbox AND supervisor annotation mode.
+// Each foto carries its server-side id + saved annotation list. When the
+// supervisor toggles "Anotasi", clicks become a shape draw and changes
+// are persisted via PATCH /api/foto/:id/annotations.
+function FotoGallery({ fotos, nasabahNama, canAnnotate }: {
+  fotos: { id: string; url: string; annotations: any[] }[];
+  nasabahNama: string;
+  canAnnotate: boolean;
+}) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [annotateMode, setAnnotateMode] = useState(false);
+  const [localAnnotations, setLocalAnnotations] = useState<Record<string, any[]>>(
+    () => Object.fromEntries(fotos.map(f => [f.id, f.annotations ?? []])),
+  );
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const urls = fotos.map(f => f.url);
+  const activeFoto = fotos[activeIdx];
 
   if (urls.length === 0) {
     return (
@@ -245,19 +258,70 @@ function FotoGallery({ urls, nasabahNama }: { urls: string[]; nasabahNama: strin
     );
   }
 
+  const saveActive = async () => {
+    if (!activeFoto) return;
+    setSavingId(activeFoto.id);
+    try {
+      await saveAnnotations(activeFoto.id, localAnnotations[activeFoto.id] ?? []);
+    } catch { /* ignore — keep edits local */ }
+    finally { setSavingId(null); }
+  };
+
   return (
     <>
+      {canAnnotate && (
+        <div className="between" style={{ marginBottom: 8 }}>
+          <div className="muted" style={{ fontSize: 12 }}>
+            {annotateMode ? 'Klik tombol bawah untuk simpan ke server.' : 'Anotasi membantu petugas memahami feedback Anda.'}
+          </div>
+          <div className="center gap-2">
+            <button className="btn btn-sm" onClick={() => setAnnotateMode(m => !m)}
+              style={annotateMode ? { background: 'var(--accent)', color: 'white', border: 'none' } : {}}>
+              <Ic.settings size={12} />{annotateMode ? 'Selesai anotasi' : 'Mulai anotasi'}
+            </button>
+            {annotateMode && (
+              <button className="btn btn-sm btn-primary" onClick={saveActive} disabled={!!savingId}>
+                <Ic.checkCircle size={12} />{savingId ? 'Menyimpan…' : 'Simpan'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {annotateMode && activeFoto ? (
+        <div style={{ marginBottom: 18 }}>
+          <PhotoAnnotator src={activeFoto.url}
+            annotations={localAnnotations[activeFoto.id] ?? []}
+            editable={true}
+            onChange={a => setLocalAnnotations(s => ({ ...s, [activeFoto.id]: a }))} />
+          {urls.length > 1 && (
+            <div className="center gap-2" style={{ marginTop: 8 }}>
+              {urls.map((_, i) => (
+                <button key={i} className={'btn btn-sm ' + (i === activeIdx ? '' : 'btn-ghost')}
+                  onClick={() => setActiveIdx(i)}>
+                  Foto {i + 1}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="grid gap-2" style={{
         gridTemplateColumns: urls.length > 1 ? '2fr 1fr' : '1fr', marginBottom: 18,
       }}>
         <button onClick={() => setLightboxIdx(activeIdx)}
-          style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in' }}>
-          <img src={urls[activeIdx]} alt={`Foto utama ${nasabahNama}`}
-            style={{
-              width: '100%', height: urls.length > 1 ? 220 : 240,
-              objectFit: 'cover', borderRadius: 12, background: 'var(--ink)',
-              border: '1px solid var(--line)', display: 'block',
-            }} />
+          style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in', position: 'relative' }}>
+          {(localAnnotations[activeFoto?.id ?? ''] ?? []).length > 0 ? (
+            <PhotoAnnotator src={urls[activeIdx]}
+              annotations={localAnnotations[activeFoto!.id] ?? []} />
+          ) : (
+            <img src={urls[activeIdx]} alt={`Foto utama ${nasabahNama}`}
+              style={{
+                width: '100%', height: urls.length > 1 ? 220 : 240,
+                objectFit: 'cover', borderRadius: 12, background: 'var(--ink)',
+                border: '1px solid var(--line)', display: 'block',
+              }} />
+          )}
         </button>
         {urls.length > 1 && (
           <div className="grid gap-2" style={{ gridTemplateRows: urls.length > 2 ? '1fr 1fr' : '1fr' }}>
@@ -280,6 +344,7 @@ function FotoGallery({ urls, nasabahNama }: { urls: string[]; nasabahNama: strin
           </div>
         )}
       </div>
+      )}
 
       {lightboxIdx !== null && (
         <Lightbox
@@ -389,7 +454,7 @@ function LaporanDetail({ k, onClose, petugasById, nasabahById }: {
         <button className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
       </div>
       <div className="modal-body">
-        <FotoGallery urls={k.fotoUrls ?? []} nasabahNama={n.nama} />
+        <FotoGallery fotos={k.fotos ?? []} nasabahNama={n.nama} canAnnotate={canReview} />
 
 
         <div className="card card-pad" style={{ background: 'var(--surface-2)', boxShadow: 'none', marginBottom: 16 }}>

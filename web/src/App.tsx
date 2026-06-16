@@ -35,6 +35,7 @@ const ScreenFeedbackPublic = lazy(() => import('./screens/FeedbackPublic').then(
 const ScreenFeedback = lazy(() => import('./screens/Feedback').then(m => ({ default: m.ScreenFeedback })));
 const ScreenBackup = lazy(() => import('./screens/Backup').then(m => ({ default: m.ScreenBackup })));
 const ScreenApiKeys = lazy(() => import('./screens/ApiKeys').then(m => ({ default: m.ScreenApiKeys })));
+const ScreenWebhooks = lazy(() => import('./screens/Webhooks').then(m => ({ default: m.ScreenWebhooks })));
 
 function ScreenFallback() {
   return (
@@ -47,7 +48,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -82,6 +83,7 @@ function useNav(): NavGroup[] {
   if (role === 'ADMIN') adminItems.push({ k: 'branch', label: 'Kelola Cabang', icon: 'layers' });
   if (role === 'ADMIN') adminItems.push({ k: 'backup', label: 'Backup DB', icon: 'download' });
   if (role === 'ADMIN') adminItems.push({ k: 'apikeys', label: 'API Keys', icon: 'eye' });
+  if (role === 'ADMIN') adminItems.push({ k: 'webhooks', label: 'Webhooks', icon: 'send' });
   if (role === 'ADMIN' || role === 'SUPERVISOR') {
     adminItems.push({ k: 'petugas', label: 'Kelola Petugas', icon: 'user' });
     adminItems.push({ k: 'nasabah', label: 'Kelola Nasabah', icon: 'users' });
@@ -115,6 +117,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   feedback: ['Feedback Nasabah', 'Rating + komentar nasabah pasca-kunjungan, plus petugas yang konsisten rating rendah'],
   backup: ['Backup Database', 'Status backup pg_dump + verifikasi integritas file'],
   apikeys: ['API Keys', 'Token machine-to-machine untuk integrasi sistem lain'],
+  webhooks: ['Webhooks', 'Daftarkan URL eksternal untuk menerima event sistem'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -373,6 +376,7 @@ export function App() {
             {page === 'feedback' && <ScreenFeedback />}
             {page === 'backup' && <ScreenBackup />}
             {page === 'apikeys' && <ScreenApiKeys />}
+            {page === 'webhooks' && <ScreenWebhooks />}
           </Suspense>
         </main>
       </div>

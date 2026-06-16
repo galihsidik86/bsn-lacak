@@ -35,6 +35,7 @@ model Branch {
   wilayah      Wilayah[]
   feedback     CustomerFeedback[]
   apiKeys      ApiKey[]
+  webhooks     WebhookSubscription[]
   blast        Blast[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -114,6 +115,7 @@ model User {
   pushSubscriptions   PushSubscription[]
   createdApiKeys      ApiKey[]       @relation("ApiKeyCreator")
   savedFilters        SavedFilter[]
+  createdWebhooks     WebhookSubscription[] @relation("WebhookCreator")
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -441,7 +443,55 @@ model Foto {
   kunjungan   Kunjungan @relation(fields: [kunjunganId], references: [id], onDelete: Cascade)
   kunjunganId String
   path        String
+  // Supervisor annotations stored as a JSON array of shapes (arrow / circle /
+  // rect / note) with normalized 0..1 coordinates so they render correctly
+  // at any display size. Lihat `web/src/components/PhotoAnnotator.tsx` untuk
+  // skema lengkap.
+  annotations Json      @default("[]")
   createdAt   DateTime  @default(now())
+}
+
+// Webhook subscriptions for external integrations. Each subscription holds
+// an HMAC secret used to sign deliveries with X-BSN-Signature so the
+// receiver can verify the payload originated here. Delivery attempts are
+// logged separately (WebhookDelivery) with retry status so operators can
+// audit failures.
+model WebhookSubscription {
+  id           String   @id @default(cuid())
+  name         String
+  url          String
+  // HMAC-SHA256 secret; presented once at create then masked in lists.
+  secret       String
+  // Array of event topics this subscription wants — "kunjungan.created",
+  // "kunjungan.reviewed", etc. Empty array = subscribe to all topics.
+  events       String[]
+  branch       Branch?  @relation(fields: [branchId], references: [id])
+  branchId     String?
+  active       Boolean  @default(true)
+  createdBy    User     @relation("WebhookCreator", fields: [createdById], references: [id])
+  createdById  String
+  lastDeliveryAt DateTime?
+  createdAt    DateTime @default(now())
+  deliveries   WebhookDelivery[]
+
+  @@index([active])
+  @@index([branchId])
+}
+
+model WebhookDelivery {
+  id              String   @id @default(cuid())
+  webhook         WebhookSubscription @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  webhookId       String
+  event           String
+  payload         Json
+  status          String   // 'success' | 'failed' | 'retrying'
+  responseStatus  Int?     // HTTP status from receiver
+  attempts        Int      @default(1)
+  error           String?
+  createdAt       DateTime @default(now())
+
+  @@index([webhookId, createdAt])
+  @@index([status, createdAt])
 }
 
 model Pembayaran {

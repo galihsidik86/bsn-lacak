@@ -80,6 +80,7 @@ export interface Kunjungan {
   lokasi: string;
   foto: number;
   fotoUrls?: string[];
+  fotos?: { id: string; url: string; annotations: any[] }[];
   valid: boolean;
   riskScore?: number;
   riskFlags?: string[];
