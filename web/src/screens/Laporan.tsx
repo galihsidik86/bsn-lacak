@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Ic } from '../components/Icons';
 import { Avatar, Badge, ImgPh, KolBadge, Kv, Modal, Stat } from '../components/UI';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
@@ -159,6 +159,127 @@ export function ScreenLaporan() {
   );
 }
 
+// Photo strip with click-to-zoom lightbox. The hero photo gets a 2:1 layout
+// when there are extras; alone it spans the modal. Thumbnails are clickable
+// to swap the hero, and the hero clicks open the lightbox at the selected
+// index. Keyboard ← → navigate; Esc closes — handled inline.
+function FotoGallery({ urls, nasabahNama }: { urls: string[]; nasabahNama: string }) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+
+  if (urls.length === 0) {
+    return (
+      <div style={{ marginBottom: 18 }}>
+        <ImgPh label={`◦ TIDAK ADA FOTO ◦\n${nasabahNama}`} h={220} style={{ whiteSpace: 'pre-line' }} />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="grid gap-2" style={{
+        gridTemplateColumns: urls.length > 1 ? '2fr 1fr' : '1fr', marginBottom: 18,
+      }}>
+        <button onClick={() => setLightboxIdx(activeIdx)}
+          style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in' }}>
+          <img src={urls[activeIdx]} alt={`Foto utama ${nasabahNama}`}
+            style={{
+              width: '100%', height: urls.length > 1 ? 220 : 240,
+              objectFit: 'cover', borderRadius: 12, background: 'var(--ink)',
+              border: '1px solid var(--line)', display: 'block',
+            }} />
+        </button>
+        {urls.length > 1 && (
+          <div className="grid gap-2" style={{ gridTemplateRows: urls.length > 2 ? '1fr 1fr' : '1fr' }}>
+            {urls.slice(1, 3).map((url, i) => {
+              const idx = i + 1;
+              return (
+                <button key={idx} onClick={() => setActiveIdx(idx)}
+                  style={{
+                    padding: 0, border: idx === activeIdx ? '2px solid var(--accent)' : '1px solid var(--line)',
+                    background: 'transparent', cursor: 'pointer', borderRadius: 12, overflow: 'hidden',
+                  }}>
+                  <img src={url} alt={`Foto ${idx + 1}`}
+                    style={{
+                      width: '100%', height: urls.length > 2 ? 106 : 220,
+                      objectFit: 'cover', background: 'var(--ink)', display: 'block',
+                    }} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {lightboxIdx !== null && (
+        <Lightbox
+          urls={urls}
+          startIndex={lightboxIdx}
+          alt={`Foto kunjungan ${nasabahNama}`}
+          onClose={() => setLightboxIdx(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function Lightbox({ urls, startIndex, alt, onClose }: {
+  urls: string[]; startIndex: number; alt: string; onClose: () => void;
+}) {
+  const [i, setI] = useState(startIndex);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowLeft') setI(p => (p - 1 + urls.length) % urls.length);
+      else if (e.key === 'ArrowRight') setI(p => (p + 1) % urls.length);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [urls.length, onClose]);
+
+  return (
+    <div role="dialog" aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 200,
+        display: 'grid', placeItems: 'center', padding: 24,
+      }}>
+      <img src={urls[i]} alt={alt}
+        onClick={e => e.stopPropagation()}
+        style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 96px)', objectFit: 'contain' }} />
+      <div style={{ position: 'absolute', top: 18, right: 18 }}>
+        <button onClick={onClose} aria-label="Tutup" className="btn btn-sm"
+          style={{ background: 'rgba(255,255,255,0.15)', color: 'white', border: 'none' }}>
+          <Ic.x size={16} />Tutup
+        </button>
+      </div>
+      {urls.length > 1 && (
+        <>
+          <button onClick={e => { e.stopPropagation(); setI(p => (p - 1 + urls.length) % urls.length); }}
+            aria-label="Sebelumnya"
+            style={{
+              position: 'absolute', left: 18, top: '50%', transform: 'translateY(-50%)',
+              width: 44, height: 44, borderRadius: 99, border: 'none', cursor: 'pointer',
+              background: 'rgba(255,255,255,0.18)', color: 'white', fontSize: 22, fontWeight: 800,
+            }}>‹</button>
+          <button onClick={e => { e.stopPropagation(); setI(p => (p + 1) % urls.length); }}
+            aria-label="Berikutnya"
+            style={{
+              position: 'absolute', right: 18, top: '50%', transform: 'translateY(-50%)',
+              width: 44, height: 44, borderRadius: 99, border: 'none', cursor: 'pointer',
+              background: 'rgba(255,255,255,0.18)', color: 'white', fontSize: 22, fontWeight: 800,
+            }}>›</button>
+          <div style={{
+            position: 'absolute', bottom: 18, left: 0, right: 0, textAlign: 'center',
+            color: 'white', fontSize: 13, fontWeight: 600,
+          }}>{i + 1} / {urls.length}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function LaporanDetail({ k, onClose, petugasById, nasabahById }: {
   k: Kunjungan; onClose: () => void;
   petugasById: (id: string) => Petugas | undefined;
@@ -198,15 +319,8 @@ function LaporanDetail({ k, onClose, petugasById, nasabahById }: {
         <button className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
       </div>
       <div className="modal-body">
-        <div className="grid gap-2" style={{ gridTemplateColumns: k.foto > 1 ? '2fr 1fr' : '1fr', marginBottom: 18 }}>
-          <ImgPh label={`◦ FOTO UTAMA ◦\nbukti kunjungan / usaha nasabah`} h={k.foto > 1 ? 200 : 220} style={{ whiteSpace: 'pre-line' }} />
-          {k.foto > 1 && (
-            <div className="grid gap-2" style={{ gridTemplateRows: k.foto > 2 ? '1fr 1fr' : '1fr' }}>
-              <ImgPh label="◦ foto 2 ◦" h={k.foto > 2 ? 96 : 200} />
-              {k.foto > 2 && <ImgPh label="◦ foto 3 ◦" h={96} />}
-            </div>
-          )}
-        </div>
+        <FotoGallery urls={k.fotoUrls ?? []} nasabahNama={n.nama} />
+
 
         <div className="card card-pad" style={{ background: 'var(--surface-2)', boxShadow: 'none', marginBottom: 16 }}>
           <div className="between">

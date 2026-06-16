@@ -13,6 +13,7 @@ import blast from '../../src/routes/blast.js';
 import distribusi from '../../src/routes/distribusi.js';
 import push from '../../src/routes/push.js';
 import analytics from '../../src/routes/analytics.js';
+import attendance from '../../src/routes/attendance.js';
 
 export function buildApp() {
   const app = express();
@@ -28,6 +29,7 @@ export function buildApp() {
   app.use('/api/distribusi', distribusi);
   app.use('/api/push', push);
   app.use('/api/analytics', analytics);
+  app.use('/api/attendance', attendance);
   return app;
 }
 
@@ -45,6 +47,7 @@ export async function resetDb() {
       "Pembayaran",
       "RefreshToken",
       "PetugasPosition",
+      "Attendance",
       "Nasabah",
       "User",
       "Petugas",

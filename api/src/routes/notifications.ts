@@ -9,18 +9,34 @@ router.use(requireAuth);
 
 router.get('/', async (req, res) => {
   const onlyUnread = req.query.unread === '1';
+  const severityParam = typeof req.query.severity === 'string' ? req.query.severity : null;
+  const severity = severityParam && ['INFO', 'WARN', 'CRIT'].includes(severityParam)
+    ? severityParam as 'INFO' | 'WARN' | 'CRIT' : null;
+  const cursor = typeof req.query.cursor === 'string' && req.query.cursor.length > 0
+    ? req.query.cursor : null;
+  const limitNum = Number.parseInt(String(req.query.limit ?? '50'), 10);
+  const limit = Number.isFinite(limitNum) && limitNum > 0 && limitNum <= 200 ? limitNum : 50;
+
   const list = await prisma.notification.findMany({
     where: {
       userId: req.user!.sub,
       ...(onlyUnread ? { readAt: null } : {}),
+      ...(severity ? { severity } : {}),
     },
     orderBy: { createdAt: 'desc' },
-    take: 50,
+    take: limit + 1,                       // +1 lookahead for nextCursor
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
   });
+  const hasMore = list.length > limit;
+  const items = hasMore ? list.slice(0, limit) : list;
+
   const unreadCount = await prisma.notification.count({
     where: { userId: req.user!.sub, readAt: null },
   });
-  res.json({ items: list, unreadCount });
+  res.json({
+    items, unreadCount,
+    nextCursor: hasMore ? items[items.length - 1].id : null,
+  });
 });
 
 router.patch('/:id/read', async (req, res) => {

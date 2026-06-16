@@ -164,6 +164,15 @@ export function NotificationBell({ onNavigate }: { onNavigate?: (link: string) =
               );
             })}
           </div>
+
+          {onNavigate && (
+            <div style={{ padding: '10px 16px', borderTop: '1px solid var(--line)', textAlign: 'center' }}>
+              <button className="btn btn-ghost btn-sm"
+                onClick={() => { onNavigate('notifikasi'); setOpen(false); }}>
+                Lihat semua notifikasi →
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

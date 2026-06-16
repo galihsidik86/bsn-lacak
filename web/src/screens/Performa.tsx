@@ -7,6 +7,7 @@ import { Avatar } from '../components/UI';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import { tokenStore } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { listTodayAttendance } from '../lib/attendance';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -74,6 +75,11 @@ export function ScreenPerforma() {
     queryKey: ['petugas-performance', days],
     queryFn: () => fetchPerformance(days),
   });
+  const attQ = useQuery({
+    queryKey: ['attendance-today'],
+    queryFn: listTodayAttendance,
+    refetchInterval: 60_000,
+  });
 
   if (q.isPending) return <div className="content"><Skeleton h={400} /></div>;
   if (q.error) return <div className="content"><ErrorState onRetry={() => q.refetch()} /></div>;
@@ -118,6 +124,8 @@ export function ScreenPerforma() {
           </div>
         </div>
       </div>
+
+      <AttendanceCard data={attQ.data ?? []} loading={attQ.isPending} />
 
       <div className="card fade-up" style={{ overflow: 'hidden' }}>
         <table className="table">
@@ -191,6 +199,75 @@ function SortTh({ col, sort, setSort, children }: {
         {children}{active && <span style={{ fontSize: 10 }}>▾</span>}
       </span>
     </th>
+  );
+}
+
+type AttendanceRow = Awaited<ReturnType<typeof listTodayAttendance>>[number];
+
+function fmtElapsedMin(ms: number): string {
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m === 0 ? `${h}j` : `${h}j ${m}m`;
+}
+
+function AttendanceCard({ data, loading }: { data: AttendanceRow[]; loading: boolean }) {
+  const active = data.filter(r => r.clockOutAt === null);
+  const done = data.filter(r => r.clockOutAt !== null);
+  return (
+    <div className="card fade-up" style={{ marginBottom: 16 }}>
+      <div className="between" style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)' }}>
+        <div className="section-title">Kehadiran Hari Ini</div>
+        <div className="center gap-2">
+          <div className="chip" style={{ background: 'var(--accent-soft)', color: 'var(--accent-ink)' }}>
+            <Ic.user size={13} />{active.length} aktif
+          </div>
+          <div className="chip">{done.length} selesai</div>
+        </div>
+      </div>
+      {loading ? (
+        <div style={{ padding: 16 }}><Skeleton h={80} /></div>
+      ) : data.length === 0 ? (
+        <div className="muted" style={{ padding: '18px', fontSize: 13, textAlign: 'center' }}>
+          Belum ada petugas yang clock-in hari ini.
+        </div>
+      ) : (
+        <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+          {data.map(r => {
+            const isActive = r.clockOutAt === null;
+            const start = new Date(r.clockInAt).getTime();
+            const end = isActive ? Date.now() : new Date(r.clockOutAt!).getTime();
+            return (
+              <div key={r.id} style={{
+                background: isActive ? 'var(--accent-soft)' : 'var(--surface-2)',
+                border: `1px solid ${isActive ? 'var(--accent-soft-2, var(--accent))' : 'var(--line)'}`,
+                borderRadius: 12, padding: '10px 12px',
+              }}>
+                <div className="center gap-2">
+                  <Avatar inisial={r.petugas.inisial} hue={r.petugas.hue} size={28} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.petugas.nama}</div>
+                    <div className="muted mono" style={{ fontSize: 10.5 }}>{r.petugas.kode} · {r.branch.kode}</div>
+                  </div>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700,
+                    padding: '3px 8px', borderRadius: 99,
+                    background: isActive ? 'var(--accent)' : 'var(--ink-4)', color: 'white',
+                  }}>{isActive ? 'AKTIF' : 'SELESAI'}</span>
+                </div>
+                <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
+                  <strong>{new Date(r.clockInAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</strong>
+                  {isActive
+                    ? <> – sekarang · <strong>{fmtElapsedMin(end - start)}</strong></>
+                    : <> – {new Date(r.clockOutAt!).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} · <strong>{fmtElapsedMin(end - start)}</strong></>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 

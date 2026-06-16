@@ -27,6 +27,7 @@ const ScreenPetugas = lazy(() => import('./screens/Petugas').then(m => ({ defaul
 const ScreenNasabah = lazy(() => import('./screens/Nasabah').then(m => ({ default: m.ScreenNasabah })));
 const ScreenPerforma = lazy(() => import('./screens/Performa').then(m => ({ default: m.ScreenPerforma })));
 const ScreenAnalytics = lazy(() => import('./screens/Analytics').then(m => ({ default: m.ScreenAnalytics })));
+const ScreenNotifikasi = lazy(() => import('./screens/Notifikasi').then(m => ({ default: m.ScreenNotifikasi })));
 
 function ScreenFallback() {
   return (
@@ -39,7 +40,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -96,6 +97,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   nasabah: ['Kelola Nasabah', 'Tambah / edit / non-aktifkan data nasabah binaan'],
   performa: ['Performa Petugas', 'Approval rate, flag rate, dan respon supervisor per petugas'],
   analytics: ['Analytics & Closing', 'Tren penagihan bulanan, leaderboard, dan ekspor closing CSV'],
+  notifikasi: ['Notifikasi', 'Riwayat semua notifikasi sistem dan supervisor'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -316,6 +318,7 @@ export function App() {
             {page === 'nasabah' && <ScreenNasabah />}
             {page === 'performa' && <ScreenPerforma />}
             {page === 'analytics' && <ScreenAnalytics />}
+            {page === 'notifikasi' && <ScreenNotifikasi go={go} />}
           </Suspense>
         </main>
       </div>

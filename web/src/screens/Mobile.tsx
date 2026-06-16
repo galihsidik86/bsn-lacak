@@ -17,6 +17,7 @@ import { clearPhotos, loadPhotos, savePhotos } from '../lib/photoStore';
 import { enqueue as enqueueOffline } from '../lib/submitQueue';
 import { useOfflineQueue } from '../lib/useOfflineQueue';
 import { pushState, subscribePush, unsubscribePush } from '../lib/webPush';
+import { clockIn, clockOut, getMyAttendance, type MyAttendance } from '../lib/attendance';
 import type { HasilKunjungan, Nasabah, Petugas } from '../types';
 
 type Tab = 'beranda' | 'rute' | 'riwayat' | 'profil';
@@ -154,7 +155,7 @@ export function ScreenMobile() {
         {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} />}
         {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} here={hereFix} />}
         {!reportFor && tab === 'riwayat' && <MRiwayat me={ME} onLaporUlang={setReportFor} />}
-        {!reportFor && tab === 'profil' && <MProfil me={ME} pendingOffline={offline.pending} />}
+        {!reportFor && tab === 'profil' && <MProfil me={ME} here={hereFix} pendingOffline={offline.pending} />}
         {reportFor && <MLapor n={reportFor} me={ME} here={hereFix} onClose={() => setReportFor(null)}
           onDone={() => { setReportFor(null); setTab('riwayat'); }} />}
       </div>
@@ -696,15 +697,59 @@ function MRiwayat({ me: ME, onLaporUlang }: { me: Petugas; onLaporUlang: (n: Nas
   );
 }
 
-function MProfil({ me: ME, pendingOffline }: { me: Petugas; pendingOffline: number }) {
+function fmtElapsed(ms: number): string {
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 60) return `${mins} menit`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m === 0 ? `${h} jam` : `${h} jam ${m} menit`;
+}
+
+function MProfil({ me: ME, here, pendingOffline }: { me: Petugas; here: { lat: number; lng: number } | null; pendingOffline: number }) {
   const user = useAuth(s => s.user);
   const pct = ME.target > 0 ? Math.round(ME.terkumpul / ME.target * 100) : 0;
   const [push, setPush] = useState<{ supported: boolean; permission: NotificationPermission; subscribed: boolean } | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
+  const [att, setAtt] = useState<MyAttendance | null>(null);
+  const [attBusy, setAttBusy] = useState(false);
 
   useEffect(() => {
     void (async () => setPush(await pushState()))();
+    void refreshAtt();
   }, []);
+
+  const refreshAtt = async () => {
+    try { setAtt(await getMyAttendance()); } catch { /* ignore */ }
+  };
+
+  // Tick label every 60s so "Lapangan sejak HH:MM" stays current.
+  const [, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const toggleAtt = async () => {
+    if (attBusy) return;
+    setAttBusy(true);
+    try {
+      const coords = here ? { lat: here.lat, lng: here.lng } : {};
+      if (att?.current) {
+        if (!window.confirm('Akhiri sesi lapangan?')) { setAttBusy(false); return; }
+        await clockOut(coords);
+      } else {
+        await clockIn(coords);
+      }
+      await refreshAtt();
+    } catch (e: any) {
+      const code = e?.response?.data?.error;
+      if (code === 'already_clocked_in') alert('Anda sudah clock-in.');
+      else if (code === 'not_clocked_in') alert('Belum clock-in.');
+      else alert('Gagal. Coba lagi.');
+    } finally {
+      setAttBusy(false);
+    }
+  };
 
   const togglePush = async () => {
     if (pushBusy || !push) return;
@@ -762,6 +807,46 @@ function MProfil({ me: ME, pendingOffline }: { me: Petugas; pendingOffline: numb
           <ProfilRow icon="phone" label="No. HP" value={ME.hp} />
           <ProfilRow icon="layers" label="Cabang" value={user?.branch?.nama ?? '—'} last />
         </div>
+      </div>
+
+      <div style={{ padding: '0 16px 12px' }}>
+        <button onClick={toggleAtt} disabled={attBusy}
+          className="card card-pad" style={{
+            width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
+            background: att?.current ? 'linear-gradient(145deg, var(--accent), var(--accent-700))' : 'var(--surface)',
+            color: att?.current ? 'white' : 'var(--ink)',
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+          <div className="stat-ic" style={{
+            background: att?.current ? 'rgba(255,255,255,0.18)' : 'var(--accent-soft)',
+            color: att?.current ? 'white' : 'var(--accent)',
+            flex: 'none', width: 40, height: 40,
+          }}>
+            <Ic.clock size={18} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', opacity: 0.8 }}>
+              Sesi Lapangan
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 14, marginTop: 2 }}>
+              {att?.current
+                ? `Aktif sejak ${new Date(att.current.clockInAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`
+                : 'Belum clock-in'}
+            </div>
+            {att?.current && (
+              <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2 }}>
+                {fmtElapsed(Date.now() - new Date(att.current.clockInAt).getTime())} di lapangan
+              </div>
+            )}
+          </div>
+          <div style={{
+            padding: '6px 12px', borderRadius: 99, fontSize: 12, fontWeight: 700,
+            background: att?.current ? 'rgba(255,255,255,0.18)' : 'var(--accent)',
+            color: 'white',
+          }}>
+            {att?.current ? 'Selesai' : 'Mulai'}
+          </div>
+        </button>
       </div>
 
       <div style={{ padding: '0 16px 16px' }}>

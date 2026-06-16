@@ -31,6 +31,7 @@ model Branch {
   nasabah      Nasabah[]
   kunjungan    Kunjungan[]
   pembayaran   Pembayaran[]
+  attendance   Attendance[]
   blast        Blast[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -175,13 +176,36 @@ model Petugas {
   branch    Branch        @relation(fields: [branchId], references: [id])
   branchId  String
   user      User?
-  nasabah   Nasabah[]
-  kunjungan Kunjungan[]
-  positions PetugasPosition[]
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  nasabah     Nasabah[]
+  kunjungan   Kunjungan[]
+  positions   PetugasPosition[]
+  attendance  Attendance[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   @@index([branchId])
+}
+
+// Clock-in/out untuk hari ini. Satu petugas hanya boleh punya satu sesi
+// terbuka (clockOutAt = null) pada waktu yang sama — enforced di route.
+// Histori session lengkap diarsip untuk laporan absensi.
+model Attendance {
+  id           String   @id @default(cuid())
+  petugas      Petugas  @relation(fields: [petugasId], references: [id])
+  petugasId    String
+  branch       Branch   @relation(fields: [branchId], references: [id])
+  branchId     String
+  clockInAt    DateTime @default(now())
+  clockInLat   Float?
+  clockInLng   Float?
+  clockOutAt   DateTime?
+  clockOutLat  Float?
+  clockOutLng  Float?
+  createdAt    DateTime @default(now())
+
+  @@index([petugasId, clockInAt])
+  @@index([branchId, clockInAt])
+  @@index([petugasId, clockOutAt])
 }
 
 model PetugasPosition {
