@@ -18,3 +18,21 @@ export const apiLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'rate_limited' },
 });
+
+// POST /api/kunjungan is heavy: multipart up to 5×8MB, sharp re-encode +
+// EXIF + watermark per photo. Per-user (token sub) bucket so an attacker
+// with a stolen token can't spin a DoS, but a busy petugas still has
+// plenty of headroom (45 reports per 10min ≈ one every 13s).
+export const kunjunganLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 45,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'rate_limited', detail: 'Terlalu banyak laporan. Tunggu sebentar.' },
+  keyGenerator: (req) => {
+    // Prefer the authenticated user; fall back to IP if pre-auth (shouldn't
+    // happen since requireAuth runs first, but safety net).
+    const sub = (req as any).user?.sub;
+    return typeof sub === 'string' && sub.length > 0 ? `u:${sub}` : `ip:${req.ip ?? 'unknown'}`;
+  },
+});

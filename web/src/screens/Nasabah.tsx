@@ -81,6 +81,9 @@ async function patchNasabah(id: string, p: Partial<CreatePayload & { active: boo
 async function deleteNasabah(id: string) {
   return (await axios.delete(`${BASE}/nasabah/${id}`, { withCredentials: true, headers: headers() })).data;
 }
+async function bulkImport(rows: CreatePayload[]): Promise<{ imported: number; total: number; outcomes: Array<{ index: number; kode: string; status: string; message?: string }> }> {
+  return (await axios.post(`${BASE}/nasabah/bulk`, { rows }, { withCredentials: true, headers: headers() })).data;
+}
 
 const KOL_LABEL: Record<Kol, string> = {
   K1: 'Lancar', K2: 'DPK', K3: 'Kurang Lancar', K4: 'Diragukan', K5: 'Macet',
@@ -101,6 +104,7 @@ export function ScreenNasabah() {
   const petugasQ = useQuery({ queryKey: ['petugas'], queryFn: listPetugas });
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<NasabahRow | null>(null);
+  const [importing, setImporting] = useState(false);
 
   if (q.isPending) return <div className="content" style={{ display: 'grid', gap: 16 }}><Skeleton h={80} /><Skeleton h={400} /></div>;
   if (q.error) return <div className="content"><ErrorState onRetry={() => q.refetch()} /></div>;
@@ -126,9 +130,14 @@ export function ScreenNasabah() {
             Tampilkan inactive
           </label>
         </div>
-        <button className="btn btn-primary" onClick={() => setCreating(true)}>
-          <Ic.plus size={16} />Tambah Nasabah
-        </button>
+        <div className="center gap-2">
+          <button className="btn" onClick={() => setImporting(true)}>
+            <Ic.download size={15} style={{ transform: 'rotate(180deg)' }} />Import CSV
+          </button>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>
+            <Ic.plus size={16} />Tambah Nasabah
+          </button>
+        </div>
       </div>
 
       <div className="card fade-up" style={{ overflow: 'hidden' }}>
@@ -182,6 +191,13 @@ export function ScreenNasabah() {
           petugas={petugasQ.data ?? []}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); qc.invalidateQueries({ queryKey: ['nasabah'] }); }}
+        />
+      )}
+      {importing && (
+        <BulkImport
+          petugas={petugasQ.data ?? []}
+          onClose={() => setImporting(false)}
+          onDone={() => { setImporting(false); qc.invalidateQueries({ queryKey: ['nasabah'] }); }}
         />
       )}
     </div>
@@ -365,6 +381,257 @@ function NasabahForm({ mode, initial, petugas, onClose, onSaved }: {
           </button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+interface ParsedRow {
+  row: number;
+  data?: CreatePayload;
+  errors: string[];
+}
+
+// Minimal RFC-4180 CSV parser — handles quoted fields with commas + newlines
+// inside, and "" escaping. No external dependency keeps the chunk lean.
+function parseCsv(text: string): string[][] {
+  const out: string[][] = [];
+  let row: string[] = [];
+  let cur = '';
+  let inQuote = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuote) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { cur += '"'; i++; }
+        else inQuote = false;
+      } else cur += c;
+    } else if (c === '"') inQuote = true;
+    else if (c === ',') { row.push(cur); cur = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (cur !== '' || row.length > 0) { row.push(cur); out.push(row); row = []; cur = ''; }
+      if (c === '\r' && text[i + 1] === '\n') i++;
+    } else cur += c;
+  }
+  if (cur !== '' || row.length > 0) { row.push(cur); out.push(row); }
+  return out.filter(r => r.some(cell => cell !== ''));
+}
+
+const CSV_TEMPLATE_HEADERS = [
+  'kode', 'nama', 'alamat', 'hp', 'lat', 'lng',
+  'kol', 'akad', 'plafon', 'tenor', 'angsuran', 'sisa', 'dpd', 'dueIn', 'petugasKode',
+];
+
+const SAMPLE_CSV = CSV_TEMPLATE_HEADERS.join(',') + '\n' +
+  'N2024001,Toko Maju,Jl. Mawar 1,08111000111,-6.4825,106.8595,K1,MURABAHAH,5000000,12,500000,5000000,0,5,PT1\n' +
+  'N2024002,Warung Sari,Jl. Melati 7,08222333444,,,K2,MUSYARAKAH,3000000,18,200000,2500000,15,-2,PT1\n';
+
+function downloadTemplate() {
+  const blob = new Blob(['\ufeff' + SAMPLE_CSV], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'template-nasabah.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function BulkImport({ petugas, onClose, onDone }: {
+  petugas: PetugasRow[]; onClose: () => void; onDone: () => void;
+}) {
+  const [parsed, setParsed] = useState<ParsedRow[]>([]);
+  const [fileName, setFileName] = useState('');
+  const [result, setResult] = useState<{ imported: number; total: number; outcomes: Array<{ kode: string; status: string }> } | null>(null);
+  const [sending, setSending] = useState(false);
+  const [globalErr, setGlobalErr] = useState<string | null>(null);
+
+  const petugasByKode = new Map(petugas.map(p => [p.kode, p]));
+
+  const onFile = async (file: File) => {
+    setFileName(file.name);
+    setResult(null);
+    setGlobalErr(null);
+    const text = await file.text();
+    const rows = parseCsv(text);
+    if (rows.length < 2) { setGlobalErr('File CSV kosong atau tidak punya header.'); return; }
+    const header = rows[0].map(h => h.trim());
+    const colIdx = (k: string) => header.findIndex(h => h.toLowerCase() === k.toLowerCase());
+
+    const missingCols = CSV_TEMPLATE_HEADERS.filter(c => colIdx(c) < 0 && c !== 'lat' && c !== 'lng' && c !== 'dpd' && c !== 'dueIn');
+    if (missingCols.length) { setGlobalErr(`Header CSV kurang kolom: ${missingCols.join(', ')}`); return; }
+
+    const out: ParsedRow[] = [];
+    for (let r = 1; r < rows.length; r++) {
+      const errs: string[] = [];
+      const row = rows[r];
+      const get = (k: string) => {
+        const i = colIdx(k);
+        return i >= 0 ? (row[i] ?? '').trim() : '';
+      };
+      const num = (v: string) => v === '' ? undefined : Number(v.replace(/[^\d.-]/g, ''));
+      const reqNum = (v: string, name: string): number => {
+        const n = num(v);
+        if (n == null || Number.isNaN(n)) { errs.push(`${name} bukan angka`); return 0; }
+        return n;
+      };
+      const kode = get('kode');
+      if (!/^N[A-Z0-9]+$/.test(kode)) errs.push('kode harus awalan N + huruf besar/angka');
+      const petKode = get('petugasKode');
+      const pet = petugasByKode.get(petKode);
+      if (!pet) errs.push(`petugas ${petKode} tidak ditemukan`);
+      const kol = (get('kol') || 'K1').toUpperCase();
+      if (!['K1', 'K2', 'K3', 'K4', 'K5'].includes(kol)) errs.push('kol tidak valid');
+      const akad = (get('akad') || 'MURABAHAH').toUpperCase();
+      if (!['MURABAHAH', 'MUSYARAKAH', 'IJARAH', 'MUSYARAKAH_MUTANAQISAH', 'ISTISHNA'].includes(akad)) errs.push('akad tidak valid');
+      const data: CreatePayload = {
+        kode, nama: get('nama'), alamat: get('alamat'), hp: get('hp'),
+        lat: num(get('lat')),
+        lng: num(get('lng')),
+        kol: kol as Kol,
+        akad: akad as Akad,
+        plafon: reqNum(get('plafon'), 'plafon'),
+        tenor: reqNum(get('tenor'), 'tenor') || 12,
+        angsuran: reqNum(get('angsuran'), 'angsuran'),
+        sisa: reqNum(get('sisa'), 'sisa'),
+        dpd: num(get('dpd')) ?? 0,
+        dueIn: num(get('dueIn')) ?? 0,
+        petugasId: pet?.id ?? '',
+      };
+      if (!data.nama) errs.push('nama wajib');
+      if (!data.alamat) errs.push('alamat wajib');
+      if (!data.hp) errs.push('hp wajib');
+      out.push({ row: r + 1, data: errs.length === 0 ? data : undefined, errors: errs });
+    }
+    setParsed(out);
+  };
+
+  const valid = parsed.filter(p => p.data && p.errors.length === 0);
+  const invalid = parsed.filter(p => p.errors.length > 0);
+
+  const submit = async () => {
+    if (valid.length === 0) return;
+    setSending(true);
+    try {
+      const r = await bulkImport(valid.map(p => p.data!));
+      setResult(r);
+    } catch (e: any) {
+      setGlobalErr(e?.response?.data?.error === 'rate_limited'
+        ? 'Terlalu banyak request. Coba lagi sebentar.'
+        : 'Gagal import. Periksa data.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Modal onClose={onClose} max={780}>
+      <div className="modal-head">
+        <div style={{ flex: 1 }}>
+          <div className="section-title">Bulk Import Nasabah</div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
+            Upload file CSV (max 2.000 baris) untuk import banyak nasabah sekaligus.
+          </div>
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+      </div>
+      <div className="modal-body">
+        {!result && (
+          <>
+            <div className="between" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+              <label className="btn">
+                <Ic.download size={15} style={{ transform: 'rotate(180deg)' }} />Pilih file CSV
+                <input type="file" accept=".csv,text/csv"
+                  style={{ display: 'none' }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void onFile(f); e.target.value = ''; }} />
+              </label>
+              <button className="btn btn-sm btn-ghost" onClick={downloadTemplate}>
+                <Ic.download size={13} />Unduh template
+              </button>
+              {fileName && <span className="muted mono" style={{ fontSize: 11.5 }}>{fileName}</span>}
+            </div>
+
+            {globalErr && (
+              <div className="center gap-2" style={{
+                marginBottom: 12, background: 'var(--col-macet-soft)', color: 'var(--col-macet)',
+                borderRadius: 10, padding: '10px 12px', fontSize: 12.5, fontWeight: 600,
+              }}>
+                <Ic.alert size={15} />{globalErr}
+              </div>
+            )}
+
+            {parsed.length > 0 && (
+              <>
+                <div className="center gap-3" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+                  <div className="chip" style={{ background: 'var(--accent-soft)', color: 'var(--accent-ink)' }}>
+                    <Ic.checkCircle size={13} />{valid.length} valid
+                  </div>
+                  {invalid.length > 0 && (
+                    <div className="chip" style={{ background: 'var(--col-macet-soft)', color: 'var(--col-macet)' }}>
+                      <Ic.alert size={13} />{invalid.length} error
+                    </div>
+                  )}
+                </div>
+                <div style={{ maxHeight: 320, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 12 }}>
+                  <table className="table" style={{ fontSize: 12 }}>
+                    <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
+                      <tr><th>Row</th><th>Kode</th><th>Nama</th><th>Petugas</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                      {parsed.map(p => (
+                        <tr key={p.row} style={{ background: p.errors.length ? 'var(--col-macet-soft)' : undefined }}>
+                          <td className="mono">{p.row}</td>
+                          <td className="mono">{p.data?.kode ?? '—'}</td>
+                          <td>{p.data?.nama ?? '—'}</td>
+                          <td className="mono">{p.data?.petugasId ? petugas.find(x => x.id === p.data!.petugasId)?.kode ?? '—' : '—'}</td>
+                          <td style={{ fontSize: 11.5 }}>
+                            {p.errors.length === 0
+                              ? <span style={{ color: 'var(--accent)' }}>OK</span>
+                              : <span style={{ color: 'var(--col-macet)' }}>{p.errors.join(' · ')}</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {result && (
+          <div>
+            <div className="card card-pad" style={{ background: 'var(--accent-soft)', boxShadow: 'none', marginBottom: 12 }}>
+              <div className="center gap-2" style={{ color: 'var(--accent-ink)', fontWeight: 800, fontSize: 14 }}>
+                <Ic.checkCircle size={18} />{result.imported} nasabah berhasil di-import dari {result.total} baris.
+              </div>
+            </div>
+            {result.outcomes.filter(o => o.status !== 'imported').length > 0 && (
+              <div style={{ maxHeight: 320, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 12 }}>
+                <table className="table" style={{ fontSize: 12 }}>
+                  <thead><tr><th>Kode</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {result.outcomes.filter(o => o.status !== 'imported').map(o => (
+                      <tr key={o.kode}>
+                        <td className="mono">{o.kode}</td>
+                        <td style={{ color: 'var(--col-macet)' }}>{o.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="modal-foot">
+        {result
+          ? <button className="btn btn-primary" onClick={onDone}>Selesai</button>
+          : <>
+              <button className="btn" onClick={onClose}>Batal</button>
+              <button className="btn btn-primary" disabled={valid.length === 0 || sending} onClick={submit}>
+                {sending ? 'Mengirim…' : `Import ${valid.length} baris`}
+              </button>
+            </>
+        }
+      </div>
     </Modal>
   );
 }

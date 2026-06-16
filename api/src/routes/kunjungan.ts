@@ -17,6 +17,7 @@ import { watermarkPhoto } from '../lib/watermark.js';
 import { requireRole } from '../auth.js';
 import { pushToUsers } from '../lib/webPush.js';
 import { enqueueNotification } from './notifications.js';
+import { kunjunganLimiter } from '../lib/rateLimit.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -64,7 +65,7 @@ router.get('/', async (req, res) => {
   res.json(list);
 });
 
-router.post('/', upload.array('photos', 5), async (req, res) => {
+router.post('/', kunjunganLimiter, upload.array('photos', 5), async (req, res) => {
   const parsed = body.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'bad_request', details: parsed.error.flatten() });
 

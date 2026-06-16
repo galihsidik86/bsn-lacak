@@ -203,6 +203,82 @@ router.patch('/:id', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
   res.json(updated);
 });
 
+// Bulk import — CSV uploads from legacy systems land here as a JSON
+// array. Each row is validated independently and a per-row result is
+// returned so the UI can show "X imported / Y skipped (duplicate) /
+// Z failed". One DB transaction so a mid-batch failure doesn't leave
+// partial state.
+const bulkRowSchema = createSchema;
+const bulkBody = z.object({
+  rows: z.array(bulkRowSchema).min(1).max(2000),
+});
+
+interface BulkOutcome {
+  index: number;
+  kode: string;
+  status: 'imported' | 'duplicate' | 'invalid' | 'cross_branch' | 'unknown_petugas';
+  message?: string;
+}
+
+router.post('/bulk', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const parsed = bulkBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request', details: parsed.error.flatten() });
+
+  // Pre-resolve all distinct petugasIds in one query for the branch guard
+  // so we don't N+1 a 2000-row import.
+  const petugasIds = [...new Set(parsed.data.rows.map(r => r.petugasId))];
+  const petugasMap = new Map(
+    (await prisma.petugas.findMany({
+      where: { id: { in: petugasIds } },
+      select: { id: true, branchId: true, active: true },
+    })).map(p => [p.id, p]),
+  );
+
+  // Pre-check duplicate kodes so we can short-circuit before opening a txn.
+  const existingKodes = new Set(
+    (await prisma.nasabah.findMany({
+      where: { kode: { in: parsed.data.rows.map(r => r.kode) } },
+      select: { kode: true },
+    })).map(n => n.kode),
+  );
+
+  const outcomes: BulkOutcome[] = [];
+  let imported = 0;
+
+  await prisma.$transaction(async (tx) => {
+    for (let i = 0; i < parsed.data.rows.length; i++) {
+      const row = parsed.data.rows[i];
+      if (existingKodes.has(row.kode)) {
+        outcomes.push({ index: i, kode: row.kode, status: 'duplicate' });
+        continue;
+      }
+      const pet = petugasMap.get(row.petugasId);
+      if (!pet || !pet.active) {
+        outcomes.push({ index: i, kode: row.kode, status: 'unknown_petugas' });
+        continue;
+      }
+      if (req.user?.role === 'SUPERVISOR' && pet.branchId !== req.user.branchId) {
+        outcomes.push({ index: i, kode: row.kode, status: 'cross_branch' });
+        continue;
+      }
+      try {
+        await tx.nasabah.create({ data: { ...row, branchId: pet.branchId } });
+        outcomes.push({ index: i, kode: row.kode, status: 'imported' });
+        imported++;
+      } catch (e: any) {
+        outcomes.push({ index: i, kode: row.kode, status: 'invalid', message: String(e?.message ?? e).slice(0, 200) });
+      }
+    }
+  });
+
+  await audit({
+    action: 'nasabah.bulk_import', ...fromReq(req),
+    meta: { total: parsed.data.rows.length, imported, skipped: parsed.data.rows.length - imported },
+  });
+
+  res.status(201).json({ imported, total: parsed.data.rows.length, outcomes });
+});
+
 // Soft-delete via active flag. We never hard-delete a nasabah because their
 // kunjungan + pembayaran FKs would orphan; the ledger has to stay intact.
 router.delete('/:id', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
