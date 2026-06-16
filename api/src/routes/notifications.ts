@@ -70,10 +70,42 @@ const enqueueSchema = z.object({
   link: z.string().max(500).optional(),
 });
 
+// Map fine-grained notification types to the coarse preference categories
+// users see in the Settings toggle list. New types default to true if not
+// mapped — opt-in is the safer default for un-categorized events.
+const PREF_CATEGORY: Record<string, string> = {
+  'kunjungan.flagged': 'flagged',
+  'kunjungan.approved': 'reviewResult',
+  'kunjungan.rejected': 'reviewResult',
+  'sla.pending_breach': 'sla',
+  'announcement': 'announcement',
+  'nasabah.reassigned_to_you': 'assignment',
+};
+
 export async function enqueueNotification(input: z.infer<typeof enqueueSchema>) {
   const parsed = enqueueSchema.parse(input);
+  const category = PREF_CATEGORY[parsed.type] ?? null;
+
+  // Filter out users who have opted out of this category. The notifPrefs
+  // JSON column is treated as opt-out: explicit `false` skips, anything
+  // else (null, missing key, true) sends.
+  let userIds = parsed.userIds;
+  if (category) {
+    const users = await prisma.user.findMany({
+      where: { id: { in: parsed.userIds } },
+      select: { id: true, notifPrefs: true },
+    });
+    userIds = users
+      .filter(u => {
+        const prefs = u.notifPrefs as Record<string, boolean> | null | undefined;
+        return prefs?.[category] !== false;
+      })
+      .map(u => u.id);
+  }
+  if (userIds.length === 0) return [];
+
   const rows = await prisma.$transaction(
-    parsed.userIds.map(userId =>
+    userIds.map(userId =>
       prisma.notification.create({
         data: {
           userId,
@@ -94,5 +126,47 @@ export async function enqueueNotification(input: z.infer<typeof enqueueSchema>) 
   }
   return rows;
 }
+
+// ---- Per-user notification preferences ----------------------------------
+
+const PREF_CATEGORIES = [
+  'flagged', 'reviewResult', 'sla', 'announcement', 'assignment',
+] as const;
+
+router.get('/prefs', async (req, res) => {
+  const u = await prisma.user.findUnique({
+    where: { id: req.user!.sub },
+    select: { notifPrefs: true },
+  });
+  const prefs = (u?.notifPrefs as Record<string, boolean> | null) ?? {};
+  // Hydrate with defaults so the UI doesn't need to know the category set.
+  const out: Record<string, boolean> = {};
+  for (const c of PREF_CATEGORIES) out[c] = prefs[c] !== false;
+  res.json(out);
+});
+
+const prefsSchema = z.object({
+  flagged: z.boolean().optional(),
+  reviewResult: z.boolean().optional(),
+  sla: z.boolean().optional(),
+  announcement: z.boolean().optional(),
+  assignment: z.boolean().optional(),
+});
+
+router.patch('/prefs', async (req, res) => {
+  const parsed = prefsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request' });
+
+  const current = await prisma.user.findUnique({
+    where: { id: req.user!.sub },
+    select: { notifPrefs: true },
+  });
+  const merged = { ...(current?.notifPrefs as Record<string, boolean> | null ?? {}), ...parsed.data };
+  await prisma.user.update({
+    where: { id: req.user!.sub },
+    data: { notifPrefs: merged },
+  });
+  res.json(merged);
+});
 
 export default router;

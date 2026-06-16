@@ -17,6 +17,8 @@ import attendance from '../../src/routes/attendance.js';
 import announcements from '../../src/routes/announcements.js';
 import wilayah from '../../src/routes/wilayah.js';
 import feedback from '../../src/routes/feedback.js';
+import search from '../../src/routes/search.js';
+import notifications from '../../src/routes/notifications.js';
 
 export function buildApp() {
   const app = express();
@@ -36,6 +38,8 @@ export function buildApp() {
   app.use('/api/announcements', announcements);
   app.use('/api/wilayah', wilayah);
   app.use('/api/feedback', feedback);
+  app.use('/api/search', search);
+  app.use('/api/notifications', notifications);
   return app;
 }
 

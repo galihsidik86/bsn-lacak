@@ -1,6 +1,7 @@
 import { Fragment, Suspense, lazy, useEffect, useState } from 'react';
 import { Ic, type IconKey } from './components/Icons';
 import { NotificationBell } from './components/NotificationBell';
+import { GlobalSearchModal } from './components/GlobalSearch';
 import { Avatar } from './components/UI';
 import { TweakRadio, TweakSection, TweakSelect, TweakToggle, TweaksPanel, useTweaks } from './components/TweaksPanel';
 import { useSegmen } from './data/queries';
@@ -149,6 +150,7 @@ export function App() {
   const user = useAuth(s => s.user);
   const bootstrapped = useAuth(s => s.bootstrapped);
   const [showChangePw, setShowChangePw] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [page, setPage] = useState<PageKey>(() => {
     const h = location.hash.slice(1);
     if (isPage(h)) return h;
@@ -175,6 +177,18 @@ export function App() {
     const handler = () => useAuth.getState().setUser(null);
     window.addEventListener('bsn:unauthenticated', handler);
     return () => window.removeEventListener('bsn:unauthenticated', handler);
+  }, []);
+
+  // Ctrl+K / Cmd+K opens the global search palette.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen(o => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   // Build nav before any conditional return so hook order is stable across
@@ -313,11 +327,18 @@ export function App() {
               Semua Cabang
             </div>
           )}
-          <div className="search" style={{ width: 260 }}>
+          <button className="search" onClick={() => setSearchOpen(true)}
+            aria-label="Cari nasabah, petugas, transaksi (Ctrl+K)"
+            style={{ width: 260, border: '1px solid var(--line)', cursor: 'pointer', textAlign: 'left' }}>
             <Ic.search size={16} aria-hidden="true" />
-            <input placeholder="Cari nasabah, petugas, transaksi…"
-              aria-label="Cari nasabah, petugas, transaksi" type="search" />
-          </div>
+            <span style={{ flex: 1, color: 'var(--ink-4)', fontWeight: 500, fontSize: 13 }}>
+              Cari nasabah, petugas, …
+            </span>
+            <kbd style={{
+              fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 6,
+              background: 'var(--surface-2)', color: 'var(--ink-3)', border: '1px solid var(--line)',
+            }}>Ctrl K</kbd>
+          </button>
           <NotificationBell onNavigate={(link) => go(link)} />
           <button className="btn" aria-label="Ekspor laporan"><Ic.download size={16} aria-hidden="true" />Ekspor</button>
         </header>
@@ -368,6 +389,12 @@ export function App() {
       {(forceChange || showChangePw) && (
         <ChangePassword forced={forceChange} onClose={() => setShowChangePw(false)} />
       )}
+
+      <GlobalSearchModal
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onNavigate={(p) => go(p)}
+      />
     </div>
   );
 }

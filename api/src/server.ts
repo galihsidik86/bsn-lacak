@@ -34,6 +34,7 @@ import announcements from './routes/announcements.js';
 import wilayah from './routes/wilayah.js';
 import feedback from './routes/feedback.js';
 import backup from './routes/backup.js';
+import search from './routes/search.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -122,6 +123,7 @@ app.use('/api/announcements', announcements);
 app.use('/api/wilayah', wilayah);
 app.use('/api/feedback', feedback);
 app.use('/api/backup', backup);
+app.use('/api/search', search);
 
 // Static uploads — Cache-Control prevents stale photo IDs from sticking.
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {

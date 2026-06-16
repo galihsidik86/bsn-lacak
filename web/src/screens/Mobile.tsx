@@ -237,6 +237,73 @@ function MHeader({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
+// Greeting + sisa target ringkas, dismissible per hari. Muncul saat
+// petugas baru buka aplikasi di pagi hari — semacam shift briefing.
+const BRIEFING_KEY = 'bsn_briefing_dismissed_at';
+
+function todayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 11) return 'Selamat pagi';
+  if (h < 15) return 'Selamat siang';
+  if (h < 18) return 'Selamat sore';
+  return 'Selamat malam';
+}
+
+function BriefingCard({ me, doneInTasks, tasksCount }: {
+  me: Petugas; doneInTasks: number; tasksCount: number;
+}) {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem(BRIEFING_KEY) === todayKey(); }
+    catch { return false; }
+  });
+  if (dismissed || tasksCount === 0) return null;
+
+  const dismiss = () => {
+    try { localStorage.setItem(BRIEFING_KEY, todayKey()); } catch { /* ignore */ }
+    setDismissed(true);
+  };
+
+  const remaining = tasksCount - doneInTasks;
+  const targetSisa = Math.max(0, me.target - me.terkumpul);
+
+  return (
+    <div style={{
+      margin: '10px 16px 0', padding: '12px 14px', borderRadius: 14,
+      background: 'linear-gradient(145deg, var(--gold-soft), var(--surface-2))',
+      border: '1px solid var(--line)',
+    }}>
+      <div className="between">
+        <div className="center gap-2">
+          <span style={{ fontSize: 18 }}>👋</span>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 13.5 }}>{greeting()}, {me.nama.split(' ')[0]}!</div>
+            <div className="muted" style={{ fontSize: 11.5, marginTop: 1 }}>
+              Brief hari ini · {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </div>
+          </div>
+        </div>
+        <button onClick={dismiss} aria-label="Tutup briefing"
+          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', padding: 4 }}>
+          <Ic.x size={14} />
+        </button>
+      </div>
+      <div className="muted" style={{ fontSize: 12.5, marginTop: 8, lineHeight: 1.55 }}>
+        {remaining > 0 ? (
+          <>Anda punya <strong style={{ color: 'var(--gold-ink)' }}>{remaining} kunjungan</strong> menunggu hari ini.</>
+        ) : (
+          <>Semua jadwal sudah selesai 🎉</>
+        )}
+        {' '}
+        Sisa target: <strong className="num">{RPjt(targetSisa)}</strong>.
+      </div>
+    </div>
+  );
+}
+
 function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone }: {
   me: Petugas; tasks: Nasabah[]; onReport: (n: Nasabah) => void; doneSet: Set<string>;
   here: { lat: number; lng: number } | null; zone: ZoneInfo | null;
@@ -251,6 +318,7 @@ function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone }: {
   const doneInTasks = MY_TASKS.filter(t => doneSet.has(t.id)).length;
   return (
     <div>
+      <BriefingCard me={ME} doneInTasks={doneInTasks} tasksCount={MY_TASKS.length} />
       {zone && inZone === false && (
         <div className="center gap-2" style={{
           margin: '10px 16px 0', padding: '10px 12px', borderRadius: 12,

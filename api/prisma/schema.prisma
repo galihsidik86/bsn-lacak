@@ -103,6 +103,10 @@ model User {
   // verification. ADMIN/SUPERVISOR strongly encouraged; PETUGAS optional.
   totpSecret          String?
   totpEnabledAt       DateTime?
+  // Per-user notification preferences. Map of notification type → boolean.
+  // Default (when null or key absent) is true so legacy users stay opted
+  // in; new types added later default-on unless we override.
+  notifPrefs          Json?
   refreshTokens       RefreshToken[]
   notifications       Notification[]
   reviewedKunjungan   Kunjungan[]

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Ic } from '../components/Icons';
 import { TwoFactorCard } from '../components/TwoFactor';
+import { NotifPrefsCard } from '../components/NotifPrefs';
 import { changePassword, doLogout, useAuth } from '../lib/auth';
 
 const MIN_LEN = 12;
@@ -66,6 +67,8 @@ export function ScreenSettings() {
       </div>
 
       <TwoFactorCard />
+
+      <NotifPrefsCard />
 
       {/* ---- Change password ---- */}
       <form onSubmit={submit} className="card card-pad fade-up">
