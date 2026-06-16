@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import { KolBadge, Modal } from '../components/UI';
 import { tokenStore } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { ScreenNasabah360 } from './Nasabah360';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -104,6 +105,7 @@ export function ScreenNasabah() {
   const petugasQ = useQuery({ queryKey: ['petugas'], queryFn: listPetugas });
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<NasabahRow | null>(null);
+  const [view360, setView360] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
 
   if (q.isPending) return <div className="content" style={{ display: 'grid', gap: 16 }}><Skeleton h={80} /><Skeleton h={400} /></div>;
@@ -165,9 +167,14 @@ export function ScreenNasabah() {
                   <td style={{ textAlign: 'right' }} className="num">{RP(n.angsuran)}</td>
                   <td style={{ textAlign: 'right' }} className="num">{RP(n.sisa)}</td>
                   <td style={{ textAlign: 'right' }}>
-                    <button className="btn btn-sm btn-ghost" onClick={() => setEditing(n)}>
-                      <Ic.settings size={14} />Edit
-                    </button>
+                    <div className="center gap-2" style={{ justifyContent: 'flex-end' }}>
+                      <button className="btn btn-sm btn-ghost" onClick={() => setView360(n.id)}>
+                        <Ic.eye size={14} />360°
+                      </button>
+                      <button className="btn btn-sm btn-ghost" onClick={() => setEditing(n)}>
+                        <Ic.settings size={14} />Edit
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -199,6 +206,9 @@ export function ScreenNasabah() {
           onClose={() => setImporting(false)}
           onDone={() => { setImporting(false); qc.invalidateQueries({ queryKey: ['nasabah'] }); }}
         />
+      )}
+      {view360 && (
+        <ScreenNasabah360 nasabahId={view360} onClose={() => setView360(null)} />
       )}
     </div>
   );

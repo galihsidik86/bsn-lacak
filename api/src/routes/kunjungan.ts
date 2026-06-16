@@ -294,4 +294,92 @@ router.patch('/:id/review', requireRole('SUPERVISOR', 'ADMIN'), async (req, res)
   res.json(updated);
 });
 
+// Bulk approve/reject for supervisor productivity. Each ID is checked
+// individually against the requester's branch scope — silently skip rows
+// the supervisor can't touch or that are no longer PENDING, return a
+// per-row outcome so the UI can show which fired and which didn't.
+const bulkReviewSchema = z.object({
+  ids: z.array(z.string().min(1).max(64)).min(1).max(100),
+  status: z.enum(['APPROVED', 'REJECTED']),
+  note: z.string().max(2000).optional(),
+});
+
+router.post('/bulk-review', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const parsed = bulkReviewSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request', details: parsed.error.flatten() });
+
+  const reviewer = req.user!.sub;
+  const reviewedAt = new Date();
+  const outcomes: Array<{ id: string; status: 'reviewed' | 'not_pending' | 'not_found' }> = [];
+  const reviewedIds: string[] = [];
+
+  // Fetch in one shot, scoped to the branch the requester can see.
+  const candidates = await prisma.kunjungan.findMany({
+    where: { id: { in: parsed.data.ids }, ...scope(req) },
+    select: { id: true, petugasId: true, reviewStatus: true },
+  });
+  const map = new Map(candidates.map(c => [c.id, c]));
+
+  for (const id of parsed.data.ids) {
+    const c = map.get(id);
+    if (!c) { outcomes.push({ id, status: 'not_found' }); continue; }
+    if (c.reviewStatus !== 'PENDING') { outcomes.push({ id, status: 'not_pending' }); continue; }
+    reviewedIds.push(id);
+    outcomes.push({ id, status: 'reviewed' });
+  }
+
+  if (reviewedIds.length > 0) {
+    await prisma.kunjungan.updateMany({
+      where: { id: { in: reviewedIds } },
+      data: {
+        reviewStatus: parsed.data.status,
+        reviewerId: reviewer,
+        reviewedAt,
+        reviewNote: parsed.data.note ?? null,
+      },
+    });
+
+    await audit({
+      action: `kunjungan.bulk_review.${parsed.data.status.toLowerCase()}`,
+      ...fromReq(req),
+      meta: { count: reviewedIds.length, note: parsed.data.note },
+    });
+
+    // Notify each petugas whose laporan was acted on. Group to avoid
+    // sending N separate notifications to the same petugas.
+    const updated = await prisma.kunjungan.findMany({
+      where: { id: { in: reviewedIds } },
+      select: { petugasId: true },
+    });
+    const petugasIds = [...new Set(updated.map(u => u.petugasId))];
+    const petugasUsers = await prisma.user.findMany({
+      where: { petugasId: { in: petugasIds } },
+      select: { id: true, petugasId: true },
+    });
+
+    const isApproved = parsed.data.status === 'APPROVED';
+    for (const pu of petugasUsers) {
+      const count = updated.filter(u => u.petugasId === pu.petugasId).length;
+      await enqueueNotification({
+        userIds: [pu.id],
+        type: isApproved ? 'kunjungan.approved' : 'kunjungan.rejected',
+        title: isApproved ? `${count} laporan disetujui` : `${count} laporan ditolak`,
+        body: parsed.data.note ?? '',
+        severity: isApproved ? 'INFO' : 'WARN',
+        link: 'laporan',
+      }).catch(() => undefined);
+    }
+
+    for (const id of reviewedIds) {
+      bus.publish('kunjungan.reviewed', { kunjunganId: id, status: parsed.data.status, by: reviewer });
+    }
+  }
+
+  res.json({
+    reviewed: reviewedIds.length,
+    total: parsed.data.ids.length,
+    outcomes,
+  });
+});
+
 export default router;

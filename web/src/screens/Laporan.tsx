@@ -30,6 +30,17 @@ export function ScreenLaporan() {
   const [fHasil, setFHasil] = useState<'all' | HasilKunjungan>('all');
   const [fReview, setFReview] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [sel, setSel] = useState<Kunjungan | null>(null);
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+  const [bulkNote, setBulkNote] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkErr, setBulkErr] = useState<string | null>(null);
+
+  const user = useAuth(s => s.user);
+  const canReview = user?.role === 'SUPERVISOR' || user?.role === 'ADMIN';
+
+  // Clear selection when filter changes — selections from a stale row set
+  // shouldn't bleed across filter changes.
+  function setFilterReview(v: typeof fReview) { setFReview(v); setBulkSelected(new Set()); }
 
   const rows = KUNJUNGAN.filter(k =>
     (fPet === 'all' || k.petugas === fPet) &&
@@ -90,16 +101,51 @@ export function ScreenLaporan() {
             </div>
           </div>
           <div className="seg" role="tablist" aria-label="Filter status review">
-            <button className={fReview === 'all' ? 'on' : ''} onClick={() => setFReview('all')}>Semua status</button>
-            <button className={fReview === 'pending' ? 'on' : ''} onClick={() => setFReview('pending')}>
+            <button className={fReview === 'all' ? 'on' : ''} onClick={() => setFilterReview('all')}>Semua status</button>
+            <button className={fReview === 'pending' ? 'on' : ''} onClick={() => setFilterReview('pending')}>
               Pending {pendingCount > 0 && <span className="num" style={{ marginLeft: 4 }}>· {pendingCount}</span>}
             </button>
-            <button className={fReview === 'approved' ? 'on' : ''} onClick={() => setFReview('approved')}>Disetujui</button>
-            <button className={fReview === 'rejected' ? 'on' : ''} onClick={() => setFReview('rejected')}>Ditolak</button>
+            <button className={fReview === 'approved' ? 'on' : ''} onClick={() => setFilterReview('approved')}>Disetujui</button>
+            <button className={fReview === 'rejected' ? 'on' : ''} onClick={() => setFilterReview('rejected')}>Ditolak</button>
           </div>
           <span className="chip"><Ic.calendar size={13} />11 Juni 2026</span>
         </div>
       </div>
+
+      {canReview && fReview === 'pending' && rows.length > 0 && (
+        <BulkReviewBar
+          allPendingIds={rows.filter(k => k.reviewStatus === 'PENDING').map(k => k.id)}
+          selected={bulkSelected}
+          setSelected={setBulkSelected}
+          note={bulkNote}
+          setNote={setBulkNote}
+          busy={bulkBusy}
+          err={bulkErr}
+          onApply={async (status) => {
+            if (bulkSelected.size === 0) return;
+            setBulkBusy(true); setBulkErr(null);
+            try {
+              const tok = (await import('../lib/api')).tokenStore.get();
+              const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/kunjungan/bulk-review`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+                },
+                credentials: 'include',
+                body: JSON.stringify({ ids: [...bulkSelected], status, note: bulkNote || undefined }),
+              });
+              if (!r.ok) throw new Error('bulk_review_failed');
+              setBulkSelected(new Set()); setBulkNote('');
+              kunjunganQ.refetch();
+            } catch {
+              setBulkErr('Gagal menerapkan bulk review.');
+            } finally {
+              setBulkBusy(false);
+            }
+          }}
+        />
+      )}
 
       <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', marginTop: 16 }}>
         {rows.map(k => {
@@ -111,9 +157,23 @@ export function ScreenLaporan() {
             <button key={k.id} onClick={() => setSel(k)} className="card fade-up"
               style={{ textAlign: 'left', overflow: 'hidden', cursor: 'pointer', padding: 0, display: 'flex', flexDirection: 'column' }}>
               <div style={{ position: 'relative' }}>
+                {canReview && fReview === 'pending' && k.reviewStatus === 'PENDING' && (
+                  <input type="checkbox"
+                    checked={bulkSelected.has(k.id)}
+                    onClick={e => e.stopPropagation()}
+                    onChange={e => {
+                      const next = new Set(bulkSelected);
+                      if (e.target.checked) next.add(k.id); else next.delete(k.id);
+                      setBulkSelected(next);
+                    }}
+                    style={{
+                      position: 'absolute', top: 10, left: 10, zIndex: 2,
+                      width: 20, height: 20, accentColor: 'var(--accent)', cursor: 'pointer',
+                    }} />
+                )}
                 <ImgPh label={`◦ FOTO KUNJUNGAN ◦\n${n.nama}`} h={150}
                   style={{ borderRadius: 0, border: 'none', borderBottom: '1px solid var(--line)', whiteSpace: 'pre-line' }} />
-                <span className="badge" style={{ position: 'absolute', top: 10, left: 10, background: h.soft, color: h.c, boxShadow: 'var(--sh-1)' }}>{h.label}</span>
+                <span className="badge" style={{ position: 'absolute', top: 10, left: canReview && fReview === 'pending' && k.reviewStatus === 'PENDING' ? 40 : 10, background: h.soft, color: h.c, boxShadow: 'var(--sh-1)' }}>{h.label}</span>
                 <span style={{ position: 'absolute', top: 10, right: 10, background: 'var(--ink)', color: 'white', borderRadius: 8, padding: '3px 8px', fontSize: 11, fontWeight: 700 }} className="center gap-2">
                   <Ic.camera size={12} />{k.foto}
                 </span>
@@ -428,3 +488,61 @@ function LaporanDetail({ k, onClose, petugasById, nasabahById }: {
     </Modal>
   );
 }
+
+function BulkReviewBar({ allPendingIds, selected, setSelected, note, setNote, busy, err, onApply }: {
+  allPendingIds: string[];
+  selected: Set<string>;
+  setSelected: (s: Set<string>) => void;
+  note: string;
+  setNote: (s: string) => void;
+  busy: boolean;
+  err: string | null;
+  onApply: (status: 'APPROVED' | 'REJECTED') => void;
+}) {
+  const allSelected = selected.size > 0 && selected.size === allPendingIds.length;
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(allPendingIds));
+  };
+  return (
+    <div className="card fade-up" style={{
+      marginTop: 12, padding: 12,
+      background: selected.size > 0 ? 'var(--accent-soft)' : 'var(--surface-2)',
+      border: '1px solid var(--line)',
+    }}>
+      <div className="between" style={{ gap: 12, flexWrap: 'wrap' }}>
+        <label className="center gap-2" style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
+          <input type="checkbox" checked={allSelected}
+            ref={el => { if (el) el.indeterminate = selected.size > 0 && !allSelected; }}
+            onChange={toggleAll}
+            style={{ width: 18, height: 18, accentColor: 'var(--accent)' }} />
+          {selected.size === 0
+            ? `Pilih untuk bulk review (${allPendingIds.length} pending)`
+            : `${selected.size} dari ${allPendingIds.length} terpilih`}
+        </label>
+        {selected.size > 0 && (
+          <div className="center gap-2" style={{ flexWrap: 'wrap' }}>
+            <input className="input" value={note} onChange={e => setNote(e.target.value)}
+              placeholder="Catatan (opsional, dipakai untuk semua)"
+              style={{ width: 280 }} />
+            <button className="btn" onClick={() => onApply('REJECTED')} disabled={busy}
+              style={{ background: 'var(--col-macet-soft)', color: 'var(--col-macet)', border: 'none' }}>
+              <Ic.x size={15} />Tolak {selected.size}
+            </button>
+            <button className="btn btn-primary" onClick={() => onApply('APPROVED')} disabled={busy}>
+              <Ic.checkCircle size={15} />Setujui {selected.size}
+            </button>
+          </div>
+        )}
+      </div>
+      {err && (
+        <div className="center gap-2" style={{
+          marginTop: 8, background: 'var(--col-macet-soft)', color: 'var(--col-macet)',
+          borderRadius: 8, padding: '6px 10px', fontSize: 12, fontWeight: 600,
+        }}>
+          <Ic.alert size={14} />{err}
+        </div>
+      )}
+    </div>
+  );
+}
+

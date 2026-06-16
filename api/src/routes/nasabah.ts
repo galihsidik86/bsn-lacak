@@ -63,6 +63,68 @@ router.get('/:id', async (req, res) => {
   res.json(n);
 });
 
+// Aggregated 360° payload — one endpoint to populate the supervisor's
+// "everything about this nasabah" screen so the UI doesn't fan out into
+// six parallel queries. Branch + role scoping uses the same `scope()` as
+// the list view, so a SUPERVISOR can only open nasabah dalam cabangnya.
+router.get('/:id/360', async (req, res) => {
+  const id = String(req.params.id);
+  const nasabah = await prisma.nasabah.findFirst({
+    where: { id, ...scope(req) },
+    include: {
+      petugas: { include: { branch: { select: { kode: true, nama: true } } } },
+      branch: { select: { kode: true, nama: true, alamat: true } },
+    },
+  });
+  if (!nasabah) return res.status(404).json({ error: 'not_found' });
+
+  const [kunjungan, pembayaran, feedback] = await Promise.all([
+    prisma.kunjungan.findMany({
+      where: { nasabahId: id },
+      include: {
+        fotos: { select: { path: true } },
+        petugas: { select: { kode: true, nama: true, inisial: true, hue: true } },
+        reviewer: { select: { username: true, nama: true } },
+      },
+      orderBy: { tanggal: 'desc' },
+      take: 50,
+    }),
+    prisma.pembayaran.findMany({
+      where: { nasabahId: id },
+      orderBy: { tanggal: 'desc' },
+      take: 50,
+    }),
+    prisma.customerFeedback.findMany({
+      where: { nasabahId: id, repliedAt: { not: null } },
+      orderBy: { repliedAt: 'desc' },
+      take: 20,
+    }),
+  ]);
+
+  // Roll up the headline stats once on the server so the frontend can
+  // render summary chips without re-aggregating the lists.
+  const totalCollected = pembayaran
+    .filter(p => p.status === 'berhasil')
+    .reduce((s, p) => s + Number(p.nominal), 0);
+  const avgRating = feedback.length === 0 ? null
+    : feedback.reduce((s, f) => s + (f.rating ?? 0), 0) / feedback.length;
+
+  res.json({
+    nasabah,
+    kunjungan,
+    pembayaran,
+    feedback,
+    stats: {
+      totalKunjungan: kunjungan.length,
+      lastVisit: kunjungan[0]?.tanggal ?? null,
+      totalCollected,
+      paymentCount: pembayaran.length,
+      feedbackCount: feedback.length,
+      avgRating,
+    },
+  });
+});
+
 const reassign = z.object({ petugasId: z.string().min(1).max(64) });
 router.patch('/:id/petugas', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
   const parsed = reassign.safeParse(req.body);
