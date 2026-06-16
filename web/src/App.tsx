@@ -34,6 +34,7 @@ const ScreenWilayah = lazy(() => import('./screens/Wilayah').then(m => ({ defaul
 const ScreenFeedbackPublic = lazy(() => import('./screens/FeedbackPublic').then(m => ({ default: m.ScreenFeedbackPublic })));
 const ScreenFeedback = lazy(() => import('./screens/Feedback').then(m => ({ default: m.ScreenFeedback })));
 const ScreenBackup = lazy(() => import('./screens/Backup').then(m => ({ default: m.ScreenBackup })));
+const ScreenApiKeys = lazy(() => import('./screens/ApiKeys').then(m => ({ default: m.ScreenApiKeys })));
 
 function ScreenFallback() {
   return (
@@ -46,7 +47,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -80,6 +81,7 @@ function useNav(): NavGroup[] {
   const adminItems: NavItem[] = [];
   if (role === 'ADMIN') adminItems.push({ k: 'branch', label: 'Kelola Cabang', icon: 'layers' });
   if (role === 'ADMIN') adminItems.push({ k: 'backup', label: 'Backup DB', icon: 'download' });
+  if (role === 'ADMIN') adminItems.push({ k: 'apikeys', label: 'API Keys', icon: 'eye' });
   if (role === 'ADMIN' || role === 'SUPERVISOR') {
     adminItems.push({ k: 'petugas', label: 'Kelola Petugas', icon: 'user' });
     adminItems.push({ k: 'nasabah', label: 'Kelola Nasabah', icon: 'users' });
@@ -112,6 +114,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   wilayah: ['Wilayah Binaan', 'Gambar polygon geofence per wilayah dan tugaskan ke petugas'],
   feedback: ['Feedback Nasabah', 'Rating + komentar nasabah pasca-kunjungan, plus petugas yang konsisten rating rendah'],
   backup: ['Backup Database', 'Status backup pg_dump + verifikasi integritas file'],
+  apikeys: ['API Keys', 'Token machine-to-machine untuk integrasi sistem lain'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -369,6 +372,7 @@ export function App() {
             {page === 'wilayah' && <ScreenWilayah />}
             {page === 'feedback' && <ScreenFeedback />}
             {page === 'backup' && <ScreenBackup />}
+            {page === 'apikeys' && <ScreenApiKeys />}
           </Suspense>
         </main>
       </div>

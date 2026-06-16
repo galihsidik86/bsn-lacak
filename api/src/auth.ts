@@ -70,6 +70,9 @@ declare global {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  // The apiKeyAuth middleware may already have populated req.user with a
+  // valid machine principal — short-circuit if so.
+  if (req.user) return next();
   const hdr = req.headers.authorization;
   if (!hdr?.startsWith('Bearer ')) return res.status(401).json({ error: 'unauthorized' });
   try {

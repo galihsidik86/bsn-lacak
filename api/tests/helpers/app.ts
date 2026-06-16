@@ -19,6 +19,9 @@ import wilayah from '../../src/routes/wilayah.js';
 import feedback from '../../src/routes/feedback.js';
 import search from '../../src/routes/search.js';
 import notifications from '../../src/routes/notifications.js';
+import apiKeys from '../../src/routes/apiKeys.js';
+import savedFilters from '../../src/routes/savedFilters.js';
+import { apiKeyAuth } from '../../src/lib/apiKey.js';
 
 export function buildApp() {
   const app = express();
@@ -26,6 +29,7 @@ export function buildApp() {
   app.use(helmet());
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
+  app.use((req, res, next) => { void apiKeyAuth(req, res, next); });
   app.use('/api/auth', auth);
   app.use('/api/petugas', petugas);
   app.use('/api/nasabah', nasabah);
@@ -40,6 +44,8 @@ export function buildApp() {
   app.use('/api/feedback', feedback);
   app.use('/api/search', search);
   app.use('/api/notifications', notifications);
+  app.use('/api/api-keys', apiKeys);
+  app.use('/api/saved-filters', savedFilters);
   return app;
 }
 
@@ -63,6 +69,8 @@ export async function resetDb() {
       "User",
       "Petugas",
       "Wilayah",
+      "ApiKey",
+      "SavedFilter",
       "Branch"
     RESTART IDENTITY CASCADE
   `);

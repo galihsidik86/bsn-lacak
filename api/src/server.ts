@@ -35,6 +35,14 @@ import wilayah from './routes/wilayah.js';
 import feedback from './routes/feedback.js';
 import backup from './routes/backup.js';
 import search from './routes/search.js';
+import apiKeys from './routes/apiKeys.js';
+import savedFilters from './routes/savedFilters.js';
+import { initSentry, sentryErrorHandler, setupSentryRequest } from './lib/sentry.js';
+import { apiKeyAuth } from './lib/apiKey.js';
+
+// Sentry must initialize BEFORE other modules use it. No-op when DSN is
+// absent so dev/test stays clean.
+initSentry();
 
 const app = express();
 app.disable('x-powered-by');
@@ -71,6 +79,10 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 app.use(cookieParser());
+// Resolve API key tokens early so downstream requireAuth treats them as
+// authenticated. JWT path is left untouched — apiKeyAuth no-ops when the
+// Authorization header isn't a bsn_apikey_* bearer.
+app.use((req, res, next) => { void apiKeyAuth(req, res, next); });
 
 // Liveness — always 200 if the process is up.
 app.get('/health', (_req, res) => res.json({ ok: true }));
@@ -124,6 +136,8 @@ app.use('/api/wilayah', wilayah);
 app.use('/api/feedback', feedback);
 app.use('/api/backup', backup);
 app.use('/api/search', search);
+app.use('/api/api-keys', apiKeys);
+app.use('/api/saved-filters', savedFilters);
 
 // Static uploads — Cache-Control prevents stale photo IDs from sticking.
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {
@@ -137,6 +151,13 @@ app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {
 app.use((req, res) => {
   res.status(404).json({ error: 'not_found', path: req.path });
 });
+
+// Sentry must run before the JSON error responder so it captures the
+// exception while we still own the request lifecycle. setupSentryRequest
+// registers Sentry's own express handler; sentryErrorHandler then forwards
+// to next so our own JSON 500 below still answers.
+setupSentryRequest(app);
+app.use(sentryErrorHandler);
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {

@@ -37,6 +37,10 @@ const schema = z.object({
   // pg_dump backup directory (mounted from the backup container's volume).
   // Empty / unmounted = backup UI shows "not configured".
   BACKUP_DIR: z.string().default('./backups'),
+  // Sentry — set to enable error reporting. Absent = no-op.
+  SENTRY_DSN: z.string().optional(),
+  SENTRY_ENV: z.string().default('development'),
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.1),
 });
 
 const parsed = schema.safeParse(process.env);

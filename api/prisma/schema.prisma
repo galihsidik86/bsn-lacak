@@ -34,6 +34,7 @@ model Branch {
   attendance   Attendance[]
   wilayah      Wilayah[]
   feedback     CustomerFeedback[]
+  apiKeys      ApiKey[]
   blast        Blast[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -111,6 +112,8 @@ model User {
   notifications       Notification[]
   reviewedKunjungan   Kunjungan[]
   pushSubscriptions   PushSubscription[]
+  createdApiKeys      ApiKey[]       @relation("ApiKeyCreator")
+  savedFilters        SavedFilter[]
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -202,6 +205,54 @@ model Petugas {
 
   @@index([branchId])
   @@index([wilayahZoneId])
+}
+
+// Long-lived API key for machine-to-machine integration (partner systems,
+// background reporting tools, etc). The plain token is shown ONCE at
+// create; we only keep the SHA-256 hash so a DB dump alone can't be used
+// to authenticate. tokenPrefix exists purely so the UI + audit log can
+// identify a key by its leading 8 chars without revealing the whole thing.
+model ApiKey {
+  id          String    @id @default(cuid())
+  name        String
+  // Hex SHA-256 of the raw token. Lookups use this column directly so the
+  // raw token never round-trips through the DB after creation.
+  tokenHash   String    @unique
+  // First 12 chars of the raw token (e.g. "bsn_apikey_AbCd1234") so the
+  // UI can show a readable identifier without revealing the secret tail.
+  tokenPrefix String
+  createdBy   User      @relation("ApiKeyCreator", fields: [createdById], references: [id])
+  createdById String
+  branch      Branch?   @relation(fields: [branchId], references: [id])
+  branchId    String?
+  // Coarse scope string ("read" or "write"). Future iterations can split
+  // into per-resource scopes.
+  scope       String    @default("read")
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([createdById])
+  @@index([branchId])
+  @@index([revokedAt])
+}
+
+// Per-user saved filter / preset view for the screens that have filter
+// chrome (Laporan, Performa, Audit, etc). Persisted server-side so a
+// supervisor can hop devices without losing their views.
+model SavedFilter {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  // Free-form screen identifier — e.g. "laporan", "performa", "audit".
+  screen    String
+  name      String
+  payload   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, screen])
 }
 
 // Independent customer signal — nasabah dapat link tokenized via SMS

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Ic } from '../components/Icons';
+import { SavedFilters } from '../components/SavedFilters';
 import { Avatar, Badge, ImgPh, KolBadge, Kv, Modal, Stat } from '../components/UI';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
@@ -109,6 +110,15 @@ export function ScreenLaporan() {
             <button className={fReview === 'rejected' ? 'on' : ''} onClick={() => setFilterReview('rejected')}>Ditolak</button>
           </div>
           <span className="chip"><Ic.calendar size={13} />11 Juni 2026</span>
+        </div>
+        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--line)' }}>
+          <SavedFilters
+            screen="laporan"
+            currentPayload={{ fPet, fHasil, fReview }}
+            onLoad={(p: { fPet: 'all' | string; fHasil: 'all' | HasilKunjungan; fReview: typeof fReview }) => {
+              setFPet(p.fPet); setFHasil(p.fHasil); setFilterReview(p.fReview);
+            }}
+          />
         </div>
       </div>
 
