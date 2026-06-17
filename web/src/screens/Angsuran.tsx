@@ -1,12 +1,26 @@
 import { useMemo, useState } from 'react';
+import axios from 'axios';
 import { Ic } from '../components/Icons';
-import { Avatar, AreaChart, Badge, Donut, Stat, cssVar } from '../components/UI';
+import { Avatar, AreaChart, Badge, Donut, Modal, Stat, cssVar } from '../components/UI';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   RP, RPjt, useNasabahList, usePayflow, usePetugasFinder,
 } from '../data/queries';
 import { downloadAuthed } from '../lib/download';
+import { tokenStore } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import type { Nasabah, Petugas } from '../types';
+
+const BASE = import.meta.env.VITE_API_URL || '/api';
+
+function headers() {
+  const t = tokenStore.get();
+  const h: Record<string, string> = {};
+  if (t) h.Authorization = `Bearer ${t}`;
+  const override = useAuth.getState().branchOverride;
+  if (override) h['x-branch-id'] = override;
+  return h;
+}
 
 interface Metode { k: 'tunai' | 'transfer' | 'autodebet'; label: string; c: string }
 const METODE: Metode[] = [
@@ -132,7 +146,10 @@ export function ScreenAngsuran() {
       <div className="card fade-up" style={{ overflow: 'hidden' }}>
         <div className="between card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
           <div className="section-title">Ledger Transaksi Hari Ini</div>
-          <ExportCsvButton range={range} />
+          <div className="center gap-2">
+            <BulkImportButton />
+            <ExportCsvButton range={range} />
+          </div>
         </div>
         <div style={{ maxHeight: 360, overflowY: 'auto' }}>
           <table className="table">
@@ -191,5 +208,262 @@ function ExportCsvButton({ range }: { range: '7h' | '14h' | '30h' }) {
     <button className="btn btn-sm" onClick={click} disabled={busy}>
       <Ic.download size={14} />{busy ? 'Menyiapkan…' : 'Ekspor CSV'}
     </button>
+  );
+}
+
+// Bulk import pembayaran from CSV. Browser parses + validates, then POSTs
+// the row array to /angsuran/bulk. The server applies them in one
+// transaction and returns per-row outcomes.
+interface ParsedPay {
+  row: number;
+  data?: {
+    kodeNasabah: string;
+    tanggal: string;
+    jam: string;
+    metode: 'tunai' | 'transfer' | 'autodebet';
+    status: 'berhasil' | 'pending' | 'gagal';
+    nominal: number;
+  };
+  errors: string[];
+}
+
+const PAY_CSV_HEADERS = ['kodeNasabah', 'tanggal', 'jam', 'metode', 'status', 'nominal'];
+const PAY_SAMPLE_CSV = PAY_CSV_HEADERS.join(',') + '\n' +
+  'N2024001,2026-06-15,09:30,tunai,berhasil,500000\n' +
+  'N2024002,2026-06-15,11:00,transfer,berhasil,750000\n' +
+  'N2024003,2026-06-16,08:45,autodebet,pending,250000\n';
+
+function downloadPayTemplate() {
+  const blob = new Blob(['\ufeff' + PAY_SAMPLE_CSV], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'template-pembayaran.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Same RFC-4180 parser as in Nasabah.tsx — kept inline so the chunk stays
+// independent and we don't grow a shared util that only has two callers.
+function parsePayCsv(text: string): string[][] {
+  const out: string[][] = [];
+  let row: string[] = [];
+  let cur = '';
+  let inQuote = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuote) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { cur += '"'; i++; }
+        else inQuote = false;
+      } else cur += c;
+    } else if (c === '"') inQuote = true;
+    else if (c === ',') { row.push(cur); cur = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (cur !== '' || row.length > 0) { row.push(cur); out.push(row); row = []; cur = ''; }
+      if (c === '\r' && text[i + 1] === '\n') i++;
+    } else cur += c;
+  }
+  if (cur !== '' || row.length > 0) { row.push(cur); out.push(row); }
+  return out.filter(r => r.some(cell => cell !== ''));
+}
+
+function BulkImportButton() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button className="btn btn-sm" onClick={() => setOpen(true)}>
+        <Ic.download size={14} style={{ transform: 'rotate(180deg)' }} />Import CSV
+      </button>
+      {open && <BulkImport onClose={() => setOpen(false)} onDone={() => { setOpen(false); window.location.reload(); }} />}
+    </>
+  );
+}
+
+function BulkImport({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [parsed, setParsed] = useState<ParsedPay[]>([]);
+  const [fileName, setFileName] = useState('');
+  const [result, setResult] = useState<{ imported: number; total: number; outcomes: Array<{ kodeNasabah: string; status: string }> } | null>(null);
+  const [sending, setSending] = useState(false);
+  const [globalErr, setGlobalErr] = useState<string | null>(null);
+
+  const onFile = async (file: File) => {
+    setFileName(file.name);
+    setResult(null);
+    setGlobalErr(null);
+    const text = await file.text();
+    const rows = parsePayCsv(text);
+    if (rows.length < 2) { setGlobalErr('File CSV kosong atau tidak punya header.'); return; }
+    const header = rows[0].map(h => h.trim());
+    const colIdx = (k: string) => header.findIndex(h => h.toLowerCase() === k.toLowerCase());
+
+    const missing = ['kodeNasabah', 'tanggal', 'nominal'].filter(c => colIdx(c) < 0);
+    if (missing.length) { setGlobalErr(`Header CSV kurang kolom: ${missing.join(', ')}`); return; }
+
+    const out: ParsedPay[] = [];
+    for (let r = 1; r < rows.length; r++) {
+      const errs: string[] = [];
+      const row = rows[r];
+      const get = (k: string) => {
+        const i = colIdx(k);
+        return i >= 0 ? (row[i] ?? '').trim() : '';
+      };
+      const kodeNasabah = get('kodeNasabah');
+      if (!kodeNasabah) errs.push('kodeNasabah wajib');
+      const tanggalStr = get('tanggal');
+      if (!/^\d{4}-\d{2}-\d{2}/.test(tanggalStr)) errs.push('tanggal harus YYYY-MM-DD');
+      const jam = get('jam') || '00:00';
+      if (!/^\d{2}:\d{2}$/.test(jam)) errs.push('jam harus HH:MM');
+      const metode = (get('metode') || 'tunai').toLowerCase() as 'tunai' | 'transfer' | 'autodebet';
+      if (!['tunai', 'transfer', 'autodebet'].includes(metode)) errs.push('metode tidak valid');
+      const status = (get('status') || 'berhasil').toLowerCase() as 'berhasil' | 'pending' | 'gagal';
+      if (!['berhasil', 'pending', 'gagal'].includes(status)) errs.push('status tidak valid');
+      const nominalRaw = get('nominal').replace(/[^\d.-]/g, '');
+      const nominal = Number(nominalRaw);
+      if (!Number.isFinite(nominal) || nominal <= 0) errs.push('nominal harus angka > 0');
+
+      out.push({
+        row: r + 1,
+        data: errs.length === 0
+          ? { kodeNasabah, tanggal: tanggalStr, jam, metode, status, nominal }
+          : undefined,
+        errors: errs,
+      });
+    }
+    setParsed(out);
+  };
+
+  const valid = parsed.filter(p => p.data && p.errors.length === 0);
+  const invalid = parsed.filter(p => p.errors.length > 0);
+  const totalNominal = valid.reduce((s, p) => s + (p.data?.nominal ?? 0), 0);
+
+  const submit = async () => {
+    if (valid.length === 0) return;
+    setSending(true);
+    try {
+      const r = await axios.post(`${BASE}/angsuran/bulk`,
+        { rows: valid.map(p => p.data!) },
+        { withCredentials: true, headers: headers() });
+      setResult(r.data);
+    } catch (e: any) {
+      setGlobalErr(e?.response?.data?.error === 'rate_limited'
+        ? 'Terlalu banyak request. Coba lagi sebentar.'
+        : 'Gagal import. Periksa data.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Modal onClose={onClose} max={780}>
+      <div className="modal-head">
+        <div style={{ flex: 1 }}>
+          <div className="section-title">Bulk Import Pembayaran</div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
+            Upload CSV (max 2.000 baris). Sisa outstanding nasabah akan dikurangi otomatis untuk status berhasil.
+          </div>
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+      </div>
+      <div className="modal-body">
+        {!result && (
+          <>
+            <div className="between" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+              <label className="btn">
+                <Ic.download size={15} style={{ transform: 'rotate(180deg)' }} />Pilih file CSV
+                <input type="file" accept=".csv,text/csv"
+                  style={{ display: 'none' }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void onFile(f); e.target.value = ''; }} />
+              </label>
+              <button className="btn btn-sm btn-ghost" onClick={downloadPayTemplate}>
+                <Ic.download size={13} />Unduh template
+              </button>
+              {fileName && <span className="muted mono" style={{ fontSize: 11.5 }}>{fileName}</span>}
+            </div>
+
+            {globalErr && (
+              <div className="center gap-2" style={{
+                marginBottom: 12, background: 'var(--col-macet-soft)', color: 'var(--col-macet)',
+                borderRadius: 10, padding: '10px 12px', fontSize: 12.5, fontWeight: 600,
+              }}>
+                <Ic.alert size={15} />{globalErr}
+              </div>
+            )}
+
+            {parsed.length > 0 && (
+              <>
+                <div className="center gap-3" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+                  <div className="chip" style={{ background: 'var(--accent-soft)', color: 'var(--accent-ink)' }}>
+                    <Ic.checkCircle size={13} />{valid.length} valid · {RP(totalNominal)}
+                  </div>
+                  {invalid.length > 0 && (
+                    <div className="chip" style={{ background: 'var(--col-macet-soft)', color: 'var(--col-macet)' }}>
+                      <Ic.alert size={13} />{invalid.length} error
+                    </div>
+                  )}
+                </div>
+                <div style={{ maxHeight: 320, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 12 }}>
+                  <table className="table" style={{ fontSize: 12 }}>
+                    <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
+                      <tr><th>Row</th><th>Nasabah</th><th>Tanggal</th><th style={{ textAlign: 'right' }}>Nominal</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                      {parsed.map(p => (
+                        <tr key={p.row} style={{ background: p.errors.length ? 'var(--col-macet-soft)' : undefined }}>
+                          <td className="mono">{p.row}</td>
+                          <td className="mono">{p.data?.kodeNasabah ?? '—'}</td>
+                          <td className="mono">{p.data?.tanggal ?? '—'}</td>
+                          <td className="num" style={{ textAlign: 'right' }}>{p.data ? RP(p.data.nominal) : '—'}</td>
+                          <td style={{ fontSize: 11.5 }}>
+                            {p.errors.length === 0
+                              ? <span style={{ color: 'var(--accent)' }}>OK</span>
+                              : <span style={{ color: 'var(--col-macet)' }}>{p.errors.join(' · ')}</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {result && (
+          <div>
+            <div className="card card-pad" style={{ background: 'var(--accent-soft)', boxShadow: 'none', marginBottom: 12 }}>
+              <div className="center gap-2" style={{ color: 'var(--accent-ink)', fontWeight: 800, fontSize: 14 }}>
+                <Ic.checkCircle size={18} />{result.imported} pembayaran ter-import dari {result.total} baris.
+              </div>
+            </div>
+            {result.outcomes.filter(o => o.status !== 'imported').length > 0 && (
+              <div style={{ maxHeight: 320, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 12 }}>
+                <table className="table" style={{ fontSize: 12 }}>
+                  <thead><tr><th>Kode Nasabah</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {result.outcomes.filter(o => o.status !== 'imported').map((o, i) => (
+                      <tr key={`${o.kodeNasabah}-${i}`}>
+                        <td className="mono">{o.kodeNasabah}</td>
+                        <td style={{ color: 'var(--col-macet)' }}>{o.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="modal-foot">
+        {result
+          ? <button className="btn btn-primary" onClick={onDone}>Selesai</button>
+          : <>
+              <button className="btn" onClick={onClose}>Batal</button>
+              <button className="btn btn-primary" disabled={valid.length === 0 || sending} onClick={submit}>
+                {sending ? 'Mengirim…' : `Import ${valid.length} baris`}
+              </button>
+            </>
+        }
+      </div>
+    </Modal>
   );
 }

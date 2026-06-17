@@ -55,6 +55,12 @@ const schema = z.object({
   // the configured day-of-month.
   CLOSING_EMAIL_DAY: z.coerce.number().int().min(1).max(28).default(1),
   CLOSING_EMAIL_HOUR: z.coerce.number().int().min(0).max(23).default(8),
+  // Public-facing base URL used to compose share links (receipt PDF, feedback).
+  // Defaults to WEB_ORIGIN; override in prod when behind a separate ingress.
+  PUBLIC_BASE_URL: z.string().url().optional(),
+  // Receipt link TTL — short enough that a leaked URL goes stale quickly,
+  // long enough for a nasabah to download from a slow WA preview.
+  RECEIPT_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(14),
 });
 
 const parsed = schema.safeParse(process.env);

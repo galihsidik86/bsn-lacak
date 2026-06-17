@@ -9,6 +9,7 @@ import auth from '../../src/routes/auth.js';
 import petugas from '../../src/routes/petugas.js';
 import nasabah from '../../src/routes/nasabah.js';
 import kunjungan from '../../src/routes/kunjungan.js';
+import angsuran from '../../src/routes/angsuran.js';
 import blast from '../../src/routes/blast.js';
 import distribusi from '../../src/routes/distribusi.js';
 import push from '../../src/routes/push.js';
@@ -23,6 +24,7 @@ import apiKeys from '../../src/routes/apiKeys.js';
 import savedFilters from '../../src/routes/savedFilters.js';
 import webhooks from '../../src/routes/webhooks.js';
 import foto from '../../src/routes/foto.js';
+import receipt from '../../src/routes/receipt.js';
 import { apiKeyAuth } from '../../src/lib/apiKey.js';
 
 export function buildApp() {
@@ -36,6 +38,7 @@ export function buildApp() {
   app.use('/api/petugas', petugas);
   app.use('/api/nasabah', nasabah);
   app.use('/api/kunjungan', kunjungan);
+  app.use('/api/angsuran', angsuran);
   app.use('/api/blast', blast);
   app.use('/api/distribusi', distribusi);
   app.use('/api/push', push);
@@ -50,6 +53,7 @@ export function buildApp() {
   app.use('/api/saved-filters', savedFilters);
   app.use('/api/webhooks', webhooks);
   app.use('/api/foto', foto);
+  app.use('/api/receipt', receipt);
   return app;
 }
 

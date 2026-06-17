@@ -14,6 +14,7 @@ import { renderKunjunganPdf } from '../lib/pdfKunjungan.js';
 import { logger } from '../lib/logger.js';
 import { evalGeofence, evalGps, evalPhotoExif, merge } from '../lib/antiFraud.js';
 import { enqueueFeedbackRequest } from './feedback.js';
+import { sendReceiptWa } from './receipt.js';
 import { watermarkPhoto } from '../lib/watermark.js';
 import { requireRole } from '../auth.js';
 import { pushToUsers } from '../lib/webPush.js';
@@ -204,6 +205,12 @@ router.post('/', kunjunganLimiter, upload.array('photos', 5), async (req, res) =
   // Fire-and-forget customer feedback SMS. The function swallows its own
   // failures so a downed gateway never blocks the laporan submission.
   void enqueueFeedbackRequest(k.id);
+
+  // For paid visits, push a WA bukti-bayar link to the nasabah. Same fire-
+  // and-forget contract — sendReceiptWa logs + returns instead of throwing.
+  if (parsed.data.hasil === 'BAYAR' && parsed.data.nominal > 0n) {
+    void sendReceiptWa(k.id);
+  }
 
   res.status(201).json(k);
 });

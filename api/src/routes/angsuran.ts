@@ -1,6 +1,7 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { prisma } from '../db.js';
-import { requireAuth, scopedBranchId } from '../auth.js';
+import { requireAuth, requireRole, scopedBranchId } from '../auth.js';
 import { audit, fromReq } from '../lib/audit.js';
 
 const router = Router();
@@ -99,6 +100,106 @@ router.get('/export.csv', async (req, res) => {
   res.end();
 
   await audit({ action: 'angsuran.csv_export', ...fromReq(req), meta: { rows: rows.length } });
+});
+
+// Bulk import — caller (frontend) parses CSV in the browser, then POSTs an
+// array of {kodeNasabah, tanggal, jam, metode, status, nominal}. Each row is
+// validated independently. SUPERVISOR is auto-scoped to their branch
+// (matching nasabah scope); ADMIN can import across branches. Single txn
+// so partial failures don't leave half-imported batches.
+const bulkRowSchema = z.object({
+  kodeNasabah: z.string().min(1).max(64),
+  tanggal: z.coerce.date(),
+  jam: z.string().regex(/^\d{2}:\d{2}$/).default('00:00'),
+  metode: z.enum(['tunai', 'transfer', 'autodebet']).default('tunai'),
+  status: z.enum(['berhasil', 'pending', 'gagal']).default('berhasil'),
+  nominal: z.coerce.bigint().positive(),
+});
+const bulkBody = z.object({
+  rows: z.array(bulkRowSchema).min(1).max(2000),
+});
+
+interface BulkOutcome {
+  index: number;
+  kodeNasabah: string;
+  status: 'imported' | 'unknown_nasabah' | 'cross_branch' | 'invalid';
+  message?: string;
+}
+
+router.post('/bulk', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const parsed = bulkBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request', details: parsed.error.flatten() });
+
+  // Pre-resolve nasabah by kode in one query.
+  const kodes = [...new Set(parsed.data.rows.map(r => r.kodeNasabah))];
+  const nasabahMap = new Map(
+    (await prisma.nasabah.findMany({
+      where: { kode: { in: kodes } },
+      select: { id: true, kode: true, branchId: true, sisa: true, active: true },
+    })).map(n => [n.kode, n]),
+  );
+
+  const supervisorBranch = req.user?.role === 'SUPERVISOR' ? req.user.branchId : null;
+
+  const outcomes: BulkOutcome[] = [];
+  let imported = 0;
+  let totalNominal = 0n;
+
+  await prisma.$transaction(async (tx) => {
+    for (let i = 0; i < parsed.data.rows.length; i++) {
+      const row = parsed.data.rows[i];
+      const n = nasabahMap.get(row.kodeNasabah);
+      if (!n || !n.active) {
+        outcomes.push({ index: i, kodeNasabah: row.kodeNasabah, status: 'unknown_nasabah' });
+        continue;
+      }
+      if (supervisorBranch && n.branchId !== supervisorBranch) {
+        outcomes.push({ index: i, kodeNasabah: row.kodeNasabah, status: 'cross_branch' });
+        continue;
+      }
+      try {
+        await tx.pembayaran.create({
+          data: {
+            nasabahId: n.id,
+            branchId: n.branchId,
+            nominal: row.nominal,
+            metode: row.metode,
+            status: row.status,
+            jam: row.jam,
+            tanggal: row.tanggal,
+          },
+        });
+        // Apply against outstanding for 'berhasil' rows only — pending/gagal
+        // would inflate the reduction even though the bank hasn't received.
+        if (row.status === 'berhasil') {
+          const next = n.sisa - row.nominal;
+          await tx.nasabah.update({
+            where: { id: n.id },
+            data: { sisa: next < 0n ? 0n : next },
+          });
+          totalNominal += row.nominal;
+        }
+        outcomes.push({ index: i, kodeNasabah: row.kodeNasabah, status: 'imported' });
+        imported++;
+      } catch (e: any) {
+        outcomes.push({
+          index: i, kodeNasabah: row.kodeNasabah, status: 'invalid',
+          message: String(e?.message ?? e).slice(0, 200),
+        });
+      }
+    }
+  });
+
+  await audit({
+    action: 'pembayaran.bulk_import', ...fromReq(req),
+    meta: {
+      total: parsed.data.rows.length, imported,
+      skipped: parsed.data.rows.length - imported,
+      totalNominal: Number(totalNominal),
+    },
+  });
+
+  res.status(201).json({ imported, total: parsed.data.rows.length, outcomes });
 });
 
 // Escape according to RFC 4180: wrap in quotes if cell contains comma, quote,

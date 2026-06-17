@@ -40,6 +40,7 @@ import apiKeys from './routes/apiKeys.js';
 import savedFilters from './routes/savedFilters.js';
 import webhooks from './routes/webhooks.js';
 import foto from './routes/foto.js';
+import receipt from './routes/receipt.js';
 import { startWebhookDispatcher } from './lib/webhookDispatcher.js';
 import { initSentry, sentryErrorHandler, setupSentryRequest } from './lib/sentry.js';
 import { apiKeyAuth } from './lib/apiKey.js';
@@ -144,6 +145,7 @@ app.use('/api/api-keys', apiKeys);
 app.use('/api/saved-filters', savedFilters);
 app.use('/api/webhooks', webhooks);
 app.use('/api/foto', foto);
+app.use('/api/receipt', receipt);
 
 // Static uploads — Cache-Control prevents stale photo IDs from sticking.
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {
