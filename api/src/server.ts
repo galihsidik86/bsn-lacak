@@ -13,6 +13,7 @@ import { apiLimiter, loginLimiter } from './lib/rateLimit.js';
 import { startAuditRetention } from './workers/auditRetention.js';
 import { startBlastWorker } from './workers/blastWorker.js';
 import { startSlaWorker } from './workers/slaWorker.js';
+import { startClosingEmailWorker, stopClosingEmailWorker } from './workers/closingEmailWorker.js';
 import { prisma } from './db.js';
 
 import auth from './routes/auth.js';
@@ -181,6 +182,7 @@ const server = app.listen(env.PORT, () => {
 
 const stopWorker = startBlastWorker();
 startSlaWorker();
+startClosingEmailWorker();
 if (env.NODE_ENV !== 'test') startWebhookDispatcher();
 const stopSamplers = startMetricsSamplers();
 const stopRetention = startAuditRetention();
@@ -191,6 +193,7 @@ const shutdown = (sig: string) => {
   stopWorker();
   stopSamplers();
   stopRetention();
+  stopClosingEmailWorker();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
 };

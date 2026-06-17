@@ -9,6 +9,7 @@ import {
   useKunjunganList, useNasabahFinder, usePetugasFinder, usePetugasList,
   useReviewKunjungan,
 } from '../data/queries';
+import { downloadAuthed } from '../lib/download';
 import { useAuth } from '../lib/auth';
 import type { HasilKunjungan, Kunjungan, Nasabah, Petugas } from '../types';
 
@@ -110,7 +111,10 @@ export function ScreenLaporan() {
             <button className={fReview === 'approved' ? 'on' : ''} onClick={() => setFilterReview('approved')}>Disetujui</button>
             <button className={fReview === 'rejected' ? 'on' : ''} onClick={() => setFilterReview('rejected')}>Ditolak</button>
           </div>
-          <span className="chip"><Ic.calendar size={13} />11 Juni 2026</span>
+          <div className="center gap-2">
+            <BulkPdfButton petugasId={fPet === 'all' ? undefined : fPet} />
+            <span className="chip"><Ic.calendar size={13} />11 Juni 2026</span>
+          </div>
         </div>
         <div style={{ padding: '8px 16px', borderTop: '1px solid var(--line)' }}>
           <SavedFilters
@@ -561,6 +565,36 @@ function LaporanDetail({ k, onClose, petugasById, nasabahById }: {
         )}
       </div>
     </Modal>
+  );
+}
+
+// "Unduh semua" — downloads a server-streamed zip of PDF for every kunjungan
+// in the current scope (optionally filtered by petugasId). The server caps
+// at 500 rows; we surface that limit in the button hint via aria-describedby.
+function BulkPdfButton({ petugasId }: { petugasId?: string }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const onClick = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const qs = petugasId ? `?petugasId=${encodeURIComponent(petugasId)}` : '';
+      await downloadAuthed(`/kunjungan/bulk-export.zip${qs}`,
+        `laporan-bsn-${new Date().toISOString().slice(0, 10)}.zip`);
+    } catch (e: any) {
+      const code = e?.response?.status;
+      setErr(code === 404 ? 'Tidak ada laporan pada filter ini.' : 'Gagal mengunduh.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <button className="btn btn-sm" onClick={onClick} disabled={busy}
+        title="Unduh PDF semua laporan pada filter ini (max 500)">
+        <Ic.download size={13} />{busy ? 'Mengunduh…' : 'Unduh ZIP PDF'}
+      </button>
+      {err && <span className="muted" style={{ fontSize: 11, color: 'var(--col-macet)' }}>{err}</span>}
+    </>
   );
 }
 

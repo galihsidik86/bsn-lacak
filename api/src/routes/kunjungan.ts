@@ -19,6 +19,7 @@ import { requireRole } from '../auth.js';
 import { pushToUsers } from '../lib/webPush.js';
 import { enqueueNotification } from './notifications.js';
 import { kunjunganLimiter } from '../lib/rateLimit.js';
+import { ZipArchive } from 'archiver';
 
 const router = Router();
 router.use(requireAuth);
@@ -205,6 +206,66 @@ router.post('/', kunjunganLimiter, upload.array('photos', 5), async (req, res) =
   void enqueueFeedbackRequest(k.id);
 
   res.status(201).json(k);
+});
+
+// Bulk export — stream a zip of one PDF per matching kunjungan. Same scope
+// as the rest of /kunjungan, so supervisors only get their branch. Capped
+// at 500 rows to keep zip + memory bounded.
+router.get('/bulk-export.zip', async (req, res) => {
+  const str = (v: unknown): string | undefined => typeof v === 'string' ? v : undefined;
+  const since = str(req.query.since);
+  const until = str(req.query.until);
+  const petugasId = str(req.query.petugasId);
+
+  const where: Record<string, any> = { ...scope(req) };
+  if (petugasId) where.petugasId = petugasId;
+  if (since || until) {
+    where.tanggal = {};
+    if (since) where.tanggal.gte = new Date(since);
+    if (until) where.tanggal.lte = new Date(until);
+  }
+
+  const rows = await prisma.kunjungan.findMany({
+    where,
+    include: {
+      petugas: true, nasabah: true, fotos: true, branch: true,
+      reviewer: { select: { nama: true, username: true } },
+    },
+    orderBy: { tanggal: 'desc' },
+    take: 500,
+  });
+
+  if (rows.length === 0) {
+    return res.status(404).json({ error: 'empty', message: 'tidak ada laporan pada rentang yang dipilih' });
+  }
+
+  const tag = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition',
+    `attachment; filename="laporan-bsn-${tag}.zip"`);
+
+  const archive = new ZipArchive({ zlib: { level: 6 } });
+  archive.on('warning', (e: unknown) => logger.warn({ err: String(e) }, 'bulk_export_zip_warning'));
+  archive.on('error', (e: unknown) => {
+    logger.error({ err: String(e) }, 'bulk_export_zip_error');
+    try { res.end(); } catch { /* already closed */ }
+  });
+  archive.pipe(res);
+
+  for (const k of rows) {
+    const pdf = renderKunjunganPdf({
+      kunjungan: k, petugas: k.petugas, nasabah: k.nasabah, branch: k.branch,
+      reviewer: k.reviewer ?? null,
+    });
+    archive.append(pdf as any, { name: `laporan-${k.nasabah.kode}-${k.id}.pdf` });
+  }
+
+  await audit({
+    action: 'kunjungan.bulk_pdf_export', ...fromReq(req),
+    meta: { count: rows.length, since, until, petugasId },
+  });
+
+  await archive.finalize();
 });
 
 // PDF for one kunjungan. Branch scope applied — supervisors can only print

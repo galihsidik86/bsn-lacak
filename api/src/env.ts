@@ -41,6 +41,20 @@ const schema = z.object({
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENV: z.string().default('development'),
   SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.1),
+  // Email provider — 'stub' (default) logs the message so dev runs work
+  // without an SMTP. 'smtp' uses nodemailer with the SMTP_* settings.
+  EMAIL_PROVIDER: z.enum(['stub', 'smtp']).default('stub'),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_SECURE: z.enum(['true', 'false']).default('false').transform(v => v === 'true'),
+  EMAIL_FROM: z.string().default('BSN Lacak <no-reply@bsn-lacak.local>'),
+  // Monthly closing schedule. Runs once per day at the configured hour
+  // (24h, server local time); fires the actual CSV only when today is
+  // the configured day-of-month.
+  CLOSING_EMAIL_DAY: z.coerce.number().int().min(1).max(28).default(1),
+  CLOSING_EMAIL_HOUR: z.coerce.number().int().min(0).max(23).default(8),
 });
 
 const parsed = schema.safeParse(process.env);
