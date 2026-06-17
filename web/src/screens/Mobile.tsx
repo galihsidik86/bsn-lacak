@@ -12,6 +12,7 @@ import {
 } from '../data/queries';
 import { doLogout, useAuth } from '../lib/auth';
 import { useGeolocationStream, type GeoFix } from '../lib/geolocation';
+import { distMeters, orderNearest } from '../lib/geo';
 import { makeWatermarkedPreview } from '../lib/watermarkPreview';
 import { clearPhotos, loadPhotos, savePhotos } from '../lib/photoStore';
 import { enqueue as enqueueOffline } from '../lib/submitQueue';
@@ -22,6 +23,16 @@ import { getMyZone, pointInPolygon, type ZoneInfo } from '../lib/wilayah';
 import type { HasilKunjungan, Nasabah, Petugas } from '../types';
 
 type Tab = 'beranda' | 'rute' | 'riwayat' | 'profil';
+
+// Local-timezone YYYY-MM-DD. Using ISO/UTC would mis-bucket reports submitted
+// between midnight WIB and 07:00 WIB into the previous day on the petugas's
+// "Hari Ini" filter.
+function localDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 const MOBILE_STATE_KEY = 'bsn_mobile_state';
 const LAPOR_DRAFT_KEY = 'bsn_lapor_draft';
@@ -93,11 +104,11 @@ export function ScreenMobile() {
   const kunjunganQ = useKunjunganList();
   const doneSet = useMemo(() => {
     if (!ME) return new Set<string>();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateKey(new Date());
     const s = new Set<string>();
     for (const k of kunjunganQ.data ?? []) {
       if (k.petugas !== ME.id) continue;
-      if (k.tanggal && k.tanggal.slice(0, 10) !== today) continue;
+      if (k.tanggal && localDateKey(new Date(k.tanggal)) !== today) continue;
       s.add(k.nasabah);
     }
     return s;
@@ -455,41 +466,6 @@ function tourLength(stops: { lat: number; lng: number }[]): number {
   return total;
 }
 
-// Equirectangular distance in meters — same approach as lib/geolocation.
-function distMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const R = 6371_000;
-  const dLat = (b.lat - a.lat) * Math.PI / 180;
-  const dLng = (b.lng - a.lng) * Math.PI / 180;
-  const lat = ((a.lat + b.lat) / 2) * Math.PI / 180;
-  const x = dLng * Math.cos(lat);
-  return Math.hypot(dLat, x) * R;
-}
-
-// Greedy nearest-neighbor: from the start point, repeatedly pick the closest
-// unvisited stop. Cheap O(n²) — fine for ≤ ~20 stops. Returns the reordered
-// list plus total tour length in meters.
-function orderNearest<T extends { lat: number; lng: number }>(
-  start: { lat: number; lng: number }, stops: T[],
-): { ordered: T[]; meters: number } {
-  const remaining = [...stops];
-  const ordered: T[] = [];
-  let cur = start;
-  let total = 0;
-  while (remaining.length) {
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < remaining.length; i++) {
-      const d = distMeters(cur, remaining[i]);
-      if (d < bestDist) { bestDist = d; bestIdx = i; }
-    }
-    const next = remaining.splice(bestIdx, 1)[0];
-    total += bestDist;
-    ordered.push(next);
-    cur = next;
-  }
-  return { ordered, meters: total };
-}
-
 function MRute({ me: ME, tasks: MY_TASKS, onReport, here, zone }: {
   me: Petugas; tasks: Nasabah[]; onReport: (n: Nasabah) => void;
   here: { lat: number; lng: number } | null;
@@ -679,10 +655,10 @@ function MRiwayat({ me: ME, onLaporUlang }: { me: Petugas; onLaporUlang: (n: Nas
   // Server already scopes to ME via PETUGAS role; the filter is defensive
   // for supervisor preview and back-compat with mock mode.
   const mine = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateKey(new Date());
     return ALL_K.filter(k => {
       if (k.petugas !== ME.id) return false;
-      if (scope === 'today' && k.tanggal && k.tanggal.slice(0, 10) !== today) return false;
+      if (scope === 'today' && k.tanggal && localDateKey(new Date(k.tanggal)) !== today) return false;
       return true;
     });
   }, [ALL_K, ME.id, scope]);

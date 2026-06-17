@@ -113,7 +113,7 @@ export function ScreenLaporan() {
           </div>
           <div className="center gap-2">
             <BulkPdfButton petugasId={fPet === 'all' ? undefined : fPet} />
-            <span className="chip"><Ic.calendar size={13} />11 Juni 2026</span>
+            <span className="chip"><Ic.calendar size={13} />{new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
           </div>
         </div>
         <div style={{ padding: '8px 16px', borderTop: '1px solid var(--line)' }}>
@@ -453,7 +453,7 @@ function LaporanDetail({ k, onClose, petugasById, nasabahById }: {
         <div style={{ flex: 1 }}>
           <div className="center gap-2"><span className="section-title">Laporan Kunjungan</span>
             <span className="badge" style={{ background: h.soft, color: h.c }}>{h.label}</span></div>
-          <div className="muted mono" style={{ fontSize: 12, marginTop: 3 }}>{k.id} · {k.jam} · 11 Jun 2026</div>
+          <div className="muted mono" style={{ fontSize: 12, marginTop: 3 }}>{k.id} · {k.jam} · {k.tanggal ? new Date(k.tanggal).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</div>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
       </div>

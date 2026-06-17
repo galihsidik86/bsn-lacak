@@ -94,8 +94,10 @@ function useNav(): NavGroup[] {
   return groups;
 }
 
+const TODAY_LABEL = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+
 const TITLES: Record<PageKey, [string, string]> = {
-  dashboard: ['Dashboard', 'Ringkasan operasional penagihan · 11 Juni 2026'],
+  dashboard: ['Dashboard', `Ringkasan operasional penagihan · ${TODAY_LABEL}`],
   tracking: ['Tracking Petugas', 'Posisi live & rute kunjungan hari ini'],
   kolektabilitas: ['Postur Kolektabilitas', 'Komposisi & detail nasabah binaan'],
   angsuran: ['Pergerakan Angsuran', 'Arus pembayaran & ledger transaksi'],

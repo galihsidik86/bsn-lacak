@@ -7,12 +7,13 @@ import { Avatar, StatusPill, cssVar } from '../components/UI';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   HASIL_KUNJUNGAN, RPjt, STATUS_PETUGAS,
-  useKunjunganList, useNasabahFinder, usePetugasFinder, usePetugasList,
+  useKunjunganList, useNasabahFinder, useNasabahList, usePetugasFinder, usePetugasList,
 } from '../data/queries';
 import { usePetugasPositions } from '../lib/useEventStream';
 import { tokenStore } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import type { Petugas } from '../types';
+import { orderNearest } from '../lib/geo';
+import type { Nasabah, Petugas } from '../types';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -24,38 +25,55 @@ const MAPTILER_STYLE = import.meta.env.VITE_MAPTILER_STYLE || 'streets-v2';
 // Fallback hub center (BSN headquarter — Depok area)
 const HUB = { lat: -6.4025, lng: 106.7942 };
 
-function makeRoute(p: Petugas, seed: number) {
-  const cx = 60 + p.posisi.x * 880;
-  const cy = 50 + p.posisi.y * 520;
-  const rnd = (n: number) => {
-    const x = Math.sin(seed * 99 + n * 17.3) * 10000;
-    return x - Math.floor(x);
+const TIMES = ['07:40', '08:15', '08:55', '09:30', '10:10', '10:48', '11:25', '12:30', '13:10', '13:50', '14:35', '15:20'];
+
+// Project geo coords onto the 1000×600 stylized SVG canvas around HUB.
+// Inverse of the original makeRoute projection so existing canvas-coords
+// renderers (the SVG path map) still work with real lat/lng input.
+function projToCanvas(lat: number, lng: number): { x: number; y: number } {
+  const x = ((lng - HUB.lng) / 0.10) * 1000 + 500;
+  const y = ((HUB.lat - lat) / 0.08) * 600 + 300;
+  return {
+    x: Math.max(40, Math.min(960, x)),
+    y: Math.max(40, Math.min(560, y)),
   };
-  const stops: { x: number; y: number; lat: number; lng: number; t: string; idx: number }[] = [];
-  // Force at least one stop so downstream code that does stops[stops.length-1]
-  // (live position pin) never reads `undefined`.
-  const n = Math.max(1, p.kunjungan);
-  let px = cx - 120;
-  let py = cy - 60;
-  const times = ['07:40', '08:15', '08:55', '09:30', '10:10', '10:48', '11:25', '12:30', '13:10', '13:50', '14:35', '15:20'];
-  for (let i = 0; i < n; i++) {
-    px += (rnd(i) - 0.4) * 150;
-    py += (rnd(i + 50) - 0.4) * 120;
-    px = Math.max(40, Math.min(950, px));
-    py = Math.max(40, Math.min(580, py));
-    // Project the canvas point to geo coords around HUB
-    const lat = HUB.lat + (0.5 - py / 600) * 0.08;
-    const lng = HUB.lng + (px / 1000 - 0.5) * 0.10;
-    stops.push({ x: px, y: py, lat, lng, t: times[i] || '15:50', idx: i });
+}
+
+// Real route for a petugas: ordered stops over their nasabah binaan, mirroring
+// what the petugas sees on Mobile (Rute tab). Order = nearest-neighbor from
+// the petugas's live GPS fix when available, else from the first stop. This
+// keeps the admin's tracking map in sync with the petugas's actual path.
+function makeRoute(
+  p: Petugas,
+  nasabahList: Nasabah[],
+  live?: { lat: number; lng: number },
+): { x: number; y: number; lat: number; lng: number; t: string; idx: number }[] {
+  const mine = nasabahList.filter(
+    n => n.petugas === p.id && typeof n.lat === 'number' && typeof n.lng === 'number',
+  );
+  const raw = mine.map(n => ({ lat: n.lat as number, lng: n.lng as number }));
+  if (raw.length === 0) {
+    // Fallback so downstream code (stops[stops.length-1]) never crashes:
+    // synthesize a single pin at the petugas's live position or HUB.
+    const pt = live ?? HUB;
+    const proj = projToCanvas(pt.lat, pt.lng);
+    return [{ x: proj.x, y: proj.y, lat: pt.lat, lng: pt.lng, t: '—', idx: 0 }];
   }
-  return stops;
+  const start = live ?? raw[0];
+  const { ordered } = orderNearest(start, raw);
+  return ordered.map((s, i) => {
+    const proj = projToCanvas(s.lat, s.lng);
+    return { x: proj.x, y: proj.y, lat: s.lat, lng: s.lng, t: TIMES[i] ?? '15:50', idx: i };
+  });
 }
 
 export function ScreenTracking({ go }: { go: (k: string) => void }) {
   const petugasQ = usePetugasList();
   const kunjunganQ = useKunjunganList();
+  const nasabahQ = useNasabahList();
   const { data: PETUGAS } = petugasQ;
   const { data: KUNJUNGAN } = kunjunganQ;
+  const { data: NASABAH } = nasabahQ;
   const petugasById = usePetugasFinder();
   const nasabahById = useNasabahFinder();
 
@@ -64,8 +82,6 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
   useEffect(() => { if (!sel && PETUGAS[0]) setSel(PETUGAS[0].id); }, [sel, PETUGAS]);
 
   const p = petugasById(sel);
-  const routes = useMemo(() => PETUGAS.map((pt, i) => ({ pt, stops: makeRoute(pt, i + 1) })), [PETUGAS]);
-  const myRoute = routes.find(r => r.pt.id === sel);
   const visitsOf = (pid: string) => KUNJUNGAN.filter(k => k.petugas === pid);
 
   // Latest live coordinates, keyed by petugasId. Two feed sources:
@@ -96,7 +112,15 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
     return () => { cancelled = true; };
   }, []);
 
-  if (petugasQ.isPending || kunjunganQ.isPending) {
+  // Routes are rebuilt whenever the petugas's live fix changes so the order
+  // updates as they move — same nearest-neighbor algorithm Mobile uses.
+  const routes = useMemo(
+    () => PETUGAS.map(pt => ({ pt, stops: makeRoute(pt, NASABAH, livePositions[pt.id]) })),
+    [PETUGAS, NASABAH, livePositions],
+  );
+  const myRoute = routes.find(r => r.pt.id === sel);
+
+  if (petugasQ.isPending || kunjunganQ.isPending || nasabahQ.isPending) {
     return (
       <div className="content" style={{ display: 'grid', gap: 16, gridTemplateColumns: '318px 1fr' }}>
         <Skeleton h={600} />
@@ -104,8 +128,8 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
       </div>
     );
   }
-  if (petugasQ.error || kunjunganQ.error) {
-    return <div className="content"><ErrorState onRetry={() => { petugasQ.refetch(); kunjunganQ.refetch(); }} /></div>;
+  if (petugasQ.error || kunjunganQ.error || nasabahQ.error) {
+    return <div className="content"><ErrorState onRetry={() => { petugasQ.refetch(); kunjunganQ.refetch(); nasabahQ.refetch(); }} /></div>;
   }
   if (PETUGAS.length === 0) {
     return (
