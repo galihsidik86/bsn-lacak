@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 import { Map as MlMap, Marker, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Ic } from '../components/Icons';
@@ -9,7 +10,11 @@ import {
   useKunjunganList, useNasabahFinder, usePetugasFinder, usePetugasList,
 } from '../data/queries';
 import { usePetugasPositions } from '../lib/useEventStream';
+import { tokenStore } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import type { Petugas } from '../types';
+
+const BASE = import.meta.env.VITE_API_URL || '/api';
 
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY;
 // MapTiler style — `streets-v2` is the default. Other clean options:
@@ -63,12 +68,33 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
   const myRoute = routes.find(r => r.pt.id === sel);
   const visitsOf = (pid: string) => KUNJUNGAN.filter(k => k.petugas === pid);
 
-  // Latest live coordinates pushed via SSE, keyed by petugasId. Overrides the
-  // stylized last-stop coords for the "live pulse" pin on the map.
+  // Latest live coordinates, keyed by petugasId. Two feed sources:
+  //   1. On mount: GET /petugas/positions/latest seeds with most recent ping
+  //      per petugas so the map shows real coords immediately after refresh.
+  //   2. SSE 'petugas.position' overrides with newer fixes as they arrive.
   const [livePositions, setLivePositions] = useState<Record<string, { lat: number; lng: number; ts: number }>>({});
   usePetugasPositions(useCallback((d) => {
     setLivePositions(prev => ({ ...prev, [d.petugasId]: { lat: d.lat, lng: d.lng, ts: d.ts } }));
   }, []));
+  useEffect(() => {
+    const tok = tokenStore.get();
+    if (!tok) return;
+    const override = useAuth.getState().branchOverride;
+    const h: Record<string, string> = { Authorization: `Bearer ${tok}` };
+    if (override) h['x-branch-id'] = override;
+    let cancelled = false;
+    void axios.get<Array<{ petugasId: string; lat: number; lng: number; ts: number }>>(
+      `${BASE}/petugas/positions/latest`,
+      { withCredentials: true, headers: h },
+    ).then(r => {
+      if (cancelled) return;
+      const seed: Record<string, { lat: number; lng: number; ts: number }> = {};
+      for (const row of r.data) seed[row.petugasId] = { lat: row.lat, lng: row.lng, ts: row.ts };
+      // Only fill keys that haven't been overridden by an SSE event during fetch.
+      setLivePositions(prev => ({ ...seed, ...prev }));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
 
   if (petugasQ.isPending || kunjunganQ.isPending) {
     return (

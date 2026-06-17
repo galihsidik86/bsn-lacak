@@ -42,6 +42,41 @@ router.get('/performance', async (req, res) => {
   res.json({ since: since.toISOString(), windowDays: window, rows });
 });
 
+// Latest position per active petugas — used by Tracking screen to bootstrap
+// `livePositions` on mount so the map shows real coords immediately instead
+// of waiting up to 60s for the next SSE ping. Branch-scoped, freshness cap
+// keeps stale-but-recorded pings (e.g. from this morning) from being shown
+// as "live". Mount BEFORE `/:id` so the path isn't consumed.
+router.get('/positions/latest', async (req, res) => {
+  const branchId = scopedBranchId(req);
+  const maxAgeHours = Number.parseInt(String(req.query.maxAgeHours ?? '12'), 10);
+  const since = new Date(Date.now() - (Number.isFinite(maxAgeHours) ? maxAgeHours : 12) * 60 * 60 * 1000);
+
+  const petugas = await prisma.petugas.findMany({
+    where: { active: true, ...(branchId ? { branchId } : {}) },
+    select: { id: true },
+  });
+  const ids = petugas.map(p => p.id);
+  if (ids.length === 0) return res.json([]);
+
+  // DISTINCT ON (petugasId) ORDER BY recordedAt DESC returns latest ping per
+  // petugas in one query — cheaper than N findFirst calls.
+  const rows = await prisma.$queryRaw<Array<{
+    petugasId: string; lat: number; lng: number; accuracy: number | null; recordedAt: Date;
+  }>>`
+    SELECT DISTINCT ON ("petugasId") "petugasId", "lat", "lng", "accuracy", "recordedAt"
+    FROM "PetugasPosition"
+    WHERE "petugasId" = ANY(${ids}) AND "recordedAt" >= ${since}
+    ORDER BY "petugasId", "recordedAt" DESC
+  `;
+  res.json(rows.map(r => ({
+    petugasId: r.petugasId,
+    lat: r.lat, lng: r.lng,
+    accuracy: r.accuracy,
+    ts: r.recordedAt.getTime(),
+  })));
+});
+
 router.get('/:id', async (req, res) => {
   const branchId = scopedBranchId(req);
   const p = await prisma.petugas.findFirst({
