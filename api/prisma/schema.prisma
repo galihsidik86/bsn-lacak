@@ -418,7 +418,8 @@ model Kunjungan {
   fotos      Foto[]
   feedback     CustomerFeedback?
   jam        String
-  tanggal    DateTime       @default(now())
+  tanggal    DateTime       @default(now())   // the visit time (can be backdated)
+  createdAt  DateTime       @default(now())   // the insertion time; gates edit/delete window
 
   @@index([petugasId, tanggal])
   @@index([nasabahId, tanggal])

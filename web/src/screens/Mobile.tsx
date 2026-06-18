@@ -8,7 +8,8 @@ import { IOSDevice } from '../components/IosFrame';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   HASIL_KUNJUNGAN, KOL, RP, RPjt,
-  useCreateKunjungan, useKunjunganList, useNasabahList, usePetugasList,
+  useCreateKunjungan, useDeleteKunjungan, useEditKunjungan,
+  useKunjunganList, useNasabahList, usePetugasList,
 } from '../data/queries';
 import { doLogout, useAuth } from '../lib/auth';
 import { useGeolocationStream, type GeoFix } from '../lib/geolocation';
@@ -645,6 +646,9 @@ function MRiwayat({ me: ME, onLaporUlang }: { me: Petugas; onLaporUlang: (n: Nas
   const { data: ALL_K } = kunjunganQ;
   const { data: ALL_N } = nasabahQ;
   const [scope, setScope] = useState<'today' | 'all'>('today');
+  const [editing, setEditing] = useState<import('../types').Kunjungan | null>(null);
+  const delMut = useDeleteKunjungan();
+  const [delErr, setDelErr] = useState<string | null>(null);
 
   const nasabahById = useMemo(() => {
     const m = new Map<string, Nasabah>();
@@ -778,12 +782,154 @@ function MRiwayat({ me: ME, onLaporUlang }: { me: Petugas; onLaporUlang: (n: Nas
                       )}
                     </div>
                   )}
+                  {(() => {
+                    // Edit/delete window: 30 min from createdAt, PENDING only.
+                    // Server is the source of truth; this just hides buttons
+                    // when they'd certainly fail so the petugas isn't tempted.
+                    if (k.reviewStatus !== 'PENDING') return null;
+                    if (!k.createdAt) return null;
+                    const ageMin = (Date.now() - new Date(k.createdAt).getTime()) / 60_000;
+                    if (ageMin > 30) return null;
+                    const remaining = Math.max(0, Math.round(30 - ageMin));
+                    return (
+                      <div className="center gap-2" style={{ marginTop: 10, justifyContent: 'space-between' }}>
+                        <span className="muted" style={{ fontSize: 11, fontWeight: 600 }}>
+                          Bisa diedit/hapus {remaining} mnt lagi
+                        </span>
+                        <div className="center gap-2">
+                          <button className="btn btn-sm btn-ghost" onClick={() => setEditing(k)}
+                            style={{ padding: '5px 10px', fontSize: 11.5 }}>
+                            <Ic.settings size={12} />Edit
+                          </button>
+                          <button className="btn btn-sm" onClick={() => {
+                            if (!confirm('Hapus laporan ini? Tindakan tidak bisa dibatalkan.')) return;
+                            setDelErr(null);
+                            delMut.mutate(k.id, {
+                              onError: (e: any) => {
+                                const code = e?.response?.data?.error;
+                                setDelErr(code === 'edit_window_expired' ? 'Window 30 menit sudah lewat.'
+                                  : code === 'already_reviewed' ? 'Sudah direview supervisor.'
+                                  : 'Gagal menghapus.');
+                              },
+                            });
+                          }}
+                            style={{
+                              padding: '5px 10px', fontSize: 11.5,
+                              background: 'var(--col-macet-soft)', color: 'var(--col-macet)', border: 'none',
+                            }}>
+                            <Ic.x size={12} />Hapus
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );
           })}
         </div>
       )}
+      {delErr && (
+        <div className="center gap-2" style={{
+          margin: '0 16px 12px', background: 'var(--col-macet-soft)',
+          color: 'var(--col-macet)', borderRadius: 10, padding: '8px 12px',
+          fontSize: 12.5, fontWeight: 600,
+        }}>
+          <Ic.alert size={14} />{delErr}
+        </div>
+      )}
+      {editing && (
+        <EditKunjunganModal k={editing} onClose={() => setEditing(null)} />
+      )}
+    </div>
+  );
+}
+
+function EditKunjunganModal({ k, onClose }: {
+  k: import('../types').Kunjungan; onClose: () => void;
+}) {
+  const editMut = useEditKunjungan();
+  const [hasil, setHasil] = useState<HasilKunjungan>(k.hasil);
+  const [nominal, setNominal] = useState(String(k.nominal));
+  const [catatan, setCatatan] = useState(k.catatan);
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = () => {
+    setErr(null);
+    editMut.mutate(
+      { id: k.id, patch: { hasil, nominal: Number(nominal), catatan } },
+      {
+        onSuccess: onClose,
+        onError: (e: any) => {
+          const code = e?.response?.data?.error;
+          setErr(code === 'edit_window_expired' ? 'Window 30 menit sudah lewat.'
+            : code === 'already_reviewed' ? 'Sudah direview supervisor.'
+            : 'Gagal menyimpan.');
+        },
+      },
+    );
+  };
+
+  return (
+    <div role="dialog" aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 80,
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--surface)', borderRadius: '20px 20px 0 0',
+          padding: 16, width: '100%', maxWidth: 480, display: 'grid', gap: 12,
+        }}>
+        <div className="between">
+          <div style={{ fontWeight: 800, fontSize: 15 }}>Edit Laporan</div>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+        </div>
+        <div>
+          <MLabel>Hasil</MLabel>
+          <div className="grid gap-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            {(Object.entries(HASIL_KUNJUNGAN) as [HasilKunjungan, typeof HASIL_KUNJUNGAN[HasilKunjungan]][]).map(([key, v]) => (
+              <button key={key} onClick={() => setHasil(key)} style={{
+                padding: '10px 8px', borderRadius: 12, fontWeight: 700, fontSize: 12,
+                border: hasil === key ? `1.5px solid ${v.c}` : '1px solid var(--line)',
+                background: hasil === key ? v.soft : 'var(--surface)',
+                color: hasil === key ? v.c : 'var(--ink-2)',
+              }}>{v.label}</button>
+            ))}
+          </div>
+        </div>
+        {hasil === 'bayar' && (
+          <div>
+            <MLabel>Nominal</MLabel>
+            <div className="search" style={{ background: 'var(--surface)' }}>
+              <span style={{ fontWeight: 800, color: 'var(--ink-3)' }}>Rp</span>
+              <input value={Number(nominal).toLocaleString('id-ID')} inputMode="numeric"
+                onChange={e => setNominal(e.target.value.replace(/\D/g, ''))}
+                style={{ fontWeight: 700 }} />
+            </div>
+          </div>
+        )}
+        <div>
+          <MLabel>Catatan</MLabel>
+          <textarea className="input" rows={3} value={catatan} onChange={e => setCatatan(e.target.value)}
+            style={{ resize: 'none' }} />
+        </div>
+        {err && (
+          <div className="center gap-2" style={{
+            background: 'var(--col-macet-soft)', color: 'var(--col-macet)',
+            borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 600,
+          }}>
+            <Ic.alert size={14} />{err}
+          </div>
+        )}
+        <div className="grid gap-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <button className="btn" onClick={onClose} disabled={editMut.isPending}>Batal</button>
+          <button className="btn btn-primary" onClick={save} disabled={editMut.isPending}>
+            {editMut.isPending ? 'Menyimpan…' : 'Simpan'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1052,8 +1198,19 @@ function MLapor({ n, me: ME, here, onClose, onDone }: {
   const [photos, setPhotos] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [catatan, setCatatan] = useState(draft?.catatan ?? '');
+  // Date picker for backdating up to BACKDATE_MAX_DAYS (= 7) in the past.
+  // Defaults to today; petugas can pick yesterday/-2/-3 etc. when logging
+  // a visit they actually did earlier. Server rejects future dates and
+  // anything older than the window.
+  const [tanggal, setTanggal] = useState<string>(() => localDateKey(new Date()));
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const todayKeyStr = localDateKey(new Date());
+  const minDateStr = (() => {
+    const d = new Date(); d.setDate(d.getDate() - 7);
+    return localDateKey(d);
+  })();
 
   // Persist the draft on every change so a camera intent that kills the tab
   // doesn't take the typed input with it.
@@ -1148,6 +1305,9 @@ function MLapor({ n, me: ME, here, onClose, onDone }: {
         nasabah: n.id, petugas: ME.id, hasil, nominal: Number(nominal),
         catatan, lokasi: n.alamat, photos,
         lat: here?.lat, lng: here?.lng,
+        // Only send tanggal when the petugas actually backdated — keeps the
+        // server default (now) for the common case.
+        ...(tanggal !== todayKeyStr ? { tanggal } : {}),
       });
       setTimeout(() => handleDone(n.id), 600);
     } catch (e: any) {
@@ -1268,6 +1428,18 @@ function MLapor({ n, me: ME, here, onClose, onDone }: {
             </div>
           </div>
         )}
+
+        <div>
+          <MLabel>Tanggal Kunjungan</MLabel>
+          <input className="input" type="date" value={tanggal} min={minDateStr} max={todayKeyStr}
+            onChange={e => setTanggal(e.target.value || todayKeyStr)}
+            style={{ background: 'var(--surface)' }} />
+          {tanggal !== todayKeyStr && (
+            <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+              Laporan backdate — pastikan tanggal sesuai kunjungan sebenarnya.
+            </div>
+          )}
+        </div>
 
         <div>
           <MLabel>Catatan</MLabel>

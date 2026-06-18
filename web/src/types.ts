@@ -89,6 +89,7 @@ export interface Kunjungan {
   reviewedAt?: string | null;
   reviewNote?: string | null;
   tanggal?: string;
+  createdAt?: string;
 }
 
 export interface PayflowPoint {

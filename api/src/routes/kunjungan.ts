@@ -44,6 +44,11 @@ function scope(req: any) {
   return w;
 }
 
+// Petugas can backdate a kunjungan up to BACKDATE_MAX_DAYS in the past
+// (e.g. logging a visit they did yesterday). Future dates are always
+// rejected — laporan claims a visit that already happened.
+const BACKDATE_MAX_DAYS = 7;
+
 const body = z.object({
   nasabahId: z.string().min(1).max(64),
   petugasId: z.string().min(1).max(64),
@@ -54,6 +59,7 @@ const body = z.object({
   lat: z.coerce.number().min(-90).max(90).optional(),
   lng: z.coerce.number().min(-180).max(180).optional(),
   valid: z.coerce.boolean().default(true),
+  tanggal: z.coerce.date().optional(),
 });
 
 router.get('/', async (req, res) => {
@@ -75,6 +81,18 @@ router.post('/', kunjunganLimiter, upload.array('photos', 5), async (req, res) =
   // A petugas can only file kunjungan in their own name (prevent impersonation).
   if (req.user?.role === 'PETUGAS' && parsed.data.petugasId !== req.user.petugasId) {
     return res.status(403).json({ error: 'forbidden' });
+  }
+
+  // Backdate validation: petugas may log a visit up to BACKDATE_MAX_DAYS old.
+  // Future dates are rejected for everyone — laporan describes a past event.
+  const submittedAt = new Date();
+  const visitDate = parsed.data.tanggal ?? submittedAt;
+  if (visitDate.getTime() - submittedAt.getTime() > 60 * 1000) {
+    return res.status(400).json({ error: 'tanggal_in_future' });
+  }
+  const maxBackdate = submittedAt.getTime() - BACKDATE_MAX_DAYS * 24 * 60 * 60 * 1000;
+  if (req.user?.role === 'PETUGAS' && visitDate.getTime() < maxBackdate) {
+    return res.status(400).json({ error: 'tanggal_too_old', maxDays: BACKDATE_MAX_DAYS });
   }
 
   // Derive branch from the petugas; the kunjungan inherits that branch.
@@ -135,17 +153,22 @@ router.post('/', kunjunganLimiter, upload.array('photos', 5), async (req, res) =
     ...photoEvals,
   );
 
-  const jam = new Date().toTimeString().slice(0, 5);
+  // Use backdated visit time when supplied, otherwise current wall clock.
+  const jam = visitDate.toTimeString().slice(0, 5);
 
   // Auto-route: clean reports skip the review queue; flagged ones land
   // in PENDING until a supervisor decides.
   const reviewStatus = risk.score > 0 ? 'PENDING' as const : 'APPROVED' as const;
 
+  // Drop tanggal from the spread before passing to Prisma — we set it
+  // explicitly below to honor the backdate.
+  const { tanggal: _tanggalFromBody, ...creatable } = parsed.data;
   const k = await prisma.kunjungan.create({
     data: {
-      ...parsed.data,
+      ...creatable,
       branchId: petugasRow.branchId,
       jam,
+      tanggal: visitDate,
       // Flip valid to false when any anomaly fired. Supervisors see a "perlu
       // review" badge in the laporan list.
       valid: risk.score === 0 && parsed.data.valid,
@@ -448,6 +471,83 @@ router.post('/bulk-review', requireRole('SUPERVISOR', 'ADMIN'), async (req, res)
     total: parsed.data.ids.length,
     outcomes,
   });
+});
+
+// Edit + delete window: a petugas may correct a fresh laporan within
+// EDIT_WINDOW_MIN of submission, but only if it hasn't been reviewed yet.
+// SUPERVISOR + ADMIN have no time window — they can fix anything in scope.
+const EDIT_WINDOW_MIN = 30;
+
+const editBody = z.object({
+  hasil: z.enum(['BAYAR', 'JANJI', 'TIDAKADA', 'TOLAK']).optional(),
+  nominal: z.coerce.bigint().nonnegative().optional(),
+  catatan: z.string().max(2000).optional(),
+  lokasi: z.string().max(500).optional(),
+});
+
+router.patch('/:id', async (req, res) => {
+  const parsed = editBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request', details: parsed.error.flatten() });
+
+  const id = String(req.params.id);
+  const k = await prisma.kunjungan.findFirst({
+    where: { id, ...scope(req) },
+    select: { id: true, petugasId: true, createdAt: true, reviewStatus: true },
+  });
+  if (!k) return res.status(404).json({ error: 'not_found' });
+
+  if (req.user?.role === 'PETUGAS') {
+    if (k.petugasId !== req.user.petugasId) return res.status(403).json({ error: 'forbidden' });
+    const ageMin = (Date.now() - k.createdAt.getTime()) / 60_000;
+    if (ageMin > EDIT_WINDOW_MIN) {
+      return res.status(409).json({ error: 'edit_window_expired', windowMin: EDIT_WINDOW_MIN });
+    }
+    if (k.reviewStatus !== 'PENDING' && k.reviewStatus !== 'APPROVED') {
+      // Rejected reports can't be edited — they need a fresh laporan.
+      return res.status(409).json({ error: 'already_reviewed' });
+    }
+  }
+
+  const updated = await prisma.kunjungan.update({
+    where: { id },
+    data: parsed.data,
+  });
+  await audit({
+    action: 'kunjungan.edit', target: id, ...fromReq(req),
+    meta: { fields: Object.keys(parsed.data) },
+  });
+  res.json(updated);
+});
+
+router.delete('/:id', async (req, res) => {
+  const id = String(req.params.id);
+  const k = await prisma.kunjungan.findFirst({
+    where: { id, ...scope(req) },
+    select: { id: true, petugasId: true, createdAt: true, reviewStatus: true, nasabahId: true },
+  });
+  if (!k) return res.status(404).json({ error: 'not_found' });
+
+  if (req.user?.role === 'PETUGAS') {
+    if (k.petugasId !== req.user.petugasId) return res.status(403).json({ error: 'forbidden' });
+    const ageMin = (Date.now() - k.createdAt.getTime()) / 60_000;
+    if (ageMin > EDIT_WINDOW_MIN) {
+      return res.status(409).json({ error: 'delete_window_expired', windowMin: EDIT_WINDOW_MIN });
+    }
+    if (k.reviewStatus !== 'PENDING') {
+      // Once a supervisor has acted on it, only ADMIN can delete (audit trail).
+      return res.status(409).json({ error: 'already_reviewed' });
+    }
+  }
+
+  // Foto rows cascade via the Prisma relation; Pembayaran is NOT cascaded
+  // because it's a separate financial event tied to the nasabah, not the
+  // laporan. Deleting a kunjungan never wipes the ledger.
+  await prisma.kunjungan.delete({ where: { id } });
+  await audit({
+    action: 'kunjungan.delete', target: id, ...fromReq(req),
+    meta: { nasabahId: k.nasabahId, reviewStatus: k.reviewStatus },
+  });
+  res.json({ ok: true });
 });
 
 export default router;

@@ -120,6 +120,7 @@ function kunjunganFromServer(x: any): Kunjungan {
     reviewedAt: x.reviewedAt ?? null,
     reviewNote: x.reviewNote ?? null,
     tanggal: x.tanggal,
+    createdAt: x.createdAt,
   };
 }
 
@@ -230,8 +231,10 @@ interface Api {
   payflow(): Promise<PayflowPoint[]>;
   reassign(nasabahId: string, petugasId: string): Promise<void>;
   sendBlast(args: { segment: string; channel: 'wa' | 'sms'; template: string; recipientIds: string[] }): Promise<{ jobId: string }>;
-  createKunjungan(args: Partial<Kunjungan> & { photos: File[]; lat?: number; lng?: number }): Promise<Kunjungan>;
+  createKunjungan(args: Partial<Kunjungan> & { photos: File[]; lat?: number; lng?: number; tanggal?: string }): Promise<Kunjungan>;
   reviewKunjungan(id: string, status: 'APPROVED' | 'REJECTED', note?: string): Promise<Kunjungan>;
+  editKunjungan(id: string, patch: { hasil?: string; nominal?: number; catatan?: string; lokasi?: string }): Promise<Kunjungan>;
+  deleteKunjungan(id: string): Promise<void>;
   cancelBlast(id: string): Promise<BlastEntry>;
 }
 
@@ -265,6 +268,8 @@ export const api: Api = USE_MOCK
       async cancelBlast(_id) {
         return mock.BLAST_HISTORY[0] as any;
       },
+      async editKunjungan(_id, _patch) { return mock.KUNJUNGAN[0] as any; },
+      async deleteKunjungan(_id) { /* noop in mock */ },
     }
   : {
       async listPetugas() { return ((await http.get('/petugas')).data as any[]).map(petugasFromServer); },
@@ -284,6 +289,14 @@ export const api: Api = USE_MOCK
       async cancelBlast(id) {
         return blastFromServer((await http.patch(`/blast/${id}/cancel`)).data);
       },
+      async editKunjungan(id, patch) {
+        const p: Record<string, unknown> = { ...patch };
+        if (p.hasil) p.hasil = String(p.hasil).toUpperCase();
+        return kunjunganFromServer((await http.patch(`/kunjungan/${id}`, p)).data);
+      },
+      async deleteKunjungan(id) {
+        await http.delete(`/kunjungan/${id}`);
+      },
       async createKunjungan(args) {
         // Map frontend field names to backend schema and uppercase the hasil
         // enum (Prisma KolKey/HasilKunjungan literals).
@@ -297,6 +310,7 @@ export const api: Api = USE_MOCK
         if (a.lokasi != null) fd.append('lokasi', String(a.lokasi));
         if (a.lat != null) fd.append('lat', String(a.lat));
         if (a.lng != null) fd.append('lng', String(a.lng));
+        if (a.tanggal) fd.append('tanggal', String(a.tanggal));
         if (Array.isArray(a.photos)) a.photos.forEach((f: File) => fd.append('photos', f));
         return (await http.post('/kunjungan', fd)).data;
       },

@@ -127,6 +127,23 @@ export function useReviewKunjungan() {
   });
 }
 
+export function useEditKunjungan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: { hasil?: string; nominal?: number; catatan?: string; lokasi?: string } }) =>
+      api.editKunjungan(id, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['kunjungan'] }),
+  });
+}
+
+export function useDeleteKunjungan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteKunjungan(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['kunjungan'] }),
+  });
+}
+
 export function useCancelBlast() {
   const qc = useQueryClient();
   return useMutation({
