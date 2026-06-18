@@ -47,6 +47,7 @@ import holidays from './routes/holidays.js';
 import activity from './routes/activity.js';
 import verify from './routes/verify.js';
 import certifications from './routes/certifications.js';
+import systemHealth from './routes/systemHealth.js';
 import { startWebhookDispatcher } from './lib/webhookDispatcher.js';
 import { initSentry, sentryErrorHandler, setupSentryRequest } from './lib/sentry.js';
 import { apiKeyAuth } from './lib/apiKey.js';
@@ -156,6 +157,7 @@ app.use('/api/holidays', holidays);
 app.use('/api/activity', activity);
 app.use('/api/verify', verify);
 app.use('/api/certifications', certifications);
+app.use('/api/system-health', systemHealth);
 
 // Static uploads — Cache-Control prevents stale photo IDs from sticking.
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {

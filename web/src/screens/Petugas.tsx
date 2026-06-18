@@ -23,6 +23,7 @@ interface PetugasRow {
   branchId: string;
   target: number;
   hue: number;
+  commissionBps?: number;
   active?: boolean;
   kunjungan?: number;
   rencana?: number;
@@ -55,6 +56,7 @@ interface CreatePayload {
   target: number;
   status: 'LAPANGAN' | 'ISTIRAHAT' | 'KANTOR';
   hue: number;
+  commissionBps?: number;
 }
 
 async function createPetugas(p: CreatePayload) {
@@ -214,6 +216,7 @@ function PetugasForm({ mode, initial, isAdmin, myBranchId, branches, onClose, on
     String(initial?.status ?? 'LAPANGAN').toUpperCase() as 'LAPANGAN' | 'ISTIRAHAT' | 'KANTOR'
   );
   const [hue, setHue] = useState(initial?.hue ?? 156);
+  const [commissionPct, setCommissionPct] = useState(((initial?.commissionBps ?? 150) / 100).toFixed(2));
   const [active, setActive] = useState(initial?.active ?? true);
   const [err, setErr] = useState<string | null>(null);
   const qc = useQueryClient();
@@ -225,6 +228,7 @@ function PetugasForm({ mode, initial, isAdmin, myBranchId, branches, onClose, on
         wilayah, hp, branchId,
         target: Number(target.replace(/\D/g, '')) || 0,
         status, hue,
+        commissionBps: Math.max(0, Math.min(10_000, Math.round(parseFloat(commissionPct) * 100) || 0)),
       };
       return mode === 'create'
         ? createPetugas(payload)
@@ -286,6 +290,14 @@ function PetugasForm({ mode, initial, isAdmin, myBranchId, branches, onClose, on
           <Field label="Target Harian (Rp)">
             <input className="input" type="text" value={Number(target.replace(/\D/g, '')).toLocaleString('id-ID')}
               onChange={e => setTarget(e.target.value.replace(/\D/g, ''))} inputMode="numeric" />
+          </Field>
+          <Field label="Komisi (%)">
+            <input className="input" type="number" min={0} max={100} step="0.01"
+              value={commissionPct}
+              onChange={e => setCommissionPct(e.target.value)} />
+            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+              Komisi dari tertagih sukses. Default 1,50%.
+            </div>
           </Field>
           <Field label="Status">
             <select className="input" value={status} onChange={e => setStatus(e.target.value as any)}>

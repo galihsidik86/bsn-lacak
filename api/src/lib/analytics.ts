@@ -350,6 +350,63 @@ export async function portfolioHeatmap(branchId?: string | null): Promise<Heatma
   return out;
 }
 
+// CD — commission table per petugas for one (year, month). Multiplies
+// `commissionBps` against successful pembayaran in the window. Caller-side
+// branch scope (admin sees all; supervisor passes branchId).
+export interface CommissionRow {
+  petugasId: string; kode: string; nama: string;
+  branchKode: string;
+  commissionBps: number;
+  collected: number;
+  commission: number;
+}
+
+export async function commissionForMonth(opts: {
+  branchId?: string | null;
+  year: number;
+  month: number;
+}): Promise<{ year: number; month: number; rows: CommissionRow[]; total: number }> {
+  const start = new Date(opts.year, opts.month - 1, 1);
+  const end = new Date(opts.year, opts.month, 1);
+  const branchFilter = opts.branchId
+    ? Prisma.sql`AND p."branchId" = ${opts.branchId}`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<Array<{
+    petugasId: string; kode: string; nama: string;
+    branchKode: string; commissionBps: number; collected: bigint;
+  }>>`
+    SELECT
+      p."id" as "petugasId", p."kode", p."nama",
+      b."kode" as "branchKode", p."commissionBps",
+      COALESCE(SUM(pay."nominal"), 0) as "collected"
+    FROM "Petugas" p
+    JOIN "Branch" b ON b."id" = p."branchId"
+    LEFT JOIN "Nasabah" n ON n."petugasId" = p."id"
+    LEFT JOIN "Pembayaran" pay
+      ON pay."nasabahId" = n."id"
+      AND pay."tanggal" >= ${start}
+      AND pay."tanggal" < ${end}
+      AND pay."status" = 'berhasil'
+    WHERE p."active" = true ${branchFilter}
+    GROUP BY p."id", p."kode", p."nama", b."kode", p."commissionBps"
+    ORDER BY "collected" DESC, p."kode" ASC
+  `;
+
+  const out: CommissionRow[] = rows.map(r => {
+    const collected = Number(r.collected);
+    // bps / 10_000 → fraction. Round to whole rupiah.
+    const commission = Math.round((collected * r.commissionBps) / 10_000);
+    return {
+      petugasId: r.petugasId, kode: r.kode, nama: r.nama,
+      branchKode: r.branchKode, commissionBps: r.commissionBps,
+      collected, commission,
+    };
+  });
+  const total = out.reduce((s, r) => s + r.commission, 0);
+  return { year: opts.year, month: opts.month, rows: out, total };
+}
+
 // SLA dashboard (BX) — supervisor review response time over the configurable
 // window. Aggregate avg/median/p95 latency per reviewer + reviewed count.
 // Population per supervisor is small (10s-100s) so we compute percentiles

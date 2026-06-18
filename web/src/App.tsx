@@ -34,6 +34,8 @@ const ScreenAttendanceMap = lazy(() => import('./screens/AttendanceMap').then(m 
 const ScreenChurnRisk = lazy(() => import('./screens/ChurnRisk').then(m => ({ default: m.ScreenChurnRisk })));
 const ScreenActivityFeed = lazy(() => import('./screens/ActivityFeed').then(m => ({ default: m.ScreenActivityFeed })));
 const ScreenLeaderboard = lazy(() => import('./screens/Leaderboard').then(m => ({ default: m.ScreenLeaderboard })));
+const ScreenSystemHealth = lazy(() => import('./screens/SystemHealth').then(m => ({ default: m.ScreenSystemHealth })));
+const ScreenCommission = lazy(() => import('./screens/Commission').then(m => ({ default: m.ScreenCommission })));
 const ScreenNotifikasi = lazy(() => import('./screens/Notifikasi').then(m => ({ default: m.ScreenNotifikasi })));
 const ScreenPengumuman = lazy(() => import('./screens/Pengumuman').then(m => ({ default: m.ScreenPengumuman })));
 const ScreenWilayah = lazy(() => import('./screens/Wilayah').then(m => ({ default: m.ScreenWilayah })));
@@ -54,7 +56,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'churn' | 'activity' | 'leaderboard' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'churn' | 'activity' | 'leaderboard' | 'system-health' | 'commission' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -72,6 +74,7 @@ function useNav(): NavGroup[] {
       { k: 'churn', label: 'Churn Risk', icon: 'alert' },
       { k: 'activity', label: 'Activity Feed', icon: 'eye' },
       { k: 'leaderboard', label: 'Leaderboard', icon: 'target' },
+      { k: 'commission', label: 'Komisi Petugas', icon: 'wallet' },
       { k: 'tracking', label: 'Tracking Petugas', icon: 'map' },
       { k: 'kolektabilitas', label: 'Kolektabilitas', icon: 'layers' },
       { k: 'angsuran', label: 'Pergerakan Angsuran', icon: 'chart' },
@@ -94,6 +97,7 @@ function useNav(): NavGroup[] {
   const adminItems: NavItem[] = [];
   if (role === 'ADMIN') adminItems.push({ k: 'branch', label: 'Kelola Cabang', icon: 'layers' });
   if (role === 'ADMIN') adminItems.push({ k: 'backup', label: 'Backup DB', icon: 'download' });
+  if (role === 'ADMIN') adminItems.push({ k: 'system-health', label: 'System Health', icon: 'alert' });
   if (role === 'ADMIN') adminItems.push({ k: 'apikeys', label: 'API Keys', icon: 'eye' });
   if (role === 'ADMIN') adminItems.push({ k: 'webhooks', label: 'Webhooks', icon: 'send' });
   if (role === 'ADMIN' || role === 'SUPERVISOR') {
@@ -131,6 +135,8 @@ const TITLES: Record<PageKey, [string, string]> = {
   churn: ['Churn Risk', 'Nasabah dengan risiko tertinggi — skor & faktor di balik angkanya'],
   activity: ['Activity Feed', 'Timeline kunjungan, pembayaran, blast, review per cabang'],
   leaderboard: ['Leaderboard', 'Top petugas tertagih bulan ini dengan podium juara'],
+  commission: ['Komisi Petugas', 'Tabel komisi per petugas berdasarkan tertagih bulan berjalan'],
+  'system-health': ['System Health', 'DB ping, worker freshness, queue depth, process uptime'],
   notifikasi: ['Notifikasi', 'Riwayat semua notifikasi sistem dan supervisor'],
   pengumuman: ['Pengumuman', 'Broadcast notifikasi ke seluruh petugas di cabang'],
   wilayah: ['Wilayah Binaan', 'Gambar polygon geofence per wilayah dan tugaskan ke petugas'],
@@ -396,6 +402,8 @@ export function App() {
             {page === 'churn' && <ScreenChurnRisk />}
             {page === 'activity' && <ScreenActivityFeed />}
             {page === 'leaderboard' && <ScreenLeaderboard />}
+            {page === 'commission' && <ScreenCommission />}
+            {page === 'system-health' && <ScreenSystemHealth />}
             {page === 'notifikasi' && <ScreenNotifikasi go={go} />}
             {page === 'pengumuman' && <ScreenPengumuman />}
             {page === 'wilayah' && <ScreenWilayah />}

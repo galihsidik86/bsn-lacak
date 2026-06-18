@@ -202,6 +202,8 @@ const createSchema = z.object({
   target: z.coerce.bigint().nonnegative().default(0n),
   status: z.enum(['LAPANGAN', 'ISTIRAHAT', 'KANTOR']).default('LAPANGAN'),
   hue: z.coerce.number().int().min(0).max(360).default(156),
+  // Commission rate as basis points (0..10_000 = 0..100%).
+  commissionBps: z.coerce.number().int().min(0).max(10_000).default(150),
 });
 
 function canManagePetugas(req: any, branchId: string): boolean {

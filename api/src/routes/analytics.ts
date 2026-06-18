@@ -6,7 +6,7 @@ import {
   monthlyRevenueByBranch, topPetugasLeaderboard, kolPosture,
   monthlyClosing, toClosingCsv, branchScorecard, portfolioHeatmap,
   pendingAgingReport, petugasRace, churnRiskList, branchRadar,
-  monthlyLeaderboard, supervisorSlaStats,
+  monthlyLeaderboard, supervisorSlaStats, commissionForMonth,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -98,6 +98,21 @@ router.get('/scorecard', async (req, res) => {
     branchId: g.branchId, year: parsed.data.year, month: parsed.data.month,
   });
   res.json({ year: parsed.data.year, month: parsed.data.month, rows });
+});
+
+// Commission table (CD) — per-petugas tertagih × commissionBps for the
+// configurable month. Defaults to current month. SUPERVISOR auto-scoped.
+router.get('/commission', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const now = new Date();
+  const year = Number.parseInt(String(req.query.year ?? now.getFullYear()), 10);
+  const month = Number.parseInt(String(req.query.month ?? now.getMonth() + 1), 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return res.status(400).json({ error: 'bad_request' });
+  }
+  const data = await commissionForMonth({ branchId: g.branchId, year, month });
+  res.json(data);
 });
 
 // Supervisor SLA stats — review response time aggregated per reviewer over

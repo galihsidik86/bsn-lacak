@@ -198,6 +198,9 @@ model Petugas {
   status    PetugasStatus @default(LAPANGAN)
   target    BigInt        @default(0)
   hue       Int           @default(156)
+  // CD — commission rate as basis points (1 bps = 0.01%). Default 150 bps
+  // = 1.5%. Stored as int to avoid float drift; UI renders as a decimal %.
+  commissionBps Int       @default(150)
   // Soft delete — resigned petugas stay in the DB so their historical
   // kunjungan keep their FK. UI filters by default to active=true.
   active    Boolean       @default(true)
