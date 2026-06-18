@@ -350,6 +350,108 @@ export async function portfolioHeatmap(branchId?: string | null): Promise<Heatma
   return out;
 }
 
+// Petugas race chart: per-petugas monthly tertagih over the last N months.
+// Drives BM. Capped at top-N petugas by total collected so the line chart
+// doesn't melt with 100+ lines on the ADMIN view.
+export interface PetugasRacePoint {
+  month: string;
+  petugasId: string;
+  petugasKode: string;
+  petugasNama: string;
+  hue: number;
+  branchKode: string;
+  collected: number;
+}
+
+export interface PetugasRaceResponse {
+  months: string[];
+  petugas: Array<{ id: string; kode: string; nama: string; hue: number; branchKode: string; total: number }>;
+  points: PetugasRacePoint[];
+}
+
+export async function petugasRace(opts: {
+  branchId?: string | null;
+  months?: number;
+  topN?: number;
+}): Promise<PetugasRaceResponse> {
+  const months = opts.months ?? 6;
+  const topN = opts.topN ?? 20;
+  const start = new Date();
+  start.setMonth(start.getMonth() - (months - 1));
+  start.setDate(1); start.setHours(0, 0, 0, 0);
+
+  const branchFilter = opts.branchId
+    ? Prisma.sql`AND p."branchId" = ${opts.branchId}`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<Array<{
+    month: string | null; petugasId: string; petugasKode: string; petugasNama: string;
+    hue: number; branchKode: string; collected: bigint;
+  }>>`
+    SELECT
+      to_char(date_trunc('month', pay."tanggal"), 'YYYY-MM') as "month",
+      p."id" as "petugasId", p."kode" as "petugasKode", p."nama" as "petugasNama",
+      p."hue", b."kode" as "branchKode",
+      COALESCE(SUM(pay."nominal"), 0) as "collected"
+    FROM "Petugas" p
+    JOIN "Branch" b ON b."id" = p."branchId"
+    LEFT JOIN "Nasabah" n ON n."petugasId" = p."id"
+    LEFT JOIN "Pembayaran" pay
+      ON pay."nasabahId" = n."id"
+      AND pay."tanggal" >= ${start}
+      AND pay."status" = 'berhasil'
+    WHERE p."active" = true ${branchFilter}
+    GROUP BY "month", p."id", p."kode", p."nama", p."hue", b."kode"
+    ORDER BY "month" ASC, p."kode" ASC
+  `;
+
+  // Build the month axis explicitly so months with zero collected still
+  // appear on the chart x-axis.
+  const monthAxis: string[] = [];
+  const cur = new Date(start);
+  for (let i = 0; i < months; i++) {
+    monthAxis.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`);
+    cur.setMonth(cur.getMonth() + 1);
+  }
+
+  const totalByPet = new Map<string, number>();
+  for (const r of rows) {
+    if (!r.month) continue;
+    totalByPet.set(r.petugasId, (totalByPet.get(r.petugasId) ?? 0) + Number(r.collected));
+  }
+  const topIds = new Set(
+    Array.from(totalByPet.entries()).sort((a, b) => b[1] - a[1]).slice(0, topN).map(([id]) => id),
+  );
+
+  const petugasMeta = new Map<string, { id: string; kode: string; nama: string; hue: number; branchKode: string; total: number }>();
+  for (const r of rows) {
+    if (!topIds.has(r.petugasId)) continue;
+    if (!petugasMeta.has(r.petugasId)) {
+      petugasMeta.set(r.petugasId, {
+        id: r.petugasId, kode: r.petugasKode, nama: r.petugasNama,
+        hue: r.hue, branchKode: r.branchKode,
+        total: totalByPet.get(r.petugasId) ?? 0,
+      });
+    }
+  }
+
+  return {
+    months: monthAxis,
+    petugas: Array.from(petugasMeta.values()).sort((a, b) => b.total - a.total),
+    points: rows
+      .filter(r => r.month && topIds.has(r.petugasId))
+      .map(r => ({
+        month: r.month as string,
+        petugasId: r.petugasId,
+        petugasKode: r.petugasKode,
+        petugasNama: r.petugasNama,
+        hue: r.hue,
+        branchKode: r.branchKode,
+        collected: Number(r.collected),
+      })),
+  };
+}
+
 // Aging report: PENDING kunjungan grouped into age buckets so supervisors
 // can see how many laporan have been waiting too long. Per-branch counts
 // plus per-petugas top offenders. Age is measured from createdAt, not

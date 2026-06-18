@@ -45,6 +45,15 @@ async function fetchOverview(months: number, days: number): Promise<Overview> {
   })).data;
 }
 
+interface RacePoint { month: string; petugasId: string; collected: number }
+interface RacePetugas { id: string; kode: string; nama: string; hue: number; branchKode: string; total: number }
+interface RaceResponse { months: string[]; petugas: RacePetugas[]; points: RacePoint[] }
+async function fetchRace(months: number): Promise<RaceResponse> {
+  return (await axios.get(`${BASE}/analytics/petugas-race`, {
+    params: { months }, withCredentials: true, headers: headers(),
+  })).data;
+}
+
 function fmtRpJt(n: number): string {
   if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + ' M';
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + ' jt';
@@ -243,6 +252,119 @@ export function ScreenAnalytics() {
         <div className="muted" style={{ padding: '14px 18px', fontSize: 12.5, lineHeight: 1.6 }}>
           File CSV satu baris per (cabang × petugas) untuk bulan yang dipilih — kunjungan, status review, nasabah unik dikunjungi,
           dan total nominal tertagih. Buka langsung di Excel (UTF-8 + BOM untuk huruf indonesia).
+        </div>
+      </div>
+
+      <PetugasRacePanel months={months} />
+    </div>
+  );
+}
+
+function PetugasRacePanel({ months }: { months: number }) {
+  const q = useQuery({
+    queryKey: ['petugas-race', months],
+    queryFn: () => fetchRace(months),
+  });
+  const [hovered, setHovered] = useState<string | null>(null);
+
+  if (q.isPending) return <div className="card fade-up" style={{ marginTop: 20 }}><Skeleton h={320} /></div>;
+  if (q.error) return null;
+  const data = q.data!;
+  if (data.petugas.length === 0) return null;
+
+  // Project month + collected into a 1000×260 SVG canvas.
+  const W = 1000, H = 260, PAD_L = 56, PAD_R = 18, PAD_T = 18, PAD_B = 32;
+  const maxV = Math.max(1, ...data.points.map(p => p.collected));
+  const xStep = (W - PAD_L - PAD_R) / Math.max(1, data.months.length - 1);
+  const yFor = (v: number) => PAD_T + (H - PAD_T - PAD_B) * (1 - v / maxV);
+  const xFor = (m: string) => PAD_L + data.months.indexOf(m) * xStep;
+
+  const byPet = new Map<string, RacePoint[]>();
+  for (const p of data.points) {
+    const arr = byPet.get(p.petugasId) ?? [];
+    arr.push(p);
+    byPet.set(p.petugasId, arr);
+  }
+  // Ensure every petugas has a value for every month (treat missing as 0).
+  for (const pet of data.petugas) {
+    const seen = new Set((byPet.get(pet.id) ?? []).map(p => p.month));
+    const filled = data.months.map(m => {
+      const existing = (byPet.get(pet.id) ?? []).find(p => p.month === m);
+      return existing ?? { month: m, petugasId: pet.id, collected: seen.has(m) ? existing!.collected : 0 };
+    });
+    byPet.set(pet.id, filled);
+  }
+
+  return (
+    <div className="card fade-up" style={{ marginTop: 20, overflow: 'hidden' }}>
+      <div className="card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
+        <div className="section-title">Race Chart — Tertagih per Petugas</div>
+        <div className="page-sub">Top {data.petugas.length} petugas, {data.months.length} bulan terakhir. Hover sebuah nama / garis untuk highlight.</div>
+      </div>
+      <div style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: '1fr 220px', gap: 16 }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 280, display: 'block' }}
+          onMouseLeave={() => setHovered(null)}>
+          {[0, 0.25, 0.5, 0.75, 1].map(t => (
+            <g key={t}>
+              <line x1={PAD_L} x2={W - PAD_R} y1={yFor(maxV * t)} y2={yFor(maxV * t)}
+                stroke="var(--line)" strokeWidth={1} strokeDasharray={t === 0 ? '0' : '4 4'} />
+              <text x={PAD_L - 8} y={yFor(maxV * t) + 3} textAnchor="end"
+                fontSize={10} fill="var(--ink-3)">{fmtRpJt(maxV * t)}</text>
+            </g>
+          ))}
+          {data.months.map(m => (
+            <text key={m} x={xFor(m)} y={H - 10} textAnchor="middle" fontSize={10} fill="var(--ink-3)">
+              {fmtMonth(m)}
+            </text>
+          ))}
+          {data.petugas.map(pet => {
+            const pts = byPet.get(pet.id) ?? [];
+            const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xFor(p.month)} ${yFor(p.collected)}`).join(' ');
+            const isHovered = hovered === pet.id;
+            const isOther = hovered && hovered !== pet.id;
+            return (
+              <g key={pet.id} onMouseEnter={() => setHovered(pet.id)}>
+                <path d={d} fill="none"
+                  stroke={`hsl(${pet.hue}, 60%, 50%)`}
+                  strokeWidth={isHovered ? 3 : 1.8}
+                  strokeOpacity={isOther ? 0.18 : 1}
+                  strokeLinecap="round" strokeLinejoin="round" />
+                {pts.map(p => (
+                  <circle key={p.month} cx={xFor(p.month)} cy={yFor(p.collected)}
+                    r={isHovered ? 3.5 : 2}
+                    fill={`hsl(${pet.hue}, 60%, 50%)`}
+                    fillOpacity={isOther ? 0.2 : 1} />
+                ))}
+              </g>
+            );
+          })}
+        </svg>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+          {data.petugas.map(pet => {
+            const isHovered = hovered === pet.id;
+            return (
+              <div key={pet.id}
+                onMouseEnter={() => setHovered(pet.id)}
+                onMouseLeave={() => setHovered(null)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px',
+                  borderRadius: 8, cursor: 'pointer',
+                  background: isHovered ? 'var(--surface-2)' : 'transparent',
+                }}>
+                <span style={{
+                  width: 10, height: 10, borderRadius: 2,
+                  background: `hsl(${pet.hue}, 60%, 50%)`,
+                }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {pet.nama}
+                  </div>
+                  <div className="muted mono" style={{ fontSize: 10.5 }}>{pet.kode} · {pet.branchKode}</div>
+                </div>
+                <div className="num" style={{ fontSize: 11, fontWeight: 700 }}>{fmtRpJt(pet.total)}</div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

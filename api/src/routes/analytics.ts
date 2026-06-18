@@ -5,7 +5,7 @@ import { audit, fromReq } from '../lib/audit.js';
 import {
   monthlyRevenueByBranch, topPetugasLeaderboard, kolPosture,
   monthlyClosing, toClosingCsv, branchScorecard, portfolioHeatmap,
-  pendingAgingReport,
+  pendingAgingReport, petugasRace,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -97,6 +97,20 @@ router.get('/scorecard', async (req, res) => {
     branchId: g.branchId, year: parsed.data.year, month: parsed.data.month,
   });
   res.json({ year: parsed.data.year, month: parsed.data.month, rows });
+});
+
+// Petugas race chart — per-petugas monthly tertagih over the configurable
+// window (default 6 months, capped at 24). Drives BM line chart.
+router.get('/petugas-race', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const months = Number.parseInt(String(req.query.months ?? '6'), 10);
+  const data = await petugasRace({
+    branchId: g.branchId,
+    months: Number.isFinite(months) && months > 0 && months <= 24 ? months : 6,
+    topN: 20,
+  });
+  res.json(data);
 });
 
 // PENDING-laporan aging report. Buckets: <1d, 1-3d, 3-7d, 7d+. Returns

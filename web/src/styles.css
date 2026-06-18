@@ -384,6 +384,13 @@ button { font-family: inherit; cursor: pointer; }
   100% { transform: scale(2.0); opacity: 0; }
 }
 
+/* Dashboard LivePill — emerald halo that breathes while events are fresh. */
+@keyframes bsn-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(31,138,91,0.55); }
+  70%  { box-shadow: 0 0 0 8px rgba(31,138,91,0); }
+  100% { box-shadow: 0 0 0 0 rgba(31,138,91,0); }
+}
+
 /* modal */
 .modal-scrim {
   position: fixed; inset: 0; background: oklch(0.2 0.02 160 / 0.45);

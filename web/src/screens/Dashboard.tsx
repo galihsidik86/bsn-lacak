@@ -11,6 +11,7 @@ import {
   usePetugasFinder, usePetugasList, usePostur, useTotalOutstanding,
 } from '../data/queries';
 import { useAuth } from '../lib/auth';
+import { useLiveCounter } from '../lib/useLiveCounter';
 import type { KolKey } from '../types';
 
 export function ScreenDashboard({ go }: { go: (k: string) => void }) {
@@ -30,6 +31,12 @@ export function ScreenDashboard({ go }: { go: (k: string) => void }) {
   // scoped to a single branch — otherwise the comparison collapses to one row.
   const showComparison = role === 'ADMIN' && !branchOverride;
   const setOverride = useAuth(s => s.setBranchOverride);
+
+  // Live event counters — tick whenever the API broadcasts the matching SSE
+  // topic. `fresh` is true for a few seconds after the latest event so the
+  // tile pulses, then settles back to a quiet chip.
+  const liveCreated = useLiveCounter('kunjungan.created');
+  const liveReviewed = useLiveCounter('kunjungan.reviewed');
 
   // Derive directly instead of state+effect — usePostur() returns a fresh
   // object every render, so an effect keyed on it would re-fire forever.
@@ -82,8 +89,14 @@ export function ScreenDashboard({ go }: { go: (k: string) => void }) {
       <div className="stat-grid fade-up" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 22 }}>
         <Stat icon={Ic.wallet} label="Outstanding Pembiayaan" value={RPjt(TOTAL_OUTSTANDING)} delta="2,1%" deltaDir="up" sub="vs bulan lalu" />
         <Stat icon={Ic.alert} label="NPL (Col 3–5)" value={NPL.toFixed(2) + '%'} delta="0,4%" deltaDir="down" tint="var(--col-macet)" soft="var(--col-macet-soft)" sub="membaik" />
-        <Stat icon={Ic.wallet} label="Tertagih Hari Ini" value={RPjt(terkumpulHari)} delta={Math.round(terkumpulHari / targetHari * 100) + '%'} deltaDir="up" sub={'dari ' + RPjt(targetHari)} />
-        <Stat icon={Ic.route} label="Petugas di Lapangan" value={lapangan + ' / ' + PETUGAS.length} tint="var(--sms)" soft="oklch(0.93 0.04 245)" sub={kunjunganHari + ' kunjungan hari ini'} />
+        <div style={{ position: 'relative' }}>
+          <Stat icon={Ic.wallet} label="Tertagih Hari Ini" value={RPjt(terkumpulHari)} delta={Math.round(terkumpulHari / targetHari * 100) + '%'} deltaDir="up" sub={'dari ' + RPjt(targetHari)} />
+          {liveReviewed.count > 0 && <LivePill fresh={liveReviewed.fresh} count={liveReviewed.count} label="review" />}
+        </div>
+        <div style={{ position: 'relative' }}>
+          <Stat icon={Ic.route} label="Petugas di Lapangan" value={lapangan + ' / ' + PETUGAS.length} tint="var(--sms)" soft="oklch(0.93 0.04 245)" sub={kunjunganHari + ' kunjungan hari ini'} />
+          {liveCreated.count > 0 && <LivePill fresh={liveCreated.fresh} count={liveCreated.count} label="baru" />}
+        </div>
       </div>
 
       <div className="grid gap-4" style={{ gridTemplateColumns: '1.15fr 1fr', marginBottom: 16 }}>
@@ -182,5 +195,23 @@ function KunjunganRow({ k, petugasById, nasabahById }: {
         {k.nominal > 0 ? RP(k.nominal) : '—'}
       </td>
     </tr>
+  );
+}
+
+// Floating "live ticker" pill on top-right corner of a Stat tile. Pulses
+// (animated outline) while fresh, then settles to a quiet emerald chip.
+function LivePill({ fresh, count, label }: { fresh: boolean; count: number; label: string }) {
+  return (
+    <div style={{
+      position: 'absolute', top: 8, right: 8, zIndex: 1,
+      padding: '3px 8px', borderRadius: 99, fontSize: 10.5, fontWeight: 800,
+      background: fresh ? 'var(--accent)' : 'var(--accent-soft)',
+      color: fresh ? 'white' : 'var(--accent-ink)',
+      boxShadow: fresh ? '0 0 0 0 rgba(31,138,91,0.7)' : 'none',
+      animation: fresh ? 'bsn-pulse 1.4s ease-out infinite' : 'none',
+      letterSpacing: '.03em',
+    }}>
+      +{count} {label}
+    </div>
   );
 }
