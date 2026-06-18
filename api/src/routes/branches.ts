@@ -90,6 +90,11 @@ const upsert = z.object({
   alamat: z.string().max(500).optional().nullable(),
   kepalaCabang: z.string().max(200).optional().nullable(),
   active: z.boolean().optional(),
+  // Monthly KPI targets — drive the Scorecard screen. Stored on Branch so
+  // ADMIN can override per-cabang without a separate config table.
+  targetCollection: z.coerce.bigint().nonnegative().optional(),
+  targetVisits: z.coerce.number().int().nonnegative().optional(),
+  targetApprovalRate: z.coerce.number().int().min(0).max(100).optional(),
 });
 
 router.post('/', requireRole('ADMIN'), async (req, res) => {

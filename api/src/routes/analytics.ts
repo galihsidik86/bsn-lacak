@@ -4,7 +4,7 @@ import { requireAuth, scopedBranchId } from '../auth.js';
 import { audit, fromReq } from '../lib/audit.js';
 import {
   monthlyRevenueByBranch, topPetugasLeaderboard, kolPosture,
-  monthlyClosing, toClosingCsv,
+  monthlyClosing, toClosingCsv, branchScorecard, portfolioHeatmap,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -79,6 +79,32 @@ router.get('/closing.csv', async (req, res) => {
   res.setHeader('Content-Disposition',
     `attachment; filename="closing-${parsed.data.year}-${String(parsed.data.month).padStart(2, '0')}.csv"`);
   res.send(csv);
+});
+
+// Branch KPI scorecard for the configured month. ADMIN gets every active
+// branch; SUPERVISOR is auto-scoped to their own. Targets are read from
+// Branch.targetCollection / targetVisits / targetApprovalRate.
+router.get('/scorecard', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const parsed = closingQ.safeParse({
+    year: req.query.year ?? new Date().getFullYear(),
+    month: req.query.month ?? (new Date().getMonth() + 1),
+  });
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request' });
+  const rows = await branchScorecard({
+    branchId: g.branchId, year: parsed.data.year, month: parsed.data.month,
+  });
+  res.json({ year: parsed.data.year, month: parsed.data.month, rows });
+});
+
+// Risk-based portfolio heatmap (branch × kol). Same scope rules as the rest
+// of analytics. Dense matrix — every cell present even when count = 0.
+router.get('/heatmap', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const cells = await portfolioHeatmap(g.branchId);
+  res.json({ cells });
 });
 
 export default router;

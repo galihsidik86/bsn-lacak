@@ -15,6 +15,9 @@ interface Branch {
   alamat: string | null;
   kepalaCabang: string | null;
   active: boolean;
+  targetCollection: string | number;
+  targetVisits: number;
+  targetApprovalRate: number;
   _count: { petugas: number; nasabah: number; users: number };
   createdAt: string;
   updatedAt: string;
@@ -36,6 +39,9 @@ interface UpsertPayload {
   alamat?: string | null;
   kepalaCabang?: string | null;
   active?: boolean;
+  targetCollection?: string | number;
+  targetVisits?: number;
+  targetApprovalRate?: number;
 }
 
 async function createBranch(p: UpsertPayload) {
@@ -135,12 +141,21 @@ function BranchForm({ initial, onClose, onSaved }: {
   const [alamat, setAlamat] = useState(initial?.alamat ?? '');
   const [kepalaCabang, setKepalaCabang] = useState(initial?.kepalaCabang ?? '');
   const [active, setActive] = useState(initial?.active ?? true);
+  const [targetCollection, setTargetCollection] = useState(String(initial?.targetCollection ?? '0'));
+  const [targetVisits, setTargetVisits] = useState(String(initial?.targetVisits ?? '0'));
+  const [targetApprovalRate, setTargetApprovalRate] = useState(String(initial?.targetApprovalRate ?? '85'));
   const [err, setErr] = useState<string | null>(null);
+
+  const targetPayload = () => ({
+    targetCollection: targetCollection.replace(/[^\d]/g, '') || '0',
+    targetVisits: Number(targetVisits.replace(/[^\d]/g, '')) || 0,
+    targetApprovalRate: Math.max(0, Math.min(100, Number(targetApprovalRate) || 0)),
+  });
 
   const isEdit = !!initial;
 
   const create = useMutation({
-    mutationFn: () => createBranch({ kode, nama, alamat: alamat || null, kepalaCabang: kepalaCabang || null }),
+    mutationFn: () => createBranch({ kode, nama, alamat: alamat || null, kepalaCabang: kepalaCabang || null, ...targetPayload() }),
     onSuccess: () => { onSaved(); onClose(); },
     onError: (e: any) => {
       const c = e?.response?.data?.error;
@@ -150,7 +165,7 @@ function BranchForm({ initial, onClose, onSaved }: {
     },
   });
   const update = useMutation({
-    mutationFn: () => updateBranch(initial!.id, { nama, alamat: alamat || null, kepalaCabang: kepalaCabang || null, active }),
+    mutationFn: () => updateBranch(initial!.id, { nama, alamat: alamat || null, kepalaCabang: kepalaCabang || null, active, ...targetPayload() }),
     onSuccess: () => { onSaved(); onClose(); },
     onError: (e: any) => {
       const c = e?.response?.data?.error;
@@ -198,6 +213,25 @@ function BranchForm({ initial, onClose, onSaved }: {
           <Field label="Kepala Cabang">
             <input className="input" value={kepalaCabang ?? ''} onChange={e => setKepalaCabang(e.target.value)} maxLength={200} />
           </Field>
+          <div className="card card-pad" style={{ background: 'var(--surface-2)', boxShadow: 'none', padding: 12 }}>
+            <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 8, color: 'var(--ink-2)' }}>
+              KPI Bulanan — dipakai di Scorecard
+            </div>
+            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+              <Field label="Target Tertagih (Rp)">
+                <input className="input" type="text" inputMode="numeric"
+                  value={targetCollection} onChange={e => setTargetCollection(e.target.value)} placeholder="0" />
+              </Field>
+              <Field label="Target Kunjungan">
+                <input className="input" type="text" inputMode="numeric"
+                  value={targetVisits} onChange={e => setTargetVisits(e.target.value)} placeholder="0" />
+              </Field>
+              <Field label="Approval Rate %">
+                <input className="input" type="number" min={0} max={100}
+                  value={targetApprovalRate} onChange={e => setTargetApprovalRate(e.target.value)} />
+              </Field>
+            </div>
+          </div>
           {isEdit && (
             <label className="center gap-2" style={{ fontWeight: 600, fontSize: 13.5, cursor: 'pointer' }}>
               <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} />

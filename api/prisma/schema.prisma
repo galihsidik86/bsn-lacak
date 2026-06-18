@@ -26,6 +26,12 @@ model Branch {
   alamat       String?
   kepalaCabang String?
   active       Boolean    @default(true)
+  // Branch-level monthly KPI targets — drive the Scorecard screen. Default
+  // zero so a fresh cabang starts as "no target" rather than achieving 100%
+  // by accident on a divide-by-zero.
+  targetCollection   BigInt  @default(0)   // total tertagih (Rp) per bulan
+  targetVisits       Int     @default(0)   // jumlah kunjungan per bulan
+  targetApprovalRate Int     @default(85)  // approval rate % (0-100)
   users        User[]
   petugas      Petugas[]
   nasabah      Nasabah[]

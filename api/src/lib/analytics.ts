@@ -207,6 +207,149 @@ export async function monthlyClosing(opts: {
   }));
 }
 
+// Branch-level scorecard: per-branch monthly KPI achievement vs target.
+// Drives the Scorecard screen. SUPERVISOR sees just their branch.
+export interface ScorecardRow {
+  branchId: string;
+  branchKode: string;
+  branchNama: string;
+  targetCollection: number;
+  actualCollection: number;
+  targetVisits: number;
+  actualVisits: number;
+  targetApprovalRate: number;  // percent 0..100
+  actualApprovalRate: number;  // percent 0..100, NaN-safe → 0 when no reviews
+}
+
+export async function branchScorecard(opts: {
+  branchId?: string | null;
+  year: number;
+  month: number;
+}): Promise<ScorecardRow[]> {
+  const start = new Date(opts.year, opts.month - 1, 1);
+  const end = new Date(opts.year, opts.month, 1);
+
+  const branches = await prisma.branch.findMany({
+    where: {
+      active: true,
+      ...(opts.branchId ? { id: opts.branchId } : {}),
+    },
+    select: {
+      id: true, kode: true, nama: true,
+      targetCollection: true, targetVisits: true, targetApprovalRate: true,
+    },
+    orderBy: { kode: 'asc' },
+  });
+  if (branches.length === 0) return [];
+
+  const branchIds = branches.map(b => b.id);
+
+  // Three aggregates in parallel — collected (Rp), visit count, approved/rejected
+  // counts. PENDING rows are excluded from the rate denominator so a backlog
+  // doesn't drag the metric down before supervisors get to them.
+  const [collectedRows, visitRows, reviewRows] = await Promise.all([
+    prisma.pembayaran.groupBy({
+      by: ['branchId'],
+      where: {
+        branchId: { in: branchIds },
+        status: 'berhasil',
+        tanggal: { gte: start, lt: end },
+      },
+      _sum: { nominal: true },
+    }),
+    prisma.kunjungan.groupBy({
+      by: ['branchId'],
+      where: { branchId: { in: branchIds }, tanggal: { gte: start, lt: end } },
+      _count: { _all: true },
+    }),
+    prisma.kunjungan.groupBy({
+      by: ['branchId', 'reviewStatus'],
+      where: { branchId: { in: branchIds }, tanggal: { gte: start, lt: end } },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const collectedMap = new Map(collectedRows.map(r => [r.branchId, Number(r._sum.nominal ?? 0n)]));
+  const visitMap = new Map(visitRows.map(r => [r.branchId, r._count._all]));
+  const reviewByBranch = new Map<string, { approved: number; rejected: number }>();
+  for (const r of reviewRows) {
+    if (r.reviewStatus === 'PENDING') continue;
+    const cur = reviewByBranch.get(r.branchId) ?? { approved: 0, rejected: 0 };
+    if (r.reviewStatus === 'APPROVED') cur.approved += r._count._all;
+    else if (r.reviewStatus === 'REJECTED') cur.rejected += r._count._all;
+    reviewByBranch.set(r.branchId, cur);
+  }
+
+  return branches.map(b => {
+    const rev = reviewByBranch.get(b.id) ?? { approved: 0, rejected: 0 };
+    const denom = rev.approved + rev.rejected;
+    const actualApprovalRate = denom === 0 ? 0 : Math.round((rev.approved / denom) * 100);
+    return {
+      branchId: b.id,
+      branchKode: b.kode,
+      branchNama: b.nama,
+      targetCollection: Number(b.targetCollection),
+      actualCollection: collectedMap.get(b.id) ?? 0,
+      targetVisits: b.targetVisits,
+      actualVisits: visitMap.get(b.id) ?? 0,
+      targetApprovalRate: b.targetApprovalRate,
+      actualApprovalRate,
+    };
+  });
+}
+
+// Risk-based portfolio heatmap: one row per branch × kolektabilitas bucket,
+// showing count + outstanding. Drives a color-graded matrix where red cells
+// (high kol, high outstanding) flag concentrated risk for management.
+export interface HeatmapCell {
+  branchId: string;
+  branchKode: string;
+  branchNama: string;
+  kol: 'K1' | 'K2' | 'K3' | 'K4' | 'K5';
+  count: number;
+  outstanding: number;
+}
+
+export async function portfolioHeatmap(branchId?: string | null): Promise<HeatmapCell[]> {
+  // Single groupBy over (branch × kol). Branch metadata joined client-side
+  // so we don't double-roundtrip for kode/nama.
+  const branches = await prisma.branch.findMany({
+    where: { active: true, ...(branchId ? { id: branchId } : {}) },
+    select: { id: true, kode: true, nama: true },
+    orderBy: { kode: 'asc' },
+  });
+  if (branches.length === 0) return [];
+
+  const branchIds = branches.map(b => b.id);
+  const rows = await prisma.nasabah.groupBy({
+    by: ['branchId', 'kol'],
+    where: { active: true, branchId: { in: branchIds } },
+    _count: { _all: true },
+    _sum: { sisa: true },
+  });
+
+  const meta = new Map(branches.map(b => [b.id, b]));
+  const KOLS: HeatmapCell['kol'][] = ['K1', 'K2', 'K3', 'K4', 'K5'];
+
+  // Fill the matrix densely — every (branch × kol) cell present even when
+  // count = 0, so the UI doesn't need to handle missing cells.
+  const out: HeatmapCell[] = [];
+  for (const b of branches) {
+    for (const kol of KOLS) {
+      const r = rows.find(x => x.branchId === b.id && x.kol === kol);
+      out.push({
+        branchId: b.id,
+        branchKode: b.kode,
+        branchNama: b.nama,
+        kol,
+        count: r ? r._count._all : 0,
+        outstanding: r ? Number(r._sum.sisa ?? 0n) : 0,
+      });
+    }
+  }
+  return out;
+}
+
 // CSV with UTF-8 BOM so Indonesian accented names render in Excel.
 export function toClosingCsv(rows: ClosingRow[]): string {
   const headers = [
