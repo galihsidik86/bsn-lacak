@@ -1,10 +1,11 @@
+import { useState } from 'react';
 import axios from 'axios';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ic } from '../components/Icons';
-import { Avatar, Badge, Kv } from '../components/UI';
+import { Avatar, Badge, Kv, Modal } from '../components/UI';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
-import { tokenStore } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { tokenStore } from '../lib/api';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -130,6 +131,8 @@ export function ScreenPetugasProfile({ petugasId, onClose }: { petugasId: string
         </div>
       </div>
 
+      <CertPanel petugasId={d.petugas.id} />
+
       <div className="card fade-up" style={{ overflow: 'hidden' }}>
         <div className="card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
           <div className="section-title">10 Kunjungan Terakhir</div>
@@ -193,5 +196,227 @@ function Tile({ icon, label, value }: { icon: 'users' | 'clipboard' | 'wallet' |
         <div className="num" style={{ fontWeight: 800, fontSize: 18, marginTop: 2 }}>{value}</div>
       </div>
     </div>
+  );
+}
+
+// AV — certification panel: list of certs sorted by validUntil, color-coded
+// by days-to-expiry, plus inline create/edit modal for SUPERVISOR+.
+interface CertRow {
+  id: string; nama: string; penerbit: string | null; noSertifikat: string | null;
+  issuedAt: string; validUntil: string | null; status: string; catatan: string | null;
+  createdAt: string;
+  createdBy: { username: string; nama: string } | null;
+}
+function certHeaders() {
+  const t = tokenStore.get();
+  const h: Record<string, string> = {};
+  if (t) h.Authorization = `Bearer ${t}`;
+  const o = useAuth.getState().branchOverride;
+  if (o) h['x-branch-id'] = o;
+  return h;
+}
+
+function CertPanel({ petugasId }: { petugasId: string }) {
+  const role = useAuth(s => s.user?.role);
+  const canEdit = role === 'SUPERVISOR' || role === 'ADMIN';
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ['certs', petugasId],
+    queryFn: () => axios.get<CertRow[]>(`${import.meta.env.VITE_API_URL || '/api'}/certifications?petugasId=${petugasId}`,
+      { withCredentials: true, headers: certHeaders() }).then(r => r.data),
+  });
+  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<CertRow | null>(null);
+  const del = useMutation({
+    mutationFn: (id: string) => axios.delete(`${import.meta.env.VITE_API_URL || '/api'}/certifications/${id}`,
+      { withCredentials: true, headers: certHeaders() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['certs', petugasId] }),
+  });
+
+  return (
+    <div className="card fade-up" style={{ overflow: 'hidden' }}>
+      <div className="between card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
+        <div>
+          <div className="section-title">Sertifikasi / Kompetensi</div>
+          <div className="page-sub">Daftar sertifikat aktif & yang segera lapse.</div>
+        </div>
+        {canEdit && (
+          <button className="btn btn-sm btn-primary" onClick={() => setAdding(true)}>
+            <Ic.plus size={14} />Tambah
+          </button>
+        )}
+      </div>
+      {q.isPending ? <Skeleton h={120} />
+        : (q.data ?? []).length === 0 ? <EmptyState title="Belum ada sertifikat" />
+        : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Nama</th><th>Penerbit</th><th>No</th>
+                <th style={{ textAlign: 'right' }}>Diterbitkan</th>
+                <th style={{ textAlign: 'right' }}>Berlaku s/d</th>
+                <th>Status</th>
+                {canEdit && <th></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {q.data!.map(c => (
+                <CertRow key={c.id} c={c}
+                  canEdit={canEdit}
+                  onEdit={() => setEditing(c)}
+                  onDelete={() => { if (confirm(`Hapus sertifikat "${c.nama}"?`)) del.mutate(c.id); }} />
+              ))}
+            </tbody>
+          </table>
+        )}
+      {(adding || editing) && (
+        <CertForm petugasId={petugasId} initial={editing}
+          onClose={() => { setAdding(false); setEditing(null); }}
+          onSaved={() => {
+            setAdding(false); setEditing(null);
+            qc.invalidateQueries({ queryKey: ['certs', petugasId] });
+          }} />
+      )}
+    </div>
+  );
+}
+
+function CertRow({ c, canEdit, onEdit, onDelete }: {
+  c: CertRow; canEdit: boolean; onEdit: () => void; onDelete: () => void;
+}) {
+  const validUntil = c.validUntil ? new Date(c.validUntil) : null;
+  const daysLeft = validUntil ? Math.round((validUntil.getTime() - Date.now()) / 86400000) : null;
+  const tint = c.status !== 'aktif' ? { bg: 'var(--surface-2)', fg: 'var(--ink-3)' }
+    : daysLeft == null ? { bg: 'var(--accent-soft)', fg: 'var(--accent-ink)' }
+    : daysLeft < 0 ? { bg: 'var(--col-macet-soft)', fg: 'var(--col-macet)' }
+    : daysLeft <= 30 ? { bg: 'var(--gold-soft)', fg: 'var(--gold-ink)' }
+    : daysLeft <= 90 ? { bg: 'var(--col-dpk-soft)', fg: 'var(--col-dpk)' }
+    : { bg: 'var(--accent-soft)', fg: 'var(--accent-ink)' };
+  const statusLabel = c.status !== 'aktif' ? c.status
+    : daysLeft == null ? 'Aktif'
+    : daysLeft < 0 ? `Expired ${-daysLeft}d`
+    : `${daysLeft}d tersisa`;
+  return (
+    <tr>
+      <td>
+        <div style={{ fontWeight: 700, fontSize: 13 }}>{c.nama}</div>
+        {c.catatan && (
+          <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{c.catatan}</div>
+        )}
+      </td>
+      <td className="muted">{c.penerbit ?? '—'}</td>
+      <td className="mono" style={{ fontSize: 11.5 }}>{c.noSertifikat ?? '—'}</td>
+      <td className="mono" style={{ textAlign: 'right', fontSize: 11.5 }}>
+        {new Date(c.issuedAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+      </td>
+      <td className="mono" style={{ textAlign: 'right', fontSize: 11.5 }}>
+        {validUntil ? validUntil.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+      </td>
+      <td>
+        <span className="chip" style={{ background: tint.bg, color: tint.fg, fontSize: 11 }}>
+          {statusLabel}
+        </span>
+      </td>
+      {canEdit && (
+        <td style={{ textAlign: 'right' }}>
+          <div className="center gap-2" style={{ justifyContent: 'flex-end' }}>
+            <button className="btn btn-sm btn-ghost" onClick={onEdit}><Ic.settings size={12} /></button>
+            <button className="btn btn-sm btn-ghost" onClick={onDelete}><Ic.x size={12} /></button>
+          </div>
+        </td>
+      )}
+    </tr>
+  );
+}
+
+function CertForm({ petugasId, initial, onClose, onSaved }: {
+  petugasId: string;
+  initial?: CertRow | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isEdit = !!initial;
+  const [nama, setNama] = useState(initial?.nama ?? '');
+  const [penerbit, setPenerbit] = useState(initial?.penerbit ?? '');
+  const [noSertifikat, setNoSertifikat] = useState(initial?.noSertifikat ?? '');
+  const [issuedAt, setIssuedAt] = useState(
+    initial ? initial.issuedAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
+  );
+  const [validUntil, setValidUntil] = useState(initial?.validUntil ? initial.validUntil.slice(0, 10) : '');
+  const [status, setStatus] = useState(initial?.status ?? 'aktif');
+  const [catatan, setCatatan] = useState(initial?.catatan ?? '');
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: () => {
+      const body = {
+        nama, penerbit: penerbit || null, noSertifikat: noSertifikat || null,
+        issuedAt, validUntil: validUntil || null, status,
+        catatan: catatan || null,
+        ...(isEdit ? {} : { petugasId }),
+      };
+      const url = `${import.meta.env.VITE_API_URL || '/api'}/certifications${isEdit ? '/' + initial!.id : ''}`;
+      return isEdit
+        ? axios.patch(url, body, { withCredentials: true, headers: certHeaders() })
+        : axios.post(url, body, { withCredentials: true, headers: certHeaders() });
+    },
+    onSuccess: () => onSaved(),
+    onError: () => setErr('Gagal menyimpan.'),
+  });
+
+  return (
+    <Modal onClose={onClose} max={520}>
+      <div className="modal-head">
+        <div style={{ flex: 1 }}>
+          <div className="section-title">{isEdit ? 'Edit Sertifikat' : 'Tambah Sertifikat'}</div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+      </div>
+      <div className="modal-body" style={{ display: 'grid', gap: 10 }}>
+        <Field label="Nama sertifikat">
+          <input className="input" value={nama} onChange={e => setNama(e.target.value)} required maxLength={200} />
+        </Field>
+        <div className="grid gap-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <Field label="Penerbit"><input className="input" value={penerbit ?? ''} onChange={e => setPenerbit(e.target.value)} /></Field>
+          <Field label="No. sertifikat"><input className="input" value={noSertifikat ?? ''} onChange={e => setNoSertifikat(e.target.value)} /></Field>
+        </div>
+        <div className="grid gap-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <Field label="Diterbitkan"><input className="input" type="date" value={issuedAt} onChange={e => setIssuedAt(e.target.value)} required /></Field>
+          <Field label="Berlaku s/d (opsional)"><input className="input" type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} /></Field>
+        </div>
+        <Field label="Status">
+          <select className="input" value={status} onChange={e => setStatus(e.target.value)}>
+            <option value="aktif">Aktif</option>
+            <option value="dicabut">Dicabut</option>
+            <option value="expired">Expired</option>
+          </select>
+        </Field>
+        <Field label="Catatan">
+          <textarea className="input" rows={2} value={catatan ?? ''} onChange={e => setCatatan(e.target.value)} style={{ resize: 'none' }} />
+        </Field>
+        {err && (
+          <div className="center gap-2" style={{
+            background: 'var(--col-macet-soft)', color: 'var(--col-macet)',
+            borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 600,
+          }}><Ic.alert size={14} />{err}</div>
+        )}
+      </div>
+      <div className="modal-foot">
+        <button className="btn" onClick={onClose}>Batal</button>
+        <button className="btn btn-primary" disabled={save.isPending || !nama.trim()}
+          onClick={() => save.mutate()}>
+          {save.isPending ? 'Menyimpan…' : isEdit ? 'Simpan' : 'Tambah'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label style={{ display: 'block' }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', display: 'block', marginBottom: 5 }}>{label}</span>
+      {children}
+    </label>
   );
 }

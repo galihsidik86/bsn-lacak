@@ -125,6 +125,8 @@ model User {
   createdApiKeys      ApiKey[]       @relation("ApiKeyCreator")
   savedFilters        SavedFilter[]
   createdWebhooks     WebhookSubscription[] @relation("WebhookCreator")
+  createdCertifications PetugasCertification[] @relation("CertCreator")
+  kunjunganEdits      KunjunganEditLog[]    @relation("EditLogEditor")
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -211,6 +213,7 @@ model Petugas {
   positions   PetugasPosition[]
   attendance  Attendance[]
   feedback    CustomerFeedback[]
+  certifications PetugasCertification[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -421,6 +424,7 @@ model Kunjungan {
   slaAlertedAt DateTime?
   fotos      Foto[]
   feedback     CustomerFeedback?
+  editLogs   KunjunganEditLog[]
   jam        String
   tanggal    DateTime       @default(now())   // the visit time (can be backdated)
   createdAt  DateTime       @default(now())   // the insertion time; gates edit/delete window
@@ -564,4 +568,42 @@ model BlastRecipient {
   sentAt    DateTime?
 
   @@unique([blastId, nasabahId])
+}
+
+// AV — petugas certification / kompetensi tracker. Each row is one cert
+// (e.g. AAJI, OJK collector cert). issuedAt is when it was earned;
+// validUntil tags expiry. UI sorts by validUntil so things about to lapse
+// surface first; a worker (or just supervisor review) handles renewal.
+model PetugasCertification {
+  id            String    @id @default(cuid())
+  petugas       Petugas   @relation(fields: [petugasId], references: [id], onDelete: Cascade)
+  petugasId     String
+  nama          String
+  penerbit      String?
+  noSertifikat  String?
+  issuedAt      DateTime
+  validUntil    DateTime?
+  status        String    @default("aktif")  // aktif | dicabut | expired
+  catatan       String?
+  createdById   String?
+  createdBy     User?     @relation("CertCreator", fields: [createdById], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([petugasId, validUntil])
+}
+
+// BT — log per-edit on a kunjungan. Each PATCH creates one row so the
+// audit viewer can render a side-by-side timeline of what changed.
+model KunjunganEditLog {
+  id           String    @id @default(cuid())
+  kunjungan    Kunjungan @relation(fields: [kunjunganId], references: [id], onDelete: Cascade)
+  kunjunganId  String
+  editor       User      @relation("EditLogEditor", fields: [editorId], references: [id])
+  editorId     String
+  // Changed fields as JSON: { field: { from, to } }
+  changes      Json
+  createdAt    DateTime  @default(now())
+
+  @@index([kunjunganId, createdAt])
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Ic } from '../components/Icons';
 import { SavedFilters } from '../components/SavedFilters';
 import { PhotoAnnotator, saveAnnotations } from '../components/PhotoAnnotator';
@@ -550,6 +551,7 @@ function LaporanDetail({ k, onClose, petugasById, nasabahById }: {
           </div>
         </div>
       )}
+      <EditLogSection kunjunganId={k.id} />
       <div className="modal-foot">
         {canReview && k.reviewStatus === 'PENDING' ? (
           <>
@@ -575,6 +577,72 @@ function LaporanDetail({ k, onClose, petugasById, nasabahById }: {
 // "Unduh semua" — downloads a server-streamed zip of PDF for every kunjungan
 // in the current scope (optionally filtered by petugasId). The server caps
 // at 500 rows; we surface that limit in the button hint via aria-describedby.
+// BT — collapsible edit history for one kunjungan. Hidden by default
+// (most laporan have no edits); opens to show a from→to diff per change.
+function EditLogSection({ kunjunganId }: { kunjunganId: string }) {
+  const [open, setOpen] = useState(false);
+  const q = useQuery({
+    queryKey: ['kunjungan-edit-log', kunjunganId],
+    queryFn: async () => {
+      const tok = (await import('../lib/api')).tokenStore.get();
+      const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/kunjungan/${kunjunganId}/edit-log`, {
+        credentials: 'include',
+        headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+      });
+      if (!r.ok) return [];
+      return r.json() as Promise<Array<{
+        id: string; createdAt: string;
+        changes: Record<string, { from: unknown; to: unknown }>;
+        editor: { username: string; nama: string };
+      }>>;
+    },
+    enabled: open,
+  });
+
+  return (
+    <div style={{ padding: '0 24px 12px' }}>
+      <button className="btn btn-sm btn-ghost" onClick={() => setOpen(o => !o)}
+        style={{ padding: '4px 10px', fontSize: 11.5 }}>
+        <Ic.eye size={12} />{open ? 'Tutup riwayat edit' : 'Riwayat edit'}
+      </button>
+      {open && (
+        <div style={{
+          marginTop: 8, padding: 12, background: 'var(--surface-2)', borderRadius: 10,
+        }}>
+          {q.isPending ? <div className="muted" style={{ fontSize: 12 }}>Memuat…</div>
+            : (q.data ?? []).length === 0
+              ? <div className="muted" style={{ fontSize: 12 }}>Belum ada edit pada laporan ini.</div>
+              : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {q.data!.map(log => (
+                    <div key={log.id} style={{
+                      borderLeft: '2px solid var(--accent)', paddingLeft: 10,
+                    }}>
+                      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>
+                        {new Date(log.createdAt).toLocaleString('id-ID')} · {log.editor.nama}
+                        <span className="mono"> ({log.editor.username})</span>
+                      </div>
+                      {Object.entries(log.changes).map(([field, diff]) => (
+                        <div key={field} style={{ fontSize: 12, lineHeight: 1.5 }}>
+                          <span style={{ fontWeight: 700, color: 'var(--ink-2)' }}>{field}:</span>{' '}
+                          <span style={{ textDecoration: 'line-through', color: 'var(--col-macet)' }}>
+                            {String(diff.from ?? '—')}
+                          </span>{' → '}
+                          <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                            {String(diff.to ?? '—')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BulkPdfButton({ petugasId }: { petugasId?: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);

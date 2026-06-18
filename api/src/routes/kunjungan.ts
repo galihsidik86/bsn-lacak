@@ -548,9 +548,14 @@ router.patch('/:id', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: 'bad_request', details: parsed.error.flatten() });
 
   const id = String(req.params.id);
+  // BT — pull the current values for the fields we might change so we can
+  // log {from, to} pairs into KunjunganEditLog after the update.
   const k = await prisma.kunjungan.findFirst({
     where: { id, ...scope(req) },
-    select: { id: true, petugasId: true, createdAt: true, reviewStatus: true },
+    select: {
+      id: true, petugasId: true, createdAt: true, reviewStatus: true,
+      hasil: true, nominal: true, catatan: true, lokasi: true,
+    },
   });
   if (!k) return res.status(404).json({ error: 'not_found' });
 
@@ -566,15 +571,60 @@ router.patch('/:id', async (req, res) => {
     }
   }
 
+  // Build a from/to diff for fields that actually changed. We compare with
+  // the typed previous values so a same-value PATCH doesn't pollute the log.
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  if (parsed.data.hasil !== undefined && parsed.data.hasil !== k.hasil) {
+    changes.hasil = { from: k.hasil, to: parsed.data.hasil };
+  }
+  if (parsed.data.nominal !== undefined && parsed.data.nominal !== k.nominal) {
+    changes.nominal = { from: String(k.nominal), to: String(parsed.data.nominal) };
+  }
+  if (parsed.data.catatan !== undefined && parsed.data.catatan !== k.catatan) {
+    changes.catatan = { from: k.catatan, to: parsed.data.catatan };
+  }
+  if (parsed.data.lokasi !== undefined && parsed.data.lokasi !== k.lokasi) {
+    changes.lokasi = { from: k.lokasi, to: parsed.data.lokasi };
+  }
+
   const updated = await prisma.kunjungan.update({
     where: { id },
     data: parsed.data,
   });
+
+  if (Object.keys(changes).length > 0) {
+    await prisma.kunjunganEditLog.create({
+      data: {
+        kunjunganId: id, editorId: req.user!.sub, changes: changes as any,
+      },
+    });
+  }
+
   await audit({
     action: 'kunjungan.edit', target: id, ...fromReq(req),
     meta: { fields: Object.keys(parsed.data) },
   });
   res.json(updated);
+});
+
+// BT — viewer endpoint. SUPERVISOR/ADMIN sees logs for any kunjungan in
+// scope. The petugas who filed the laporan can also see their own history.
+router.get('/:id/edit-log', async (req, res) => {
+  const id = String(req.params.id);
+  const k = await prisma.kunjungan.findFirst({
+    where: { id, ...scope(req) },
+    select: { id: true, petugasId: true },
+  });
+  if (!k) return res.status(404).json({ error: 'not_found' });
+  if (req.user?.role === 'PETUGAS' && k.petugasId !== req.user.petugasId) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const logs = await prisma.kunjunganEditLog.findMany({
+    where: { kunjunganId: id },
+    orderBy: { createdAt: 'desc' },
+    include: { editor: { select: { username: true, nama: true } } },
+  });
+  res.json(logs);
 });
 
 router.delete('/:id', async (req, res) => {
