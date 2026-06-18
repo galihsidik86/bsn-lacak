@@ -55,6 +55,10 @@ const schema = z.object({
   // the configured day-of-month.
   CLOSING_EMAIL_DAY: z.coerce.number().int().min(1).max(28).default(1),
   CLOSING_EMAIL_HOUR: z.coerce.number().int().min(0).max(23).default(8),
+  // Morning push reminder to PETUGAS — fires once per weekday at the
+  // configured local hour. Set MORNING_REMINDER_ENABLED=false to skip.
+  MORNING_REMINDER_HOUR: z.coerce.number().int().min(0).max(23).default(7),
+  MORNING_REMINDER_ENABLED: z.enum(['true', 'false']).default('true').transform(v => v === 'true'),
   // Public-facing base URL used to compose share links (receipt PDF, feedback).
   // Defaults to WEB_ORIGIN; override in prod when behind a separate ingress.
   PUBLIC_BASE_URL: z.string().url().optional(),

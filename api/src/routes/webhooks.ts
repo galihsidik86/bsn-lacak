@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireAuth, requireRole } from '../auth.js';
 import { audit, fromReq } from '../lib/audit.js';
-import { generateWebhookSecret } from '../lib/webhookDispatcher.js';
+import { generateWebhookSecret, manualRetryDelivery } from '../lib/webhookDispatcher.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -92,17 +92,35 @@ router.delete('/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-// Recent delivery log for a subscription.
+// Recent delivery log for a subscription. Status filter optional.
 router.get('/:id/deliveries', async (req, res) => {
   const id = String(req.params.id);
   const limitNum = Number.parseInt(String(req.query.limit ?? '50'), 10);
   const limit = Number.isFinite(limitNum) && limitNum > 0 && limitNum <= 200 ? limitNum : 50;
+  const status = typeof req.query.status === 'string' ? req.query.status : undefined;
   const rows = await prisma.webhookDelivery.findMany({
-    where: { webhookId: id },
+    where: { webhookId: id, ...(status ? { status } : {}) },
     orderBy: { createdAt: 'desc' },
     take: limit,
   });
   res.json(rows);
+});
+
+// Manual retry — admin clicks "Coba lagi" on a failed/dead-letter delivery.
+// Resets to pending and fires one attempt immediately. The result lands as
+// the next status update on the same row, no new row is created.
+router.post('/deliveries/:id/retry', async (req, res) => {
+  const id = String(req.params.id);
+  const existing = await prisma.webhookDelivery.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+
+  await manualRetryDelivery(id);
+  const fresh = await prisma.webhookDelivery.findUnique({ where: { id } });
+  await audit({
+    action: 'webhook.delivery_retry', target: id, ...fromReq(req),
+    meta: { webhookId: existing.webhookId, status: fresh?.status },
+  });
+  res.json(fresh);
 });
 
 export default router;

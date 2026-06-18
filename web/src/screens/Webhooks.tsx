@@ -25,11 +25,13 @@ interface WebhookRow {
 interface DeliveryRow {
   id: string;
   event: string;
-  status: 'success' | 'failed' | 'retrying';
+  status: 'success' | 'pending' | 'failed' | 'dead_letter';
   responseStatus: number | null;
   attempts: number;
   error: string | null;
   createdAt: string;
+  nextAttemptAt: string | null;
+  lastAttemptAt: string | null;
 }
 
 const ALL_EVENTS = [
@@ -57,8 +59,13 @@ async function toggle(id: string, active: boolean): Promise<WebhookRow> {
 async function remove(id: string): Promise<void> {
   await axios.delete(`${BASE}/webhooks/${id}`, { withCredentials: true, headers: authHeaders() });
 }
-async function deliveries(id: string): Promise<DeliveryRow[]> {
-  return (await axios.get(`${BASE}/webhooks/${id}/deliveries`, { withCredentials: true, headers: authHeaders() })).data;
+async function deliveries(id: string, status?: string): Promise<DeliveryRow[]> {
+  return (await axios.get(`${BASE}/webhooks/${id}/deliveries`,
+    { withCredentials: true, headers: authHeaders(), params: status ? { status } : {} })).data;
+}
+async function retryDelivery(id: string): Promise<DeliveryRow> {
+  return (await axios.post(`${BASE}/webhooks/deliveries/${id}/retry`, {},
+    { withCredentials: true, headers: authHeaders() })).data;
 }
 
 export function ScreenWebhooks() {
@@ -262,10 +269,27 @@ function CreateForm({ branches, onClose, onSaved }: {
   );
 }
 
+const STATUS_TINT: Record<DeliveryRow['status'], { bg: string; fg: string }> = {
+  success: { bg: 'var(--accent-soft)', fg: 'var(--accent-ink)' },
+  pending: { bg: 'var(--col-dpk-soft)', fg: 'var(--col-dpk)' },
+  failed: { bg: 'var(--col-macet-soft)', fg: 'var(--col-macet)' },
+  dead_letter: { bg: 'var(--ink)', fg: 'white' },
+};
+
 function DeliveriesView({ webhook, onClose }: { webhook: WebhookRow; onClose: () => void }) {
-  const q = useQuery({ queryKey: ['webhook-deliveries', webhook.id], queryFn: () => deliveries(webhook.id) });
+  const qc = useQueryClient();
+  const [filter, setFilter] = useState<'all' | DeliveryRow['status']>('all');
+  const q = useQuery({
+    queryKey: ['webhook-deliveries', webhook.id, filter],
+    queryFn: () => deliveries(webhook.id, filter === 'all' ? undefined : filter),
+  });
+  const retry = useMutation({
+    mutationFn: retryDelivery,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['webhook-deliveries', webhook.id] }),
+  });
+
   return (
-    <Modal onClose={onClose} max={820}>
+    <Modal onClose={onClose} max={920}>
       <div className="modal-head">
         <div style={{ flex: 1 }}>
           <div className="section-title">Delivery Log · {webhook.name}</div>
@@ -274,33 +298,56 @@ function DeliveriesView({ webhook, onClose }: { webhook: WebhookRow; onClose: ()
         <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
       </div>
       <div className="modal-body">
+        <div className="seg" style={{ marginBottom: 12 }} role="tablist">
+          {(['all', 'success', 'pending', 'failed', 'dead_letter'] as const).map(s => (
+            <button key={s} className={filter === s ? 'on' : ''} onClick={() => setFilter(s)}>
+              {s === 'all' ? 'Semua' : s === 'dead_letter' ? 'Dead Letter' : s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
         {q.isPending ? <Skeleton h={300} />
           : q.error ? <ErrorState onRetry={() => q.refetch()} />
-          : (q.data?.length ?? 0) === 0 ? <EmptyState title="Belum ada delivery" />
+          : (q.data?.length ?? 0) === 0 ? <EmptyState title="Belum ada delivery di filter ini" />
           : (
             <table className="table">
               <thead><tr>
-                <th>Waktu</th><th>Event</th><th>Status</th><th style={{ textAlign: 'right' }}>HTTP</th>
-                <th>Attempts</th><th>Error</th>
+                <th>Waktu</th><th>Event</th><th>Status</th>
+                <th style={{ textAlign: 'right' }}>HTTP</th>
+                <th>Attempts</th><th>Next retry</th><th>Error</th><th></th>
               </tr></thead>
               <tbody>
-                {q.data!.map(d => (
-                  <tr key={d.id}>
-                    <td className="mono" style={{ fontSize: 11.5 }}>{new Date(d.createdAt).toLocaleString('id-ID')}</td>
-                    <td><span className="badge">{d.event}</span></td>
-                    <td>
-                      <span className="chip" style={{
-                        background: d.status === 'success' ? 'var(--accent-soft)'
-                          : d.status === 'retrying' ? 'var(--col-dpk-soft)' : 'var(--col-macet-soft)',
-                        color: d.status === 'success' ? 'var(--accent-ink)'
-                          : d.status === 'retrying' ? 'var(--col-dpk)' : 'var(--col-macet)',
-                      }}>{d.status}</span>
-                    </td>
-                    <td style={{ textAlign: 'right' }} className="num">{d.responseStatus ?? '—'}</td>
-                    <td className="num">{d.attempts}</td>
-                    <td className="muted" style={{ fontSize: 11.5 }}>{d.error ?? '—'}</td>
-                  </tr>
-                ))}
+                {q.data!.map(d => {
+                  const tint = STATUS_TINT[d.status];
+                  const canRetry = d.status === 'failed' || d.status === 'dead_letter' || d.status === 'pending';
+                  return (
+                    <tr key={d.id}>
+                      <td className="mono" style={{ fontSize: 11.5 }}>{new Date(d.createdAt).toLocaleString('id-ID')}</td>
+                      <td><span className="badge">{d.event}</span></td>
+                      <td>
+                        <span className="chip" style={{ background: tint.bg, color: tint.fg }}>{d.status}</span>
+                      </td>
+                      <td style={{ textAlign: 'right' }} className="num">{d.responseStatus ?? '—'}</td>
+                      <td className="num">{d.attempts}</td>
+                      <td className="mono muted" style={{ fontSize: 11 }}>
+                        {d.status === 'pending' && d.nextAttemptAt
+                          ? new Date(d.nextAttemptAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+                          : '—'}
+                      </td>
+                      <td className="muted" style={{ fontSize: 11.5, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {d.error ?? '—'}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {canRetry && (
+                          <button className="btn btn-sm btn-ghost" disabled={retry.isPending}
+                            onClick={() => retry.mutate(d.id)}
+                            title="Kirim ulang sekarang">
+                            <Ic.send size={12} />Retry
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )

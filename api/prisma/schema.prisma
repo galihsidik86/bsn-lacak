@@ -494,14 +494,20 @@ model WebhookDelivery {
   webhookId       String
   event           String
   payload         Json
-  status          String   // 'success' | 'failed' | 'retrying'
+  status          String   // 'success' | 'pending' | 'failed' | 'dead_letter'
   responseStatus  Int?     // HTTP status from receiver
-  attempts        Int      @default(1)
+  attempts        Int      @default(0)
   error           String?
+  // Retry scheduler — `pending` rows are picked up by the dispatcher when
+  // nextAttemptAt has passed. `dead_letter` rows have exhausted retries
+  // and stay dormant unless an operator hits /retry manually.
+  nextAttemptAt   DateTime?
+  lastAttemptAt   DateTime?
   createdAt       DateTime @default(now())
 
   @@index([webhookId, createdAt])
   @@index([status, createdAt])
+  @@index([status, nextAttemptAt])
 }
 
 model Pembayaran {
