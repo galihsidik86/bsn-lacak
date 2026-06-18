@@ -35,6 +35,31 @@ function localDateKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+// Short label for the next-visit chip: "hari ini", "besok", "3 hari lagi",
+// or a date when farther away. Past dates surface as "telat N hari".
+function nextVisitLabel(iso: string): string {
+  const target = new Date(iso);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const t = new Date(target); t.setHours(0, 0, 0, 0);
+  const diff = Math.round((t.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  if (diff < 0) return `telat ${Math.abs(diff)} hari`;
+  if (diff === 0) return 'hari ini';
+  if (diff === 1) return 'besok';
+  if (diff <= 7) return `${diff} hari lagi`;
+  return target.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+}
+
+function nextVisitTint(iso: string): string {
+  const target = new Date(iso);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const t = new Date(target); t.setHours(0, 0, 0, 0);
+  const diff = Math.round((t.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  if (diff < 0) return 'var(--col-macet)';
+  if (diff === 0) return 'var(--gold-ink)';
+  if (diff <= 2) return 'var(--col-dpk)';
+  return 'var(--ink-3)';
+}
+
 const MOBILE_STATE_KEY = 'bsn_mobile_state';
 const LAPOR_DRAFT_KEY = 'bsn_lapor_draft';
 
@@ -440,6 +465,13 @@ function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone }: {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{n.nama}</div>
                 <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.alamat}</div>
+                {n.nextVisitAt && (
+                  <div className="center gap-2" style={{
+                    marginTop: 4, fontSize: 10.5, fontWeight: 700, color: nextVisitTint(n.nextVisitAt),
+                  }}>
+                    <Ic.clock size={10} />Jadwal {nextVisitLabel(n.nextVisitAt)}
+                  </div>
+                )}
               </div>
               <div style={{ textAlign: 'right' }}>
                 <KolBadge kol={n.kol} />

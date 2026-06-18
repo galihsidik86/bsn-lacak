@@ -45,6 +45,26 @@ router.get('/', async (req, res) => {
   res.json(list);
 });
 
+// Mounted BEFORE the /:id catch-all so the segment isn't consumed as an ID.
+router.get('/due-soon', async (req, res) => {
+  const days = Number.parseInt(String(req.query.days ?? '7'), 10);
+  const window = Number.isFinite(days) && days > 0 && days <= 60 ? days : 7;
+  const cutoff = new Date(Date.now() + window * 24 * 60 * 60 * 1000);
+  const rows = await prisma.nasabah.findMany({
+    where: {
+      ...scope(req), active: true,
+      nextVisitAt: { not: null, lte: cutoff },
+    },
+    include: {
+      petugas: { select: { id: true, kode: true, nama: true, hue: true, inisial: true } },
+      branch: { select: { kode: true, nama: true } },
+    },
+    orderBy: { nextVisitAt: 'asc' },
+    take: 200,
+  });
+  res.json({ windowDays: window, rows });
+});
+
 router.get('/postur', async (req, res) => {
   const rows = await prisma.nasabah.groupBy({
     by: ['kol'],
@@ -423,6 +443,37 @@ router.delete('/:id', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
   await prisma.nasabah.update({ where: { id }, data: { active: false } });
   await audit({ action: 'nasabah.deactivate', target: id, ...fromReq(req) });
   res.json({ ok: true });
+});
+
+// --- Next-visit manual override (BN) ------------------------------------
+//
+// Supervisor/admin pins a specific date; null body clears the field so the
+// cadence rule re-populates it after the next kunjungan. We bypass zod's
+// coercion for null (z.coerce.date() would turn it into 1970-01-01).
+router.patch('/:id/next-visit', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const raw = req.body?.nextVisitAt;
+  let nextVisitAt: Date | null;
+  if (raw === null || raw === undefined) {
+    nextVisitAt = null;
+  } else {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return res.status(400).json({ error: 'bad_request' });
+    nextVisitAt = d;
+  }
+
+  const id = String(req.params.id);
+  const before = await prisma.nasabah.findFirst({ where: { id, ...scope(req) } });
+  if (!before) return res.status(404).json({ error: 'not_found' });
+
+  const updated = await prisma.nasabah.update({
+    where: { id },
+    data: { nextVisitAt },
+  });
+  await audit({
+    action: 'nasabah.next_visit', target: id, ...fromReq(req),
+    meta: { nextVisitAt: nextVisitAt?.toISOString() ?? null },
+  });
+  res.json(updated);
 });
 
 // --- Per-nasabah data export (BK / GDPR-style) --------------------------

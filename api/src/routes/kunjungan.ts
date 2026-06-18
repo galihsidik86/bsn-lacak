@@ -20,6 +20,7 @@ import { requireRole } from '../auth.js';
 import { pushToUsers } from '../lib/webPush.js';
 import { enqueueNotification } from './notifications.js';
 import { kunjunganLimiter } from '../lib/rateLimit.js';
+import { nextVisitDate } from '../lib/visitCadence.js';
 import { ZipArchive } from 'archiver';
 
 const router = Router();
@@ -234,6 +235,25 @@ router.post('/', kunjunganLimiter, upload.array('photos', 5), async (req, res) =
   if (parsed.data.hasil === 'BAYAR' && parsed.data.nominal > 0n) {
     void sendReceiptWa(k.id);
   }
+
+  // Push the next-visit date forward based on (kol × hasil). Fire-and-
+  // forget; if it fails the nasabah just keeps its current schedule. We
+  // re-fetch the nasabah row to pick up the current kol — backdated
+  // visits use their `tanggal` as the anchor instead of "now".
+  void (async () => {
+    try {
+      const nb = await prisma.nasabah.findUnique({
+        where: { id: parsed.data.nasabahId },
+        select: { kol: true },
+      });
+      if (!nb) return;
+      const next = nextVisitDate(visitDate, nb.kol, parsed.data.hasil);
+      await prisma.nasabah.update({
+        where: { id: parsed.data.nasabahId },
+        data: { nextVisitAt: next },
+      });
+    } catch { /* swallow — laporan still succeeded */ }
+  })();
 
   res.status(201).json(k);
 });

@@ -81,6 +81,7 @@ function nasabahFromServer(x: any): Nasabah {
     dpd: x.dpd ?? 0,
     dueIn: x.dueIn ?? 0,
     lastBayar: x.lastBayar ?? '—',
+    nextVisitAt: x.nextVisitAt ?? null,
   };
 }
 

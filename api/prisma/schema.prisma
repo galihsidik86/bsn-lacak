@@ -370,6 +370,10 @@ model Nasabah {
   // Soft delete — pensiun / lunas / wanprestasi-final masuk inactive
   // tapi histori kunjungan + pembayaran tetap terjaga.
   active     Boolean     @default(true)
+  // Next-visit scheduler. Set automatically by the cadence rule on every
+  // kunjungan.create (based on kol + hasil), or overridden manually by
+  // SUPERVISOR/ADMIN via PATCH /:id/next-visit. Null = no plan yet.
+  nextVisitAt DateTime?
   kunjungan      Kunjungan[]
   pembayaran     Pembayaran[]
   blastRecipient BlastRecipient[]

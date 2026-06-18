@@ -66,6 +66,7 @@ export interface Nasabah {
   dpd: number;
   dueIn: number;
   lastBayar: string;
+  nextVisitAt?: string | null;
 }
 
 export interface Kunjungan {

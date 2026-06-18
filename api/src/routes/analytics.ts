@@ -5,7 +5,7 @@ import { audit, fromReq } from '../lib/audit.js';
 import {
   monthlyRevenueByBranch, topPetugasLeaderboard, kolPosture,
   monthlyClosing, toClosingCsv, branchScorecard, portfolioHeatmap,
-  pendingAgingReport, petugasRace,
+  pendingAgingReport, petugasRace, churnRiskList,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -97,6 +97,17 @@ router.get('/scorecard', async (req, res) => {
     branchId: g.branchId, year: parsed.data.year, month: parsed.data.month,
   });
   res.json({ year: parsed.data.year, month: parsed.data.month, rows });
+});
+
+// Churn risk listing — top-N nasabah ranked by inactivity / DPD / failed
+// visits. Default limit 50, cap 200. SUPERVISOR auto-scoped.
+router.get('/churn', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const limitRaw = Number.parseInt(String(req.query.limit ?? '50'), 10);
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 200 ? limitRaw : 50;
+  const rows = await churnRiskList({ branchId: g.branchId, limit });
+  res.json({ rows });
 });
 
 // Petugas race chart — per-petugas monthly tertagih over the configurable

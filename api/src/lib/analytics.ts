@@ -350,6 +350,109 @@ export async function portfolioHeatmap(branchId?: string | null): Promise<Heatma
   return out;
 }
 
+// Churn risk listing (BO) — top-N nasabah sorted by churnScore descending.
+// Score is computed in TypeScript from a per-nasabah aggregation rather
+// than as a stored column so it always reflects the latest payment +
+// visit history.
+import { churnScore, riskTier, type ChurnInput } from './churnScore.js';
+
+export interface ChurnRow {
+  nasabahId: string;
+  kode: string;
+  nama: string;
+  petugasKode: string;
+  petugasNama: string;
+  branchKode: string;
+  kol: 'K1' | 'K2' | 'K3' | 'K4' | 'K5';
+  sisa: number;
+  dpd: number;
+  daysSinceLastPayment: number | null;
+  visitsLast30d: number;
+  failedVisits30d: number;
+  score: number;
+  tier: ReturnType<typeof riskTier>;
+}
+
+export async function churnRiskList(opts: {
+  branchId?: string | null;
+  limit?: number;
+}): Promise<ChurnRow[]> {
+  const limit = opts.limit ?? 50;
+  // Load all active nasabah in scope. The branch is small enough that
+  // 1k-2k rows in-memory is fine; we score in TS rather than SQL because
+  // the weights are easier to tune that way.
+  const nasabahRows = await prisma.nasabah.findMany({
+    where: {
+      active: true,
+      ...(opts.branchId ? { branchId: opts.branchId } : {}),
+    },
+    include: {
+      petugas: { select: { kode: true, nama: true } },
+      branch: { select: { kode: true } },
+    },
+  });
+  if (nasabahRows.length === 0) return [];
+
+  const ids = nasabahRows.map(n => n.id);
+  const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  // Latest successful payment per nasabah.
+  const lastPayments = await prisma.pembayaran.groupBy({
+    by: ['nasabahId'],
+    where: { nasabahId: { in: ids }, status: 'berhasil' },
+    _max: { tanggal: true },
+  });
+  const lastPaymentMap = new Map(lastPayments.map(r => [r.nasabahId, r._max.tanggal]));
+
+  // Visit counts in the last 30 days, split by hasil.
+  const visits = await prisma.kunjungan.groupBy({
+    by: ['nasabahId', 'hasil'],
+    where: { nasabahId: { in: ids }, tanggal: { gte: since30 } },
+    _count: { _all: true },
+  });
+  const visitsByNasabah = new Map<string, { total: number; failed: number }>();
+  for (const v of visits) {
+    const cur = visitsByNasabah.get(v.nasabahId) ?? { total: 0, failed: 0 };
+    cur.total += v._count._all;
+    if (v.hasil === 'TIDAKADA' || v.hasil === 'TOLAK') cur.failed += v._count._all;
+    visitsByNasabah.set(v.nasabahId, cur);
+  }
+
+  const out: ChurnRow[] = nasabahRows.map(n => {
+    const last = lastPaymentMap.get(n.id);
+    const daysSince = last
+      ? Math.max(0, Math.floor((Date.now() - last.getTime()) / (24 * 60 * 60 * 1000)))
+      : Infinity;
+    const v = visitsByNasabah.get(n.id) ?? { total: 0, failed: 0 };
+    const input: ChurnInput = {
+      active: n.active,
+      dpd: n.dpd,
+      daysSinceLastPayment: daysSince === Infinity ? 365 : daysSince,
+      failedVisits30d: v.failed,
+      visitsLast30d: v.total,
+    };
+    const score = churnScore(input);
+    return {
+      nasabahId: n.id,
+      kode: n.kode,
+      nama: n.nama,
+      petugasKode: n.petugas.kode,
+      petugasNama: n.petugas.nama,
+      branchKode: n.branch.kode,
+      kol: n.kol,
+      sisa: Number(n.sisa),
+      dpd: n.dpd,
+      daysSinceLastPayment: daysSince === Infinity ? null : daysSince,
+      visitsLast30d: v.total,
+      failedVisits30d: v.failed,
+      score,
+      tier: riskTier(score),
+    };
+  });
+
+  return out.sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
 // Petugas race chart: per-petugas monthly tertagih over the last N months.
 // Drives BM. Capped at top-N petugas by total collected so the line chart
 // doesn't melt with 100+ lines on the ADMIN view.
