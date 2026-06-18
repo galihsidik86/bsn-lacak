@@ -350,6 +350,71 @@ export async function portfolioHeatmap(branchId?: string | null): Promise<Heatma
   return out;
 }
 
+// Monthly leaderboard (BU) — petugas ranked by tertagih in the selected
+// month (default = current). Returns enough rows for a podium UI + the
+// rest as a list. SUPERVISOR auto-scoped to their branch.
+export interface MonthlyLeaderRow {
+  rank: number;
+  petugasId: string;
+  kode: string;
+  nama: string;
+  inisial: string;
+  hue: number;
+  branchKode: string;
+  collected: number;
+  visits: number;
+}
+
+export async function monthlyLeaderboard(opts: {
+  branchId?: string | null;
+  year?: number;
+  month?: number;
+  limit?: number;
+}): Promise<{ year: number; month: number; rows: MonthlyLeaderRow[] }> {
+  const now = new Date();
+  const year = opts.year ?? now.getFullYear();
+  const month = opts.month ?? now.getMonth() + 1;
+  const limit = opts.limit ?? 20;
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 1);
+
+  const branchFilter = opts.branchId
+    ? Prisma.sql`AND p."branchId" = ${opts.branchId}`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<Array<{
+    petugasId: string; kode: string; nama: string; inisial: string; hue: number;
+    branchKode: string; collected: bigint; visits: bigint;
+  }>>`
+    SELECT
+      p."id" as "petugasId", p."kode", p."nama", p."inisial", p."hue",
+      b."kode" as "branchKode",
+      COALESCE(SUM(pay."nominal") FILTER (WHERE pay."status" = 'berhasil'), 0) as "collected",
+      COUNT(DISTINCT k."id") as "visits"
+    FROM "Petugas" p
+    JOIN "Branch" b ON b."id" = p."branchId"
+    LEFT JOIN "Nasabah" n ON n."petugasId" = p."id"
+    LEFT JOIN "Pembayaran" pay
+      ON pay."nasabahId" = n."id" AND pay."tanggal" >= ${start} AND pay."tanggal" < ${end}
+    LEFT JOIN "Kunjungan" k
+      ON k."petugasId" = p."id" AND k."tanggal" >= ${start} AND k."tanggal" < ${end}
+    WHERE p."active" = true ${branchFilter}
+    GROUP BY p."id", p."kode", p."nama", p."inisial", p."hue", b."kode"
+    ORDER BY "collected" DESC, "visits" DESC, p."kode" ASC
+    LIMIT ${limit}
+  `;
+
+  return {
+    year, month,
+    rows: rows.map((r, i) => ({
+      rank: i + 1,
+      petugasId: r.petugasId, kode: r.kode, nama: r.nama,
+      inisial: r.inisial, hue: r.hue, branchKode: r.branchKode,
+      collected: Number(r.collected), visits: Number(r.visits),
+    })),
+  };
+}
+
 // Branch radar metrics (BP). Five axes normalized 0..100 so they share a
 // single radial scale on the chart: collection_rate, approval_rate,
 // kunjungan_density, dpd_health (inverted DPD), petugas_utilization.

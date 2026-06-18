@@ -86,6 +86,70 @@ router.get('/:id', async (req, res) => {
   res.json(p);
 });
 
+// Petugas detail dashboard (BQ) — profile + 30d rollups + recent activity.
+// SUPERVISOR/ADMIN. Returned in a single call so the screen renders without
+// chaining queries.
+router.get('/:id/profile', async (req, res) => {
+  if (req.user?.role === 'PETUGAS') return res.status(403).json({ error: 'forbidden' });
+  const branchId = scopedBranchId(req);
+  const id = String(req.params.id);
+  const petugas = await prisma.petugas.findFirst({
+    where: { id, ...(branchId ? { branchId } : {}) },
+    include: {
+      branch: { select: { kode: true, nama: true } },
+      wilayahZone: { select: { id: true, nama: true } },
+    },
+  });
+  if (!petugas) return res.status(404).json({ error: 'not_found' });
+
+  const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  const [nasabahCount, visitsByHasil, collected30d, attendanceLast, recentKunjungan] = await Promise.all([
+    prisma.nasabah.count({ where: { petugasId: id, active: true } }),
+    prisma.kunjungan.groupBy({
+      by: ['hasil'],
+      where: { petugasId: id, tanggal: { gte: since30 } },
+      _count: { _all: true },
+    }),
+    prisma.pembayaran.aggregate({
+      where: {
+        status: 'berhasil', tanggal: { gte: since30 },
+        nasabah: { petugasId: id },
+      },
+      _sum: { nominal: true },
+    }),
+    prisma.attendance.findFirst({
+      where: { petugasId: id },
+      orderBy: { clockInAt: 'desc' },
+    }),
+    prisma.kunjungan.findMany({
+      where: { petugasId: id },
+      orderBy: { tanggal: 'desc' },
+      take: 10,
+      select: {
+        id: true, tanggal: true, jam: true, hasil: true, nominal: true,
+        reviewStatus: true, riskFlags: true,
+        nasabah: { select: { kode: true, nama: true } },
+      },
+    }),
+  ]);
+
+  const visits = visitsByHasil.reduce((m, r) => { m[r.hasil] = r._count._all; return m; },
+    { BAYAR: 0, JANJI: 0, TIDAKADA: 0, TOLAK: 0 } as Record<string, number>);
+
+  res.json({
+    petugas,
+    rollup30d: {
+      nasabahActive: nasabahCount,
+      visits,
+      totalVisits: Object.values(visits).reduce((s, n) => s + n, 0),
+      collected: Number(collected30d._sum.nominal ?? 0n),
+    },
+    attendanceLast,
+    recentKunjungan,
+  });
+});
+
 router.post('/:id/position', async (req, res) => {
   const { lat, lng, accuracy } = req.body ?? {};
   if (typeof lat !== 'number' || typeof lng !== 'number') {

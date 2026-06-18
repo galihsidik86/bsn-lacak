@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { Suspense, lazy, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Ic } from '../components/Icons';
@@ -80,6 +80,7 @@ export function ScreenPetugas() {
   const branchesQ = useQuery({ queryKey: ['branches'], queryFn: listBranches });
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<PetugasRow | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
 
   if (q.isPending) return <div className="content" style={{ display: 'grid', gap: 16 }}><Skeleton h={80} /><Skeleton h={400} /></div>;
   if (q.error) return <div className="content"><ErrorState onRetry={() => q.refetch()} /></div>;
@@ -124,9 +125,14 @@ export function ScreenPetugas() {
                     Rp {Number(p.target).toLocaleString('id-ID')}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <button className="btn btn-sm btn-ghost" onClick={() => setEditing(p)}>
-                      <Ic.settings size={14} />Edit
-                    </button>
+                    <div className="center gap-2" style={{ justifyContent: 'flex-end' }}>
+                      <button className="btn btn-sm btn-ghost" onClick={() => setViewing(p.id)}>
+                        <Ic.eye size={14} />Profil
+                      </button>
+                      <button className="btn btn-sm btn-ghost" onClick={() => setEditing(p)}>
+                        <Ic.settings size={14} />Edit
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -156,6 +162,34 @@ export function ScreenPetugas() {
           onSaved={() => { setEditing(null); qc.invalidateQueries({ queryKey: ['petugas'] }); }}
         />
       )}
+      {viewing && (
+        <ProfileOverlay petugasId={viewing} onClose={() => setViewing(null)} />
+      )}
+    </div>
+  );
+}
+
+// Lazy-import to keep PetugasProfile (with its own queries) off the main
+// chunk until someone clicks "Profil".
+const LazyProfile = lazy(() => import('./PetugasProfile').then(m => ({ default: m.ScreenPetugasProfile })));
+
+function ProfileOverlay({ petugasId, onClose }: { petugasId: string; onClose: () => void }) {
+  return (
+    <div role="dialog" aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200,
+        overflowY: 'auto', padding: 24,
+      }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--surface-2)', borderRadius: 18, maxWidth: 1080,
+          margin: '0 auto', boxShadow: 'var(--sh-2)',
+        }}>
+        <Suspense fallback={<div className="content"><div className="muted" style={{ padding: 40 }}>Memuat profil…</div></div>}>
+          <LazyProfile petugasId={petugasId} onClose={onClose} />
+        </Suspense>
+      </div>
     </div>
   );
 }

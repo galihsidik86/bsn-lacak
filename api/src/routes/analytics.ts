@@ -6,6 +6,7 @@ import {
   monthlyRevenueByBranch, topPetugasLeaderboard, kolPosture,
   monthlyClosing, toClosingCsv, branchScorecard, portfolioHeatmap,
   pendingAgingReport, petugasRace, churnRiskList, branchRadar,
+  monthlyLeaderboard,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -97,6 +98,21 @@ router.get('/scorecard', async (req, res) => {
     branchId: g.branchId, year: parsed.data.year, month: parsed.data.month,
   });
   res.json({ year: parsed.data.year, month: parsed.data.month, rows });
+});
+
+// Monthly leaderboard (BU). Defaults to the current month; ?year= and
+// ?month= let the UI scroll back. SUPERVISOR auto-scoped.
+router.get('/leaderboard-monthly', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const now = new Date();
+  const year = Number.parseInt(String(req.query.year ?? now.getFullYear()), 10);
+  const month = Number.parseInt(String(req.query.month ?? now.getMonth() + 1), 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return res.status(400).json({ error: 'bad_request' });
+  }
+  const data = await monthlyLeaderboard({ branchId: g.branchId, year, month, limit: 30 });
+  res.json(data);
 });
 
 // Branch radar — 5-axis comparison across all branches. ADMIN-only since a
