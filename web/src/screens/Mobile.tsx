@@ -272,6 +272,28 @@ function BriefingCard({ me, doneInTasks, tasksCount }: {
     try { return localStorage.getItem(BRIEFING_KEY) === todayKey(); }
     catch { return false; }
   });
+  // Lazy holiday probe — single GET so an offline phone still renders the
+  // briefing card without blocking. The chip only shows on hit; on error
+  // we silently fall back to the regular briefing.
+  const [holiday, setHoliday] = useState<{ name: string; type: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const tok = (await import('../lib/api')).tokenStore.get();
+        if (!tok) return;
+        const r = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/holidays/today`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${tok}` },
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!cancelled && d.holiday) setHoliday({ name: d.holiday.name, type: d.holiday.type });
+      } catch { /* offline — ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   if (dismissed || tasksCount === 0) return null;
 
   const dismiss = () => {
@@ -312,6 +334,16 @@ function BriefingCard({ me, doneInTasks, tasksCount }: {
         {' '}
         Sisa target: <strong className="num">{RPjt(targetSisa)}</strong>.
       </div>
+      {holiday && (
+        <div className="center gap-2" style={{
+          marginTop: 10, padding: '6px 10px', borderRadius: 10,
+          background: 'var(--col-macet-soft)', color: 'var(--col-macet)',
+          fontSize: 11.5, fontWeight: 700,
+        }}>
+          <Ic.alert size={13} />
+          Hari ini libur nasional: {holiday.name}
+        </div>
+      )}
     </div>
   );
 }
@@ -1426,6 +1458,11 @@ function MLapor({ n, me: ME, here, onClose, onDone }: {
               <input value={Number(nominal).toLocaleString('id-ID')} inputMode="numeric"
                 onChange={e => setNominal(e.target.value.replace(/\D/g, ''))} style={{ fontWeight: 700 }} />
             </div>
+            <OcrNominalButton
+              photos={photos}
+              disabled={photos.length === 0}
+              onResult={(n) => { setNominal(String(n)); }}
+            />
           </div>
         )}
 
@@ -1479,6 +1516,45 @@ function MLapor({ n, me: ME, here, onClose, onDone }: {
 
 function MLabel({ children }: { children: ReactNode }) {
   return <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '.04em' }}>{children}</div>;
+}
+
+// Reads the latest receipt photo through Tesseract.js (lazy-loaded) and
+// fills the nominal input with the largest detected rupiah amount. Soft
+// fails — OCR is best-effort, not a blocker.
+function OcrNominalButton({ photos, disabled, onResult }: {
+  photos: File[]; disabled: boolean; onResult: (n: number) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true); setStatus('Membaca foto…');
+    try {
+      const { ocrLargestRupiah } = await import('../lib/ocrNominal');
+      const target = photos[photos.length - 1];
+      const r = await ocrLargestRupiah(target);
+      if (r.nominal != null) {
+        onResult(r.nominal);
+        setStatus(`Terbaca: Rp ${r.nominal.toLocaleString('id-ID')} (${Math.round(r.confidence)}% confidence)`);
+      } else {
+        setStatus('Tidak ada angka yang jelas — isi manual.');
+      }
+    } catch {
+      setStatus('Gagal baca foto — coba lagi atau isi manual.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button type="button" onClick={run} disabled={disabled || busy} className="btn btn-sm btn-ghost"
+        style={{ padding: '4px 10px', fontSize: 11.5 }}>
+        <Ic.eye size={12} />{busy ? 'Membaca…' : 'Baca nominal dari foto'}
+      </button>
+      {status && (
+        <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{status}</div>
+      )}
+    </div>
+  );
 }
 
 function MTabBar({ tab, setTab, onReport }: { tab: Tab; setTab: (t: Tab) => void; onReport: () => void }) {

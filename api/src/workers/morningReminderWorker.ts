@@ -4,6 +4,7 @@ import { logger } from '../lib/logger.js';
 import { audit } from '../lib/audit.js';
 import { pushToUsers } from '../lib/webPush.js';
 import { enqueueNotification } from '../routes/notifications.js';
+import { isWorkingDay, getHolidayOn } from '../lib/holidays.js';
 
 // Once per hour, check whether (today is a weekday) AND (now.getHours() ==
 // MORNING_REMINDER_HOUR) AND (we haven't already fired today). When all
@@ -38,10 +39,12 @@ export async function runMorningReminderSweep(opts?: {
   if (!force) {
     if (!env.MORNING_REMINDER_ENABLED) return { ok: false, reason: 'disabled' };
     if (now.getHours() !== env.MORNING_REMINDER_HOUR) return { ok: false, reason: 'not_hour' };
-    // Weekday-only: Sunday (0) and Saturday (6) skipped — petugas tidak
-    // bekerja di akhir pekan untuk default deployment.
-    const dow = now.getDay();
-    if (dow === 0 || dow === 6) return { ok: false, reason: 'weekend', day };
+    // Skip when not a working day — covers weekend AND Indonesian national
+    // holidays from the static calendar.
+    if (!isWorkingDay(now)) {
+      const h = getHolidayOn(now);
+      return { ok: false, reason: h ? 'holiday' : 'weekend', day };
+    }
     if (await alreadySent(day)) return { ok: false, reason: 'already_sent', day };
   }
 
