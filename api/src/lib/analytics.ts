@@ -350,6 +350,79 @@ export async function portfolioHeatmap(branchId?: string | null): Promise<Heatma
   return out;
 }
 
+// CI — period delta. Compares the current month against the previous one
+// for a handful of headline metrics so the Dashboard can render an arrow +
+// % change. Two parallel queries; the difference is what the UI cares
+// about, not absolute values (those are already on existing tiles).
+export interface PeriodDelta {
+  thisMonth: { label: string; collected: number; visits: number; approvedRate: number };
+  lastMonth: { label: string; collected: number; visits: number; approvedRate: number };
+  delta: { collectedPct: number; visitsPct: number; approvedRatePoints: number };
+}
+
+export async function periodDelta(opts: { branchId?: string | null }): Promise<PeriodDelta> {
+  const now = new Date();
+  const thisStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thisEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const lastStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastEnd = thisStart;
+
+  async function gather(start: Date, end: Date) {
+    const [collected, visits, reviews] = await Promise.all([
+      prisma.pembayaran.aggregate({
+        where: {
+          status: 'berhasil', tanggal: { gte: start, lt: end },
+          ...(opts.branchId ? { branchId: opts.branchId } : {}),
+        },
+        _sum: { nominal: true },
+      }),
+      prisma.kunjungan.count({
+        where: {
+          tanggal: { gte: start, lt: end },
+          ...(opts.branchId ? { branchId: opts.branchId } : {}),
+        },
+      }),
+      prisma.kunjungan.groupBy({
+        by: ['reviewStatus'],
+        where: {
+          tanggal: { gte: start, lt: end },
+          ...(opts.branchId ? { branchId: opts.branchId } : {}),
+        },
+        _count: { _all: true },
+      }),
+    ]);
+    let approved = 0, decided = 0;
+    for (const r of reviews) {
+      if (r.reviewStatus === 'APPROVED') { approved += r._count._all; decided += r._count._all; }
+      else if (r.reviewStatus === 'REJECTED') { decided += r._count._all; }
+    }
+    return {
+      collected: Number(collected._sum.nominal ?? 0n),
+      visits,
+      approvedRate: decided === 0 ? 0 : Math.round((approved / decided) * 100),
+    };
+  }
+
+  const [t, l] = await Promise.all([
+    gather(thisStart, thisEnd),
+    gather(lastStart, lastEnd),
+  ]);
+
+  const pct = (cur: number, prev: number) =>
+    prev === 0 ? (cur === 0 ? 0 : 100) : Math.round(((cur - prev) / prev) * 100);
+
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return {
+    thisMonth: { label: fmt(thisStart), ...t },
+    lastMonth: { label: fmt(lastStart), ...l },
+    delta: {
+      collectedPct: pct(t.collected, l.collected),
+      visitsPct: pct(t.visits, l.visits),
+      approvedRatePoints: t.approvedRate - l.approvedRate,
+    },
+  };
+}
+
 // CD — commission table per petugas for one (year, month). Multiplies
 // `commissionBps` against successful pembayaran in the window. Caller-side
 // branch scope (admin sees all; supervisor passes branchId).

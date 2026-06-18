@@ -6,7 +6,7 @@ import {
   monthlyRevenueByBranch, topPetugasLeaderboard, kolPosture,
   monthlyClosing, toClosingCsv, branchScorecard, portfolioHeatmap,
   pendingAgingReport, petugasRace, churnRiskList, branchRadar,
-  monthlyLeaderboard, supervisorSlaStats, commissionForMonth,
+  monthlyLeaderboard, supervisorSlaStats, commissionForMonth, periodDelta,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -98,6 +98,15 @@ router.get('/scorecard', async (req, res) => {
     branchId: g.branchId, year: parsed.data.year, month: parsed.data.month,
   });
   res.json({ year: parsed.data.year, month: parsed.data.month, rows });
+});
+
+// Period delta (CI) — this-month vs last-month for collection, visits,
+// approval-rate. SUPERVISOR auto-scoped.
+router.get('/period-delta', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const data = await periodDelta({ branchId: g.branchId });
+  res.json(data);
 });
 
 // Commission table (CD) — per-petugas tertagih × commissionBps for the

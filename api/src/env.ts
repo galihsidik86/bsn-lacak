@@ -64,6 +64,11 @@ const schema = z.object({
   // + audit but disappear from the default supervisor list.
   ARCHIVE_AFTER_DAYS: z.coerce.number().int().positive().default(90),
   ARCHIVE_POLL_MS: z.coerce.number().int().positive().default(6 * 60 * 60 * 1000),
+  // CG — auto-followup nudge for JANJI kunjungan. Default 24h; worker
+  // polls every 30m so a janji submitted at 09:00 surfaces by ~09:30 the
+  // next day at the earliest.
+  FOLLOWUP_DELAY_HOURS: z.coerce.number().int().positive().default(24),
+  FOLLOWUP_POLL_MS: z.coerce.number().int().positive().default(30 * 60 * 1000),
   // Public-facing base URL used to compose share links (receipt PDF, feedback).
   // Defaults to WEB_ORIGIN; override in prod when behind a separate ingress.
   PUBLIC_BASE_URL: z.string().url().optional(),

@@ -16,6 +16,7 @@ import { startSlaWorker } from './workers/slaWorker.js';
 import { startClosingEmailWorker, stopClosingEmailWorker } from './workers/closingEmailWorker.js';
 import { startMorningReminderWorker, stopMorningReminderWorker } from './workers/morningReminderWorker.js';
 import { startArchiveWorker, stopArchiveWorker } from './workers/archiveWorker.js';
+import { startFollowupWorker, stopFollowupWorker } from './workers/followupWorker.js';
 import { prisma } from './db.js';
 
 import auth from './routes/auth.js';
@@ -199,6 +200,7 @@ startSlaWorker();
 startClosingEmailWorker();
 startMorningReminderWorker();
 startArchiveWorker();
+startFollowupWorker();
 if (env.NODE_ENV !== 'test') startWebhookDispatcher();
 const stopSamplers = startMetricsSamplers();
 const stopRetention = startAuditRetention();
@@ -212,6 +214,7 @@ const shutdown = (sig: string) => {
   stopClosingEmailWorker();
   stopMorningReminderWorker();
   stopArchiveWorker();
+  stopFollowupWorker();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
 };

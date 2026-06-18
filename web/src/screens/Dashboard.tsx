@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
+import axios from 'axios';
+import { useQuery } from '@tanstack/react-query';
 import { BranchComparison } from '../components/BranchComparison';
 import { Ic } from '../components/Icons';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
+import { tokenStore } from '../lib/api';
 import {
   Avatar, AreaChart, Donut, HBars, Stat, cssVar,
 } from '../components/UI';
@@ -98,6 +101,8 @@ export function ScreenDashboard({ go }: { go: (k: string) => void }) {
           {liveCreated.count > 0 && <LivePill fresh={liveCreated.fresh} count={liveCreated.count} label="baru" />}
         </div>
       </div>
+
+      <PeriodDeltaPanel />
 
       <div className="grid gap-4" style={{ gridTemplateColumns: '1.15fr 1fr', marginBottom: 16 }}>
         <div className="card card-pad fade-up">
@@ -212,6 +217,103 @@ function LivePill({ fresh, count, label }: { fresh: boolean; count: number; labe
       letterSpacing: '.03em',
     }}>
       +{count} {label}
+    </div>
+  );
+}
+
+// CI — period delta tile. Pulls /analytics/period-delta and renders three
+// metric badges (Tertagih, Kunjungan, Approval rate) with up/down/flat
+// arrows. Falls back silently if the request fails (PETUGAS or fetch
+// hiccup) so the rest of the dashboard still renders.
+interface PeriodDeltaData {
+  thisMonth: { label: string; collected: number; visits: number; approvedRate: number };
+  lastMonth: { label: string; collected: number; visits: number; approvedRate: number };
+  delta: { collectedPct: number; visitsPct: number; approvedRatePoints: number };
+}
+async function fetchPeriodDelta(branchOverride: string | null): Promise<PeriodDeltaData> {
+  const t = tokenStore.get();
+  const h: Record<string, string> = {};
+  if (t) h.Authorization = `Bearer ${t}`;
+  if (branchOverride) h['x-branch-id'] = branchOverride;
+  return (await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/analytics/period-delta`,
+    { withCredentials: true, headers: h })).data;
+}
+
+function PeriodDeltaPanel() {
+  const branchOverride = useAuth(s => s.branchOverride);
+  const q = useQuery({
+    queryKey: ['period-delta', branchOverride],
+    queryFn: () => fetchPeriodDelta(branchOverride),
+  });
+  if (q.isPending) return null;
+  if (q.error) return null;
+  const d = q.data!;
+  const rpJt = (n: number) => n >= 1_000_000_000
+    ? 'Rp ' + (n / 1_000_000_000).toFixed(1) + ' M'
+    : n >= 1_000_000 ? 'Rp ' + (n / 1_000_000).toFixed(1) + ' jt'
+    : 'Rp ' + n.toLocaleString('id-ID');
+  return (
+    <div className="card fade-up" style={{ overflow: 'hidden', marginBottom: 16 }}>
+      <div className="card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
+        <div className="section-title">Periode Ini vs Bulan Lalu</div>
+        <div className="page-sub">{d.thisMonth.label} vs {d.lastMonth.label}</div>
+      </div>
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(3, 1fr)', padding: 16 }}>
+        <DeltaCard
+          icon="wallet" label="Tertagih"
+          curr={rpJt(d.thisMonth.collected)}
+          prev={rpJt(d.lastMonth.collected)}
+          deltaPct={d.delta.collectedPct}
+        />
+        <DeltaCard
+          icon="clipboard" label="Kunjungan"
+          curr={String(d.thisMonth.visits)}
+          prev={String(d.lastMonth.visits)}
+          deltaPct={d.delta.visitsPct}
+        />
+        <DeltaCard
+          icon="check" label="Approval Rate"
+          curr={`${d.thisMonth.approvedRate}%`}
+          prev={`${d.lastMonth.approvedRate}%`}
+          deltaPct={d.delta.approvedRatePoints}
+          suffix="pp"
+        />
+      </div>
+    </div>
+  );
+}
+
+function DeltaCard({ icon, label, curr, prev, deltaPct, suffix }: {
+  icon: 'wallet' | 'clipboard' | 'check'; label: string;
+  curr: string; prev: string; deltaPct: number; suffix?: string;
+}) {
+  const Icon = Ic[icon];
+  const up = deltaPct > 0;
+  const flat = deltaPct === 0;
+  const tint = flat ? 'var(--ink-3)' : up ? 'var(--accent)' : 'var(--col-macet)';
+  const arrow = flat ? '—' : up ? '▲' : '▼';
+  return (
+    <div style={{
+      border: '1px solid var(--line)', borderRadius: 14, padding: 14,
+      display: 'flex', alignItems: 'center', gap: 14,
+    }}>
+      <div className="stat-ic" style={{ background: 'var(--surface-2)', color: tint }}>
+        <Icon size={18} />
+      </div>
+      <div style={{ flex: 1 }}>
+        <div className="muted" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>{label}</div>
+        <div className="num" style={{ fontWeight: 800, fontSize: 18, marginTop: 2 }}>{curr}</div>
+        <div className="muted" style={{ fontSize: 11.5, fontWeight: 600 }}>
+          dari {prev}
+        </div>
+      </div>
+      <div style={{
+        textAlign: 'right',
+        background: flat ? 'var(--surface-2)' : up ? 'var(--accent-soft)' : 'var(--col-macet-soft)',
+        color: tint, borderRadius: 10, padding: '6px 10px', minWidth: 60,
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700 }}>{arrow} {Math.abs(deltaPct)}{suffix ?? '%'}</div>
+      </div>
     </div>
   );
 }
