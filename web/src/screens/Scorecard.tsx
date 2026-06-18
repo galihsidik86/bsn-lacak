@@ -112,8 +112,97 @@ export function ScreenScorecard() {
         rows={rows} year={year} month={month}
         onYear={setYear} onMonth={setMonth}
       />
+      <SlaPanel />
       <RadarPanel />
       <HeatmapPanel cells={cells} />
+    </div>
+  );
+}
+
+interface SlaRow {
+  reviewerId: string; reviewerNama: string; reviewerUsername: string;
+  branchKode: string;
+  reviewed: number;
+  avgMinutes: number; medianMinutes: number; p95Minutes: number;
+}
+async function fetchSla(days: number): Promise<{ windowDays: number; rows: SlaRow[] }> {
+  const t = tokenStore.get();
+  const h: Record<string, string> = {};
+  if (t) h.Authorization = `Bearer ${t}`;
+  return (await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/analytics/sla-supervisor`,
+    { withCredentials: true, headers: h, params: { days } })).data;
+}
+
+function fmtMins(m: number): string {
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r === 0 ? `${h}j` : `${h}j ${r}m`;
+}
+
+function SlaPanel() {
+  const [days, setDays] = useState<7 | 30 | 90>(30);
+  const q = useQuery({ queryKey: ['sla-supervisor', days], queryFn: () => fetchSla(days) });
+  if (q.isPending) return <div className="card fade-up"><Skeleton h={260} /></div>;
+  if (q.error) return null;
+  const rows = q.data?.rows ?? [];
+
+  return (
+    <div className="card fade-up" style={{ overflow: 'hidden' }}>
+      <div className="between card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div className="section-title">SLA Review Supervisor</div>
+          <div className="page-sub">Waktu rata-rata supervisor merespons laporan PENDING.</div>
+        </div>
+        <div className="seg" role="tablist">
+          {([7, 30, 90] as const).map(d => (
+            <button key={d} className={days === d ? 'on' : ''} onClick={() => setDays(d)}>{d} hari</button>
+          ))}
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <EmptyState title="Belum ada review pada window ini" />
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Supervisor</th>
+                <th>Cabang</th>
+                <th style={{ textAlign: 'right' }}>Reviewed</th>
+                <th style={{ textAlign: 'right' }}>Median</th>
+                <th style={{ textAlign: 'right' }}>Rata-rata</th>
+                <th style={{ textAlign: 'right' }}>p95</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.reviewerId}>
+                  <td>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.reviewerNama}</div>
+                    <div className="muted mono" style={{ fontSize: 11 }}>{r.reviewerUsername}</div>
+                  </td>
+                  <td className="mono" style={{ fontSize: 11.5 }}>{r.branchKode}</td>
+                  <td className="num" style={{ textAlign: 'right' }}>{r.reviewed}</td>
+                  <td className="num" style={{ textAlign: 'right', fontWeight: 800 }}>
+                    <span className="chip" style={{
+                      background: r.medianMinutes <= 60 ? 'var(--accent-soft)'
+                        : r.medianMinutes <= 240 ? 'var(--col-dpk-soft)'
+                        : 'var(--col-macet-soft)',
+                      color: r.medianMinutes <= 60 ? 'var(--accent-ink)'
+                        : r.medianMinutes <= 240 ? 'var(--col-dpk)'
+                        : 'var(--col-macet)',
+                      fontSize: 11.5,
+                    }}>{fmtMins(r.medianMinutes)}</span>
+                  </td>
+                  <td className="num muted" style={{ textAlign: 'right', fontSize: 12 }}>{fmtMins(r.avgMinutes)}</td>
+                  <td className="num muted" style={{ textAlign: 'right', fontSize: 12 }}>{fmtMins(r.p95Minutes)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

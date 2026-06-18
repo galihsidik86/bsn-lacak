@@ -350,6 +350,80 @@ export async function portfolioHeatmap(branchId?: string | null): Promise<Heatma
   return out;
 }
 
+// SLA dashboard (BX) — supervisor review response time over the configurable
+// window. Aggregate avg/median/p95 latency per reviewer + reviewed count.
+// Population per supervisor is small (10s-100s) so we compute percentiles
+// in TypeScript instead of pulling raw percentile_cont via SQL.
+export interface SlaSupervisorRow {
+  reviewerId: string;
+  reviewerNama: string;
+  reviewerUsername: string;
+  branchKode: string;
+  reviewed: number;
+  avgMinutes: number;
+  medianMinutes: number;
+  p95Minutes: number;
+}
+
+export async function supervisorSlaStats(opts: {
+  branchId?: string | null;
+  days?: number;
+}): Promise<{ since: string; rows: SlaSupervisorRow[] }> {
+  const days = opts.days ?? 30;
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const rows = await prisma.kunjungan.findMany({
+    where: {
+      reviewedAt: { not: null, gte: since },
+      reviewerId: { not: null },
+      ...(opts.branchId ? { branchId: opts.branchId } : {}),
+    },
+    select: {
+      createdAt: true, reviewedAt: true,
+      reviewerId: true,
+      reviewer: { select: { nama: true, username: true, branch: { select: { kode: true } } } },
+    },
+    take: 10_000,
+  });
+
+  const byReviewer = new Map<string, number[]>();
+  const meta = new Map<string, { nama: string; username: string; branchKode: string }>();
+  for (const r of rows) {
+    if (!r.reviewerId || !r.reviewedAt || !r.reviewer) continue;
+    const ms = r.reviewedAt.getTime() - r.createdAt.getTime();
+    const arr = byReviewer.get(r.reviewerId) ?? [];
+    arr.push(ms);
+    byReviewer.set(r.reviewerId, arr);
+    if (!meta.has(r.reviewerId)) {
+      meta.set(r.reviewerId, {
+        nama: r.reviewer.nama,
+        username: r.reviewer.username,
+        branchKode: r.reviewer.branch?.kode ?? '—',
+      });
+    }
+  }
+
+  const out: SlaSupervisorRow[] = [];
+  for (const [id, samples] of byReviewer) {
+    samples.sort((a, b) => a - b);
+    const m = meta.get(id)!;
+    const toMin = (ms: number) => Math.round(ms / 60_000);
+    const median = samples[Math.floor(samples.length / 2)];
+    const p95 = samples[Math.min(samples.length - 1, Math.floor(samples.length * 0.95))];
+    const avg = samples.reduce((s, v) => s + v, 0) / samples.length;
+    out.push({
+      reviewerId: id,
+      reviewerNama: m.nama, reviewerUsername: m.username, branchKode: m.branchKode,
+      reviewed: samples.length,
+      avgMinutes: toMin(avg),
+      medianMinutes: toMin(median),
+      p95Minutes: toMin(p95),
+    });
+  }
+  out.sort((a, b) => a.medianMinutes - b.medianMinutes);
+  return { since: since.toISOString(), rows: out };
+}
+
 // Monthly leaderboard (BU) — petugas ranked by tertagih in the selected
 // month (default = current). Returns enough rows for a podium UI + the
 // rest as a list. SUPERVISOR auto-scoped to their branch.

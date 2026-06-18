@@ -59,6 +59,11 @@ const schema = z.object({
   // configured local hour. Set MORNING_REMINDER_ENABLED=false to skip.
   MORNING_REMINDER_HOUR: z.coerce.number().int().min(0).max(23).default(7),
   MORNING_REMINDER_ENABLED: z.enum(['true', 'false']).default('true').transform(v => v === 'true'),
+  // BY — APPROVED/REJECTED kunjungan beyond this age are stamped
+  // `archivedAt` by the daily worker. They stay queryable for analytics
+  // + audit but disappear from the default supervisor list.
+  ARCHIVE_AFTER_DAYS: z.coerce.number().int().positive().default(90),
+  ARCHIVE_POLL_MS: z.coerce.number().int().positive().default(6 * 60 * 60 * 1000),
   // Public-facing base URL used to compose share links (receipt PDF, feedback).
   // Defaults to WEB_ORIGIN; override in prod when behind a separate ingress.
   PUBLIC_BASE_URL: z.string().url().optional(),

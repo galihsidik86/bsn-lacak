@@ -6,7 +6,7 @@ import {
   monthlyRevenueByBranch, topPetugasLeaderboard, kolPosture,
   monthlyClosing, toClosingCsv, branchScorecard, portfolioHeatmap,
   pendingAgingReport, petugasRace, churnRiskList, branchRadar,
-  monthlyLeaderboard,
+  monthlyLeaderboard, supervisorSlaStats,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -98,6 +98,17 @@ router.get('/scorecard', async (req, res) => {
     branchId: g.branchId, year: parsed.data.year, month: parsed.data.month,
   });
   res.json({ year: parsed.data.year, month: parsed.data.month, rows });
+});
+
+// Supervisor SLA stats — review response time aggregated per reviewer over
+// the configurable window. SUPERVISOR auto-scoped to own branch.
+router.get('/sla-supervisor', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const days = Number.parseInt(String(req.query.days ?? '30'), 10);
+  const window = Number.isFinite(days) && days > 0 && days <= 365 ? days : 30;
+  const data = await supervisorSlaStats({ branchId: g.branchId, days: window });
+  res.json({ windowDays: window, ...data });
 });
 
 // Monthly leaderboard (BU). Defaults to the current month; ?year= and

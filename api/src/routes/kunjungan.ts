@@ -67,8 +67,15 @@ const body = z.object({
 router.get('/', async (req, res) => {
   const str = (v: unknown): string | undefined => typeof v === 'string' ? v : undefined;
   const petugasId = str(req.query.petugasId);
+  // Archived rows are excluded by default; ?includeArchived=1 brings them
+  // back for analytics views that need historical depth.
+  const includeArchived = String(req.query.includeArchived ?? '') === '1';
   const list = await prisma.kunjungan.findMany({
-    where: { ...scope(req), ...(petugasId ? { petugasId } : {}) },
+    where: {
+      ...scope(req),
+      ...(petugasId ? { petugasId } : {}),
+      ...(includeArchived ? {} : { archivedAt: null }),
+    },
     include: { fotos: true, petugas: true, nasabah: true },
     orderBy: { tanggal: 'desc' },
     take: 200,

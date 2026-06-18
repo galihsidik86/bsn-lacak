@@ -424,11 +424,16 @@ model Kunjungan {
   jam        String
   tanggal    DateTime       @default(now())   // the visit time (can be backdated)
   createdAt  DateTime       @default(now())   // the insertion time; gates edit/delete window
+  // BY — archive worker stamps this when an APPROVED/REJECTED kunjungan is
+  // older than ARCHIVE_AFTER_DAYS. Archived rows still exist (analytics +
+  // GDPR exports keep working) but the default list filters them out.
+  archivedAt DateTime?
 
   @@index([petugasId, tanggal])
   @@index([nasabahId, tanggal])
   @@index([branchId, tanggal])
   @@index([reviewStatus])
+  @@index([archivedAt])
 }
 
 enum ReviewStatus {
