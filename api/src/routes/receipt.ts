@@ -5,6 +5,7 @@ import { audit, fromReq } from '../lib/audit.js';
 import { gateway } from '../lib/gateway/index.js';
 import { logger } from '../lib/logger.js';
 import { renderReceiptPdf } from '../lib/pdfReceipt.js';
+import { makeVerifyArtifacts } from '../lib/pdfWatermark.js';
 import { receiptShareUrl, verifyReceiptToken } from '../lib/receiptToken.js';
 
 const router = Router();
@@ -31,6 +32,7 @@ router.get('/:token/pdf', async (req, res) => {
   res.setHeader('Content-Disposition', `inline; filename="bukti-bayar-${k.nasabah.kode}-${k.id}.pdf"`);
   res.setHeader('Cache-Control', 'private, max-age=86400');
 
+  const qr = await makeVerifyArtifacts(k.id).catch(() => null);
   const pdf = renderReceiptPdf({
     kunjunganId: k.id,
     tanggal: k.tanggal,
@@ -41,6 +43,7 @@ router.get('/:token/pdf', async (req, res) => {
     nasabah: k.nasabah,
     branch: k.branch,
     sisaSetelahBayar: k.nasabah.sisa,
+    verifyQr: qr?.pngBuffer ?? null,
   });
   pdf.pipe(res);
 });

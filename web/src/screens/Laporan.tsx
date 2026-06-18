@@ -19,6 +19,10 @@ const RISK_FLAG_META: Record<string, { label: string; hint: string }> = {
   photo_no_exif: { label: 'Foto tanpa metadata', hint: 'Foto tidak punya EXIF — kemungkinan dari galeri / di-edit.' },
   photo_stale: { label: 'Foto lama', hint: 'Foto diambil > 1 jam sebelum laporan dikirim.' },
   speed_jump: { label: 'Lonjakan kecepatan', hint: 'Petugas berpindah > 150 km/h antara dua ping GPS.' },
+  outside_wilayah: { label: 'Di luar wilayah binaan', hint: 'Posisi laporan berada di luar polygon wilayah petugas.' },
+  duplicate_visit: { label: 'Visit dobel hari ini', hint: 'Petugas sudah BAYAR dari nasabah yang sama hari ini.' },
+  nominal_spike: { label: 'Nominal di atas wajar', hint: 'Nominal bayar lebih dari 3× angsuran bulanan.' },
+  volume_anomaly: { label: 'Volume kunjungan ekstrem', hint: 'Petugas sudah > 20 kunjungan dalam 24 jam.' },
 };
 
 export function ScreenLaporan() {

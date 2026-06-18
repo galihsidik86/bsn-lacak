@@ -3,6 +3,7 @@
 // vertical so the amount stays in-frame on a phone thumbnail.
 
 import PDFDocument from 'pdfkit';
+import { drawDiagonalWatermark, drawVerifyQr } from './pdfWatermark.js';
 
 const COLORS = {
   ink: '#1d2924',
@@ -26,6 +27,7 @@ interface ReceiptInput {
   nasabah: { kode: string; nama: string; alamat: string };
   branch: { kode: string; nama: string; alamat: string | null };
   sisaSetelahBayar?: bigint;
+  verifyQr?: Buffer | null;
 }
 
 export function renderReceiptPdf(input: ReceiptInput): InstanceType<typeof PDFDocument> {
@@ -37,6 +39,11 @@ export function renderReceiptPdf(input: ReceiptInput): InstanceType<typeof PDFDo
       Subject: 'Bukti Penerimaan Pembayaran',
     },
   });
+
+  // BW — diagonal watermark first; new-page guard so multi-page PDFs stay
+  // protected (very rare for a one-page A5 receipt, but cheap insurance).
+  drawDiagonalWatermark(doc, input.branch.kode);
+  doc.on('pageAdded', () => drawDiagonalWatermark(doc, input.branch.kode));
 
   const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const left = doc.page.margins.left;
@@ -129,6 +136,10 @@ export function renderReceiptPdf(input: ReceiptInput): InstanceType<typeof PDFDo
     );
   doc.text(`Dicetak ${new Date().toLocaleString('id-ID')} · ${input.branch.kode}`,
     left + 10, footY + 17, { width: pageWidth - 20 });
+
+  if (input.verifyQr) {
+    drawVerifyQr(doc, input.verifyQr);
+  }
 
   doc.end();
   return doc;

@@ -11,8 +11,9 @@ import { scopedBranchId } from '../auth.js';
 import { audit, fromReq } from '../lib/audit.js';
 import { bus } from '../lib/events.js';
 import { renderKunjunganPdf } from '../lib/pdfKunjungan.js';
+import { makeVerifyArtifacts } from '../lib/pdfWatermark.js';
 import { logger } from '../lib/logger.js';
-import { evalGeofence, evalGps, evalPhotoExif, merge } from '../lib/antiFraud.js';
+import { evalGeofence, evalGps, evalPhotoExif, evalSuspiciousPattern, merge } from '../lib/antiFraud.js';
 import { enqueueFeedbackRequest } from './feedback.js';
 import { sendReceiptWa } from './receipt.js';
 import { watermarkPhoto } from '../lib/watermark.js';
@@ -100,10 +101,29 @@ router.post('/', kunjunganLimiter, upload.array('photos', 5), async (req, res) =
   const petugasRow = await prisma.petugas.findUnique({ where: { id: parsed.data.petugasId }, select: { branchId: true } });
   if (!petugasRow) return res.status(400).json({ error: 'unknown_petugas' });
 
-  // Pull nasabah coords for GPS plausibility (lapis A) + name for watermark.
+  // Pull nasabah coords for GPS plausibility (lapis A) + name for watermark
+  // + angsuran for the nominal-spike pattern (BV).
   const nasabahRow = await prisma.nasabah.findUnique({
-    where: { id: parsed.data.nasabahId }, select: { lat: true, lng: true, nama: true },
+    where: { id: parsed.data.nasabahId },
+    select: { lat: true, lng: true, nama: true, angsuran: true },
   });
+
+  // BV — gather pattern counts: same-day BAYAR for (petugas × nasabah) and
+  // 24h visit volume for this petugas. Cheap two-query lookup.
+  const startOfToday = new Date(submittedAt);
+  startOfToday.setHours(0, 0, 0, 0);
+  const since24h = new Date(submittedAt.getTime() - 24 * 60 * 60 * 1000);
+  const [sameDayBayarCount, petugasVisitsLast24h] = await Promise.all([
+    prisma.kunjungan.count({
+      where: {
+        petugasId: parsed.data.petugasId, nasabahId: parsed.data.nasabahId,
+        hasil: 'BAYAR', tanggal: { gte: startOfToday },
+      },
+    }),
+    prisma.kunjungan.count({
+      where: { petugasId: parsed.data.petugasId, createdAt: { gte: since24h } },
+    }),
+  ]);
   // Petugas + their assigned wilayah polygon for geofence check (lapis G).
   const petugasInfo = await prisma.petugas.findUnique({
     where: { id: parsed.data.petugasId },
@@ -140,7 +160,7 @@ router.post('/', kunjunganLimiter, upload.array('photos', 5), async (req, res) =
     savedPaths.push(path.relative(process.cwd(), full).replace(/\\/g, '/'));
   }
 
-  // Run anti-fraud rules (A + C + geofence).
+  // Run anti-fraud rules (GPS + geofence + photo EXIF + suspicious pattern).
   const risk = merge(
     evalGps({
       reportedLat: parsed.data.lat, reportedLng: parsed.data.lng,
@@ -151,6 +171,13 @@ router.post('/', kunjunganLimiter, upload.array('photos', 5), async (req, res) =
       parsed.data.lng ?? null,
       petugasInfo?.wilayahZone?.polygon as any ?? null,
     ),
+    evalSuspiciousPattern({
+      hasil: parsed.data.hasil,
+      nominal: parsed.data.nominal,
+      angsuranBulanan: nasabahRow?.angsuran ?? 0n,
+      sameDayBayarCount,
+      petugasVisitsLast24h,
+    }),
     ...photoEvals,
   );
 
@@ -303,9 +330,11 @@ router.get('/bulk-export.zip', async (req, res) => {
   archive.pipe(res);
 
   for (const k of rows) {
+    const qr = await makeVerifyArtifacts(k.id).catch(() => null);
     const pdf = renderKunjunganPdf({
       kunjungan: k, petugas: k.petugas, nasabah: k.nasabah, branch: k.branch,
       reviewer: k.reviewer ?? null,
+      verifyQr: qr?.pngBuffer ?? null,
     });
     archive.append(pdf as any, { name: `laporan-${k.nasabah.kode}-${k.id}.pdf` });
   }
@@ -337,9 +366,11 @@ router.get('/:id/pdf', async (req, res) => {
 
   await audit({ action: 'kunjungan.pdf_export', target: k.id, ...fromReq(req) });
 
+  const qr = await makeVerifyArtifacts(k.id).catch(() => null);
   const pdf = renderKunjunganPdf({
     kunjungan: k, petugas: k.petugas, nasabah: k.nasabah, branch: k.branch,
     reviewer: k.reviewer ?? null,
+    verifyQr: qr?.pngBuffer ?? null,
   });
   pdf.pipe(res);
 });

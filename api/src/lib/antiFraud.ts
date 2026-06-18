@@ -20,6 +20,10 @@ export const RISK_FLAG_META: Record<string, { label: string; severity: number; h
   photo_stale: { label: 'Foto lama', severity: 8, hint: 'Foto diambil > 1 jam sebelum laporan dikirim.' },
   speed_jump: { label: 'Lonjakan kecepatan', severity: 7, hint: 'Petugas berpindah > 150 km/h antara dua ping GPS.' },
   outside_wilayah: { label: 'Di luar wilayah binaan', severity: 9, hint: 'Posisi laporan berada di luar polygon wilayah petugas.' },
+  // BV — pola mencurigakan berdasarkan riwayat:
+  duplicate_visit: { label: 'Visit dobel hari ini', severity: 6, hint: 'Petugas sudah BAYAR dari nasabah yang sama hari ini.' },
+  nominal_spike: { label: 'Nominal di atas wajar', severity: 8, hint: 'Nominal bayar lebih dari 3× angsuran bulanan.' },
+  volume_anomaly: { label: 'Volume kunjungan ekstrem', severity: 4, hint: 'Petugas sudah > 20 kunjungan dalam 24 jam.' },
 };
 
 // Equirectangular approximation — accurate enough at metro-scale (~50m).
@@ -137,6 +141,45 @@ export function evalGeofence(
 }
 
 // Merge two evaluations (dedupe flags, sum score).
+// Pattern-based risk check (BV) — looks at recent activity to spot dobel
+// laporan, nominal spike, dan volume tidak wajar. Pure function over a
+// snapshot so the kunjungan route can call it with a single Prisma round
+// trip rather than spreading queries across the eval chain.
+export interface PatternInput {
+  hasil: 'BAYAR' | 'JANJI' | 'TIDAKADA' | 'TOLAK';
+  nominal: bigint | number;
+  angsuranBulanan: bigint | number;
+  // Submitted BAYAR rows for this (petugas × nasabah) today, excluding the
+  // current one. Used by duplicate_visit.
+  sameDayBayarCount: number;
+  // Total kunjungan submitted by this petugas in the last 24h, excluding
+  // the current one. Used by volume_anomaly.
+  petugasVisitsLast24h: number;
+}
+
+export function evalSuspiciousPattern(i: PatternInput): RiskEval {
+  const flags: string[] = [];
+  let score = 0;
+
+  if (i.hasil === 'BAYAR' && i.sameDayBayarCount >= 1) {
+    flags.push('duplicate_visit');
+    score += RISK_FLAG_META.duplicate_visit.severity;
+  }
+  if (i.hasil === 'BAYAR') {
+    const n = Number(i.nominal);
+    const a = Number(i.angsuranBulanan);
+    if (a > 0 && n > 3 * a) {
+      flags.push('nominal_spike');
+      score += RISK_FLAG_META.nominal_spike.severity;
+    }
+  }
+  if (i.petugasVisitsLast24h > 20) {
+    flags.push('volume_anomaly');
+    score += RISK_FLAG_META.volume_anomaly.severity;
+  }
+  return { flags, score };
+}
+
 export function merge(...evals: RiskEval[]): RiskEval {
   const flagSet = new Set<string>();
   let score = 0;

@@ -8,6 +8,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import type { Akad, HasilKunjungan, KolKey, ReviewStatus } from '@prisma/client';
 import { RISK_FLAG_META } from './antiFraud.js';
+import { drawDiagonalWatermark, drawVerifyQr } from './pdfWatermark.js';
 
 const HASIL_LABEL: Record<HasilKunjungan, string> = {
   BAYAR: 'Bayar Lunas/Sebagian',
@@ -64,6 +65,8 @@ interface PdfInput {
     sisa: bigint; angsuran: bigint;
   };
   branch: { kode: string; nama: string; alamat: string | null };
+  // BW — optional verification QR PNG buffer + diagonal watermark trigger.
+  verifyQr?: Buffer | null;
 }
 
 export function renderKunjunganPdf(input: PdfInput): InstanceType<typeof PDFDocument> {
@@ -75,6 +78,12 @@ export function renderKunjunganPdf(input: PdfInput): InstanceType<typeof PDFDocu
       Subject: 'Laporan Kunjungan Penagihan',
     },
   });
+
+  // BW — diagonal watermark drawn FIRST so the rest of the content sits on
+  // top. Re-applied on every new page via pageAdded event so multi-page
+  // PDFs (rare here, but possible with many fotos) stay protected.
+  drawDiagonalWatermark(doc, input.branch.kode);
+  doc.on('pageAdded', () => drawDiagonalWatermark(doc, input.branch.kode));
 
   // ---- Header (letterhead) ----
   const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
@@ -257,6 +266,10 @@ export function renderKunjunganPdf(input: PdfInput): InstanceType<typeof PDFDocu
     doc.page.margins.left, footY);
   doc.text(`Dokumen rahasia · ${input.branch.kode}`,
     doc.page.margins.left, footY, { align: 'right', width: pageWidth });
+
+  if (input.verifyQr) {
+    drawVerifyQr(doc, input.verifyQr);
+  }
 
   doc.end();
   return doc;
