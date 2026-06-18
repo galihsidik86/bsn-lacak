@@ -107,6 +107,8 @@ export function ScreenNasabah() {
   const [editing, setEditing] = useState<NasabahRow | null>(null);
   const [view360, setView360] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [reassigning, setReassigning] = useState(false);
 
   if (q.isPending) return <div className="content" style={{ display: 'grid', gap: 16 }}><Skeleton h={80} /><Skeleton h={400} /></div>;
   if (q.error) return <div className="content"><ErrorState onRetry={() => q.refetch()} /></div>;
@@ -133,6 +135,19 @@ export function ScreenNasabah() {
           </label>
         </div>
         <div className="center gap-2">
+          {selected.size > 0 && (
+            <>
+              <span className="chip" style={{ background: 'var(--accent-soft)', color: 'var(--accent-ink)' }}>
+                {selected.size} dipilih
+              </span>
+              <button className="btn" onClick={() => setReassigning(true)}>
+                <Ic.users size={14} />Reassign
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set())}>
+                Batal pilih
+              </button>
+            </>
+          )}
           <button className="btn" onClick={() => setImporting(true)}>
             <Ic.download size={15} style={{ transform: 'rotate(180deg)' }} />Import CSV
           </button>
@@ -148,6 +163,15 @@ export function ScreenNasabah() {
         ) : (
           <table className="table">
             <thead><tr>
+              <th style={{ width: 30 }}>
+                <input type="checkbox"
+                  checked={filtered.length > 0 && selected.size === filtered.length}
+                  ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < filtered.length; }}
+                  onChange={e => {
+                    if (e.target.checked) setSelected(new Set(filtered.map(n => n.id)));
+                    else setSelected(new Set());
+                  }} />
+              </th>
               <th>Kode</th><th>Nama</th><th>Alamat</th><th>Kol</th><th>Akad</th>
               <th style={{ textAlign: 'right' }}>Angsuran</th>
               <th style={{ textAlign: 'right' }}>Sisa</th>
@@ -156,6 +180,14 @@ export function ScreenNasabah() {
             <tbody>
               {filtered.map(n => (
                 <tr key={n.id} style={{ opacity: n.active ? 1 : 0.45 }}>
+                  <td>
+                    <input type="checkbox" checked={selected.has(n.id)}
+                      onChange={e => {
+                        const next = new Set(selected);
+                        if (e.target.checked) next.add(n.id); else next.delete(n.id);
+                        setSelected(next);
+                      }} />
+                  </td>
                   <td className="mono">{n.kode}</td>
                   <td>
                     <div style={{ fontWeight: 700 }}>{n.nama}</div>
@@ -174,6 +206,7 @@ export function ScreenNasabah() {
                       <button className="btn btn-sm btn-ghost" onClick={() => setEditing(n)}>
                         <Ic.settings size={14} />Edit
                       </button>
+                      <ExportMenu nasabahId={n.id} kode={n.kode} />
                     </div>
                   </td>
                 </tr>
@@ -209,6 +242,14 @@ export function ScreenNasabah() {
       )}
       {view360 && (
         <ScreenNasabah360 nasabahId={view360} onClose={() => setView360(null)} />
+      )}
+      {reassigning && (
+        <BulkReassign ids={[...selected]} petugas={petugasQ.data ?? []}
+          onClose={() => setReassigning(false)}
+          onDone={() => {
+            setReassigning(false); setSelected(new Set());
+            qc.invalidateQueries({ queryKey: ['nasabah'] });
+          }} />
       )}
     </div>
   );
@@ -652,5 +693,137 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', display: 'block', marginBottom: 5 }}>{label}</span>
       {children}
     </label>
+  );
+}
+
+// Per-row dropdown to download either JSON or PDF. Uses downloadAuthed so
+// the auth header + branch override go through the same code path as other
+// authenticated downloads.
+function ExportMenu({ nasabahId, kode }: { nasabahId: string; kode: string }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<'json' | 'pdf' | null>(null);
+  const grab = async (kind: 'json' | 'pdf') => {
+    setBusy(kind); setOpen(false);
+    try {
+      const { downloadAuthed } = await import('../lib/download');
+      await downloadAuthed(
+        `/nasabah/${nasabahId}/export.${kind}`,
+        `nasabah-${kode}.${kind}`,
+      );
+    } catch { /* ignore — server returns 4xx if scope blocks it */ }
+    finally { setBusy(null); }
+  };
+  return (
+    <div style={{ position: 'relative' }}>
+      <button className="btn btn-sm btn-ghost" onClick={() => setOpen(o => !o)} disabled={busy !== null}>
+        <Ic.download size={14} />{busy ? `${busy.toUpperCase()}…` : 'Export'}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 10,
+          background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10,
+          boxShadow: 'var(--sh-2)', minWidth: 130, padding: 4,
+        }}>
+          <button className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'flex-start' }}
+            onClick={() => grab('pdf')}>PDF</button>
+          <button className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'flex-start' }}
+            onClick={() => grab('json')}>JSON</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BulkReassign({ ids, petugas, onClose, onDone }: {
+  ids: string[]; petugas: PetugasRow[];
+  onClose: () => void; onDone: () => void;
+}) {
+  const [target, setTarget] = useState<string>('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ reassigned: number; total: number; outcomes: Array<{ id: string; status: string }> } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const apply = async () => {
+    if (!target) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await axios.post(`${BASE}/nasabah/bulk-reassign`,
+        { ids, petugasId: target },
+        { withCredentials: true, headers: headers() });
+      setResult(r.data);
+    } catch (e: any) {
+      const code = e?.response?.data?.error;
+      setErr(code === 'unknown_petugas' ? 'Petugas tidak ditemukan / nonaktif.'
+        : 'Gagal reassign. Coba lagi.');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal onClose={onClose} max={520}>
+      <div className="modal-head">
+        <div style={{ flex: 1 }}>
+          <div className="section-title">Reassign {ids.length} Nasabah</div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
+            Pilih petugas tujuan. SUPERVISOR hanya bisa pindah dalam cabang sendiri.
+          </div>
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+      </div>
+      <div className="modal-body">
+        {!result ? (
+          <>
+            <Field label="Petugas Tujuan">
+              <select className="input" value={target} onChange={e => setTarget(e.target.value)}>
+                <option value="">— Pilih petugas —</option>
+                {petugas.filter(p => p.active !== false).map(p => (
+                  <option key={p.id} value={p.id}>{p.kode} · {p.nama}</option>
+                ))}
+              </select>
+            </Field>
+            {err && (
+              <div className="center gap-2" style={{
+                marginTop: 12, background: 'var(--col-macet-soft)', color: 'var(--col-macet)',
+                borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 600,
+              }}>
+                <Ic.alert size={15} />{err}
+              </div>
+            )}
+          </>
+        ) : (
+          <div>
+            <div className="card card-pad" style={{ background: 'var(--accent-soft)', boxShadow: 'none', marginBottom: 12 }}>
+              <div className="center gap-2" style={{ color: 'var(--accent-ink)', fontWeight: 800, fontSize: 14 }}>
+                <Ic.checkCircle size={18} />{result.reassigned} dari {result.total} berhasil di-reassign.
+              </div>
+            </div>
+            {result.outcomes.filter(o => o.status !== 'reassigned').length > 0 && (
+              <div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 12 }}>
+                <table className="table" style={{ fontSize: 12 }}>
+                  <thead><tr><th>ID</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {result.outcomes.filter(o => o.status !== 'reassigned').map(o => (
+                      <tr key={o.id}>
+                        <td className="mono">{o.id}</td>
+                        <td style={{ color: 'var(--col-macet)' }}>{o.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="modal-foot">
+        {result
+          ? <button className="btn btn-primary" onClick={onDone}>Selesai</button>
+          : <>
+              <button className="btn" onClick={onClose} disabled={busy}>Batal</button>
+              <button className="btn btn-primary" onClick={apply} disabled={!target || busy}>
+                {busy ? 'Memproses…' : `Reassign ${ids.length} nasabah`}
+              </button>
+            </>}
+      </div>
+    </Modal>
   );
 }

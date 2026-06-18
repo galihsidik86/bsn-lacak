@@ -5,6 +5,7 @@ import { requireAuth, requireRole, scopedBranchId } from '../auth.js';
 import { audit, fromReq } from '../lib/audit.js';
 import { bus } from '../lib/events.js';
 import { enqueueNotification } from './notifications.js';
+import { renderNasabahExportPdf } from '../lib/pdfNasabahExport.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -168,6 +169,77 @@ router.patch('/:id/petugas', requireRole('SUPERVISOR', 'ADMIN'), async (req, res
   }
 
   res.json(updated);
+});
+
+// Bulk reassign — admin/supervisor selects N nasabah and moves them all to
+// one petugas. Source ids are filtered against scope so SUPERVISOR can only
+// touch their own branch's nasabah; target petugas branch is checked once.
+// Per-row outcomes returned so the UI can show partial failures.
+const bulkReassignBody = z.object({
+  ids: z.array(z.string().min(1).max(64)).min(1).max(500),
+  petugasId: z.string().min(1).max(64),
+});
+
+router.post('/bulk-reassign', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const parsed = bulkReassignBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request', details: parsed.error.flatten() });
+
+  const target = await prisma.petugas.findUnique({
+    where: { id: parsed.data.petugasId },
+    select: { id: true, branchId: true, active: true },
+  });
+  if (!target || !target.active) return res.status(400).json({ error: 'unknown_petugas' });
+
+  const candidates = await prisma.nasabah.findMany({
+    where: { id: { in: parsed.data.ids }, ...scope(req) },
+    select: { id: true, branchId: true, petugasId: true },
+  });
+  const map = new Map(candidates.map(c => [c.id, c]));
+  const supervisorBranch = req.user?.role === 'SUPERVISOR' ? req.user.branchId : null;
+
+  const outcomes: Array<{ id: string; status: 'reassigned' | 'not_found' | 'cross_branch' | 'noop' }> = [];
+  const okIds: string[] = [];
+
+  for (const id of parsed.data.ids) {
+    const c = map.get(id);
+    if (!c) { outcomes.push({ id, status: 'not_found' }); continue; }
+    // SUPERVISOR cannot move nasabah to a petugas outside their branch.
+    if (supervisorBranch && target.branchId !== supervisorBranch) {
+      outcomes.push({ id, status: 'cross_branch' }); continue;
+    }
+    if (c.petugasId === target.id) {
+      outcomes.push({ id, status: 'noop' }); continue;
+    }
+    okIds.push(id);
+    outcomes.push({ id, status: 'reassigned' });
+  }
+
+  if (okIds.length > 0) {
+    await prisma.nasabah.updateMany({
+      where: { id: { in: okIds } },
+      data: { petugasId: target.id, branchId: target.branchId },
+    });
+    await audit({
+      action: 'nasabah.bulk_reassign', ...fromReq(req),
+      meta: { count: okIds.length, toPetugasId: target.id },
+    });
+    for (const id of okIds) {
+      bus.publish('nasabah.reassign', { nasabahId: id, to: target.id });
+    }
+    const targetUser = await prisma.user.findFirst({ where: { petugasId: target.id } });
+    if (targetUser) {
+      await enqueueNotification({
+        userIds: [targetUser.id],
+        type: 'nasabah.reassigned_to_you',
+        title: `${okIds.length} nasabah baru ditugaskan`,
+        body: 'Cek tab Kolektabilitas / Distribusi untuk daftar lengkap.',
+        severity: 'INFO',
+        link: 'kolektabilitas',
+      }).catch(() => undefined);
+    }
+  }
+
+  res.status(200).json({ reassigned: okIds.length, total: parsed.data.ids.length, outcomes });
 });
 
 // ---- Nasabah CRUD (SUPERVISOR + ADMIN) ---------------------------------
@@ -351,6 +423,90 @@ router.delete('/:id', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
   await prisma.nasabah.update({ where: { id }, data: { active: false } });
   await audit({ action: 'nasabah.deactivate', target: id, ...fromReq(req) });
   res.json({ ok: true });
+});
+
+// --- Per-nasabah data export (BK / GDPR-style) --------------------------
+//
+// Pulls profile + payment + visit history into a single JSON document or a
+// printable A4 PDF. SUPERVISOR/ADMIN only — PETUGAS would otherwise have a
+// channel to dump their own assignments. Audit-logged every time.
+
+async function buildExportBundle(id: string, scopeWhere: Record<string, unknown>) {
+  const n = await prisma.nasabah.findFirst({
+    where: { id, ...scopeWhere },
+    include: {
+      petugas: { select: { kode: true, nama: true } },
+      branch: { select: { kode: true, nama: true } },
+    },
+  });
+  if (!n) return null;
+
+  const [pembayaran, kunjungan] = await Promise.all([
+    prisma.pembayaran.findMany({
+      where: { nasabahId: id },
+      orderBy: { tanggal: 'desc' },
+      take: 500,
+    }),
+    prisma.kunjungan.findMany({
+      where: { nasabahId: id },
+      orderBy: { tanggal: 'desc' },
+      take: 500,
+    }),
+  ]);
+  return { n, pembayaran, kunjungan };
+}
+
+router.get('/:id/export.json', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const bundle = await buildExportBundle(id, scope(req));
+  if (!bundle) return res.status(404).json({ error: 'not_found' });
+
+  await audit({
+    action: 'nasabah.export.json', target: id, ...fromReq(req),
+    meta: { pembayaran: bundle.pembayaran.length, kunjungan: bundle.kunjungan.length },
+  });
+
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition',
+    `attachment; filename="nasabah-${bundle.n.kode}.json"`);
+  res.json({
+    generatedAt: new Date().toISOString(),
+    nasabah: {
+      ...bundle.n,
+      // BigInt serializes as string by default in our setup; pre-stringify
+      // monetary columns so consumers don't have to special-case.
+      plafon: String(bundle.n.plafon),
+      angsuran: String(bundle.n.angsuran),
+      sisa: String(bundle.n.sisa),
+    },
+    pembayaran: bundle.pembayaran.map(p => ({ ...p, nominal: String(p.nominal) })),
+    kunjungan: bundle.kunjungan.map(k => ({ ...k, nominal: String(k.nominal) })),
+  });
+});
+
+router.get('/:id/export.pdf', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const bundle = await buildExportBundle(id, scope(req));
+  if (!bundle) return res.status(404).json({ error: 'not_found' });
+
+  await audit({
+    action: 'nasabah.export.pdf', target: id, ...fromReq(req),
+    meta: { pembayaran: bundle.pembayaran.length, kunjungan: bundle.kunjungan.length },
+  });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition',
+    `attachment; filename="nasabah-${bundle.n.kode}.pdf"`);
+
+  const pdf = renderNasabahExportPdf({
+    generatedAt: new Date(),
+    nasabah: bundle.n,
+    petugas: bundle.n.petugas,
+    branch: bundle.n.branch,
+    pembayaran: bundle.pembayaran,
+    kunjungan: bundle.kunjungan,
+  });
+  pdf.pipe(res);
 });
 
 export default router;
