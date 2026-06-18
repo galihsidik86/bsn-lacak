@@ -26,6 +26,7 @@ import webhooks from '../../src/routes/webhooks.js';
 import foto from '../../src/routes/foto.js';
 import receipt from '../../src/routes/receipt.js';
 import holidays from '../../src/routes/holidays.js';
+import activity from '../../src/routes/activity.js';
 import branches from '../../src/routes/branches.js';
 import { apiKeyAuth } from '../../src/lib/apiKey.js';
 
@@ -57,6 +58,7 @@ export function buildApp() {
   app.use('/api/foto', foto);
   app.use('/api/receipt', receipt);
   app.use('/api/holidays', holidays);
+  app.use('/api/activity', activity);
   app.use('/api/branches', branches);
   return app;
 }

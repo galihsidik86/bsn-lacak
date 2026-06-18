@@ -350,6 +350,130 @@ export async function portfolioHeatmap(branchId?: string | null): Promise<Heatma
   return out;
 }
 
+// Branch radar metrics (BP). Five axes normalized 0..100 so they share a
+// single radial scale on the chart: collection_rate, approval_rate,
+// kunjungan_density, dpd_health (inverted DPD), petugas_utilization.
+//
+// ADMIN-only — supervisor would just see their own single branch, which
+// is a degenerate radar. The lib helper itself is unscoped; the route
+// blocks SUPERVISOR.
+export interface RadarBranch {
+  branchId: string; branchKode: string; branchNama: string;
+  metrics: {
+    collectionRate: number;     // 0..100, actual / target this month
+    approvalRate: number;       // 0..100, APPROVED / (APPROVED + REJECTED)
+    visitDensity: number;       // 0..100, visits this month / (target visits)
+    dpdHealth: number;          // 0..100, 100 - avg(DPD/90 * 100)
+    petugasUtilization: number; // 0..100, petugas active in last 30d / total
+  };
+  // Raw values so the UI can show "actual / target" tooltips.
+  raw: {
+    collected: number; targetCollection: number;
+    visits: number; targetVisits: number;
+    approved: number; rejected: number;
+    avgDpd: number;
+    activePetugas: number; totalPetugas: number;
+  };
+}
+
+export async function branchRadar(): Promise<RadarBranch[]> {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  const branches = await prisma.branch.findMany({
+    where: { active: true },
+    select: { id: true, kode: true, nama: true, targetCollection: true, targetVisits: true },
+    orderBy: { kode: 'asc' },
+  });
+  if (branches.length === 0) return [];
+  const branchIds = branches.map(b => b.id);
+
+  const [collected, visits, reviews, dpdAgg, petugasAll, petugasActive] = await Promise.all([
+    prisma.pembayaran.groupBy({
+      by: ['branchId'],
+      where: { branchId: { in: branchIds }, status: 'berhasil', tanggal: { gte: monthStart, lt: monthEnd } },
+      _sum: { nominal: true },
+    }),
+    prisma.kunjungan.groupBy({
+      by: ['branchId'],
+      where: { branchId: { in: branchIds }, tanggal: { gte: monthStart, lt: monthEnd } },
+      _count: { _all: true },
+    }),
+    prisma.kunjungan.groupBy({
+      by: ['branchId', 'reviewStatus'],
+      where: { branchId: { in: branchIds }, tanggal: { gte: monthStart, lt: monthEnd } },
+      _count: { _all: true },
+    }),
+    prisma.nasabah.groupBy({
+      by: ['branchId'],
+      where: { branchId: { in: branchIds }, active: true },
+      _avg: { dpd: true },
+    }),
+    prisma.petugas.groupBy({
+      by: ['branchId'],
+      where: { branchId: { in: branchIds }, active: true },
+      _count: { _all: true },
+    }),
+    prisma.petugasPosition.findMany({
+      where: { recordedAt: { gte: since30 }, petugas: { branchId: { in: branchIds }, active: true } },
+      distinct: ['petugasId'],
+      select: { petugasId: true, petugas: { select: { branchId: true } } },
+    }),
+  ]);
+
+  const collectedMap = new Map(collected.map(r => [r.branchId, Number(r._sum.nominal ?? 0n)]));
+  const visitsMap = new Map(visits.map(r => [r.branchId, r._count._all]));
+  const dpdMap = new Map(dpdAgg.map(r => [r.branchId, Number(r._avg.dpd ?? 0)]));
+  const petugasMap = new Map(petugasAll.map(r => [r.branchId, r._count._all]));
+
+  const reviewByBranch = new Map<string, { approved: number; rejected: number }>();
+  for (const r of reviews) {
+    if (r.reviewStatus === 'PENDING') continue;
+    const cur = reviewByBranch.get(r.branchId) ?? { approved: 0, rejected: 0 };
+    if (r.reviewStatus === 'APPROVED') cur.approved += r._count._all;
+    else if (r.reviewStatus === 'REJECTED') cur.rejected += r._count._all;
+    reviewByBranch.set(r.branchId, cur);
+  }
+
+  const activeByBranch = new Map<string, number>();
+  for (const row of petugasActive) {
+    const bId = row.petugas.branchId;
+    activeByBranch.set(bId, (activeByBranch.get(bId) ?? 0) + 1);
+  }
+
+  return branches.map(b => {
+    const c = collectedMap.get(b.id) ?? 0;
+    const targetC = Number(b.targetCollection);
+    const v = visitsMap.get(b.id) ?? 0;
+    const targetV = b.targetVisits;
+    const rev = reviewByBranch.get(b.id) ?? { approved: 0, rejected: 0 };
+    const reviewDenom = rev.approved + rev.rejected;
+    const avgDpd = dpdMap.get(b.id) ?? 0;
+    const totalP = petugasMap.get(b.id) ?? 0;
+    const activeP = activeByBranch.get(b.id) ?? 0;
+
+    return {
+      branchId: b.id, branchKode: b.kode, branchNama: b.nama,
+      metrics: {
+        collectionRate: targetC === 0 ? 0 : Math.min(100, Math.round((c / targetC) * 100)),
+        approvalRate: reviewDenom === 0 ? 100 : Math.round((rev.approved / reviewDenom) * 100),
+        visitDensity: targetV === 0 ? 0 : Math.min(100, Math.round((v / targetV) * 100)),
+        dpdHealth: Math.max(0, Math.round(100 - Math.min(100, (avgDpd / 90) * 100))),
+        petugasUtilization: totalP === 0 ? 0 : Math.round((activeP / totalP) * 100),
+      },
+      raw: {
+        collected: c, targetCollection: targetC,
+        visits: v, targetVisits: targetV,
+        approved: rev.approved, rejected: rev.rejected,
+        avgDpd: Math.round(avgDpd),
+        activePetugas: activeP, totalPetugas: totalP,
+      },
+    };
+  });
+}
+
 // Churn risk listing (BO) — top-N nasabah sorted by churnScore descending.
 // Score is computed in TypeScript from a per-nasabah aggregation rather
 // than as a stored column so it always reflects the latest payment +

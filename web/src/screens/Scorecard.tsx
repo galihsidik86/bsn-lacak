@@ -7,6 +7,27 @@ import { RPjt } from '../data/queries';
 import { tokenStore } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
+interface RadarBranch {
+  branchId: string; branchKode: string; branchNama: string;
+  metrics: {
+    collectionRate: number; approvalRate: number; visitDensity: number;
+    dpdHealth: number; petugasUtilization: number;
+  };
+  raw: {
+    collected: number; targetCollection: number;
+    visits: number; targetVisits: number;
+    approved: number; rejected: number;
+    avgDpd: number; activePetugas: number; totalPetugas: number;
+  };
+}
+async function fetchRadar(): Promise<{ branches: RadarBranch[] }> {
+  const t = tokenStore.get();
+  const h: Record<string, string> = {};
+  if (t) h.Authorization = `Bearer ${t}`;
+  return (await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/analytics/branch-radar`,
+    { withCredentials: true, headers: h })).data;
+}
+
 const BASE = import.meta.env.VITE_API_URL || '/api';
 
 function headers() {
@@ -91,7 +112,138 @@ export function ScreenScorecard() {
         rows={rows} year={year} month={month}
         onYear={setYear} onMonth={setMonth}
       />
+      <RadarPanel />
       <HeatmapPanel cells={cells} />
+    </div>
+  );
+}
+
+const RADAR_AXES = [
+  { key: 'collectionRate' as const, label: 'Tertagih', hint: 'Tertagih bulan ini / target' },
+  { key: 'approvalRate' as const, label: 'Approval', hint: 'APPROVED / (APPROVED+REJECTED)' },
+  { key: 'visitDensity' as const, label: 'Kunjungan', hint: 'Visits bulan ini / target' },
+  { key: 'dpdHealth' as const, label: 'DPD Health', hint: '100 - (avg DPD / 90 × 100)' },
+  { key: 'petugasUtilization' as const, label: 'Petugas Aktif', hint: 'GPS-active 30d / total' },
+];
+
+function RadarPanel() {
+  const q = useQuery({ queryKey: ['branch-radar'], queryFn: fetchRadar });
+  const [hovered, setHovered] = useState<string | null>(null);
+
+  if (q.isPending) return <div className="card fade-up"><Skeleton h={320} /></div>;
+  // SUPERVISOR gets 403 — silently hide the radar panel.
+  if (q.error) return null;
+  const branches = q.data?.branches ?? [];
+  if (branches.length === 0) return null;
+
+  // Hand-rolled radar: 5 axes, normalized 0..100, polygon per branch.
+  const W = 560, CX = 280, CY = 220, R = 160;
+  const N = RADAR_AXES.length;
+  const angle = (i: number) => -Math.PI / 2 + (i * 2 * Math.PI) / N;
+  const point = (i: number, v: number) => {
+    const r = (v / 100) * R;
+    return { x: CX + r * Math.cos(angle(i)), y: CY + r * Math.sin(angle(i)) };
+  };
+
+  return (
+    <div className="card fade-up" style={{ overflow: 'hidden' }}>
+      <div className="card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
+        <div className="section-title">Radar Cabang — 5 Metrik</div>
+        <div className="page-sub">
+          Setiap aksis dinormalisasi 0..100. Hover sebuah nama untuk highlight cabang.
+        </div>
+      </div>
+      <div style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: '1fr 240px', gap: 16 }}>
+        <svg viewBox={`0 0 ${W} 440`} style={{ width: '100%', height: 440, display: 'block' }}
+          onMouseLeave={() => setHovered(null)}>
+          {/* radial grid */}
+          {[20, 40, 60, 80, 100].map(t => {
+            const pts = Array.from({ length: N }, (_, i) => {
+              const p = point(i, t);
+              return `${p.x},${p.y}`;
+            }).join(' ');
+            return (
+              <polygon key={t} points={pts} fill="none"
+                stroke="var(--line)" strokeWidth={0.5} strokeDasharray={t === 100 ? '0' : '3 3'} />
+            );
+          })}
+          {/* axes */}
+          {RADAR_AXES.map((ax, i) => {
+            const p = point(i, 100);
+            const labelOffset = 18;
+            const lp = {
+              x: CX + (R + labelOffset) * Math.cos(angle(i)),
+              y: CY + (R + labelOffset) * Math.sin(angle(i)),
+            };
+            return (
+              <g key={ax.key}>
+                <line x1={CX} y1={CY} x2={p.x} y2={p.y} stroke="var(--line)" strokeWidth={0.5} />
+                <text x={lp.x} y={lp.y} textAnchor="middle" fontSize={11} fontWeight={700}
+                  fill="var(--ink-2)" dominantBaseline="middle">
+                  {ax.label}
+                </text>
+              </g>
+            );
+          })}
+          {/* branch polygons */}
+          {branches.map((b, idx) => {
+            const hue = 30 + idx * (200 / Math.max(1, branches.length - 1));
+            const pts = RADAR_AXES.map((ax, i) => {
+              const p = point(i, b.metrics[ax.key]);
+              return `${p.x},${p.y}`;
+            }).join(' ');
+            const isHovered = hovered === b.branchId;
+            const isOther = hovered && hovered !== b.branchId;
+            return (
+              <g key={b.branchId} onMouseEnter={() => setHovered(b.branchId)}>
+                <polygon points={pts}
+                  fill={`hsl(${hue}, 70%, 55%)`}
+                  fillOpacity={isHovered ? 0.35 : isOther ? 0.05 : 0.18}
+                  stroke={`hsl(${hue}, 70%, 50%)`}
+                  strokeWidth={isHovered ? 2.5 : 1.5}
+                  strokeOpacity={isOther ? 0.25 : 1} />
+              </g>
+            );
+          })}
+        </svg>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 440, overflowY: 'auto' }}>
+          {branches.map((b, idx) => {
+            const hue = 30 + idx * (200 / Math.max(1, branches.length - 1));
+            const isHovered = hovered === b.branchId;
+            return (
+              <div key={b.branchId}
+                onMouseEnter={() => setHovered(b.branchId)}
+                onMouseLeave={() => setHovered(null)}
+                style={{
+                  padding: 10, borderRadius: 10, cursor: 'pointer',
+                  border: isHovered ? `1.5px solid hsl(${hue}, 70%, 50%)` : '1px solid var(--line)',
+                  background: isHovered ? `hsl(${hue}, 70%, 95%)` : 'var(--surface)',
+                }}>
+                <div className="center gap-2" style={{ marginBottom: 6 }}>
+                  <span style={{
+                    width: 10, height: 10, borderRadius: 2,
+                    background: `hsl(${hue}, 70%, 50%)`,
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {b.branchNama}
+                    </div>
+                    <div className="muted mono" style={{ fontSize: 10.5 }}>{b.branchKode}</div>
+                  </div>
+                </div>
+                {RADAR_AXES.map(ax => (
+                  <div key={ax.key} className="between" style={{ fontSize: 10.5, padding: '1px 0' }}>
+                    <span className="muted">{ax.label}</span>
+                    <span className="num" style={{ fontWeight: 700, color: 'var(--ink-2)' }}>
+                      {b.metrics[ax.key]}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

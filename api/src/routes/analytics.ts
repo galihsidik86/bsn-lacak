@@ -5,7 +5,7 @@ import { audit, fromReq } from '../lib/audit.js';
 import {
   monthlyRevenueByBranch, topPetugasLeaderboard, kolPosture,
   monthlyClosing, toClosingCsv, branchScorecard, portfolioHeatmap,
-  pendingAgingReport, petugasRace, churnRiskList,
+  pendingAgingReport, petugasRace, churnRiskList, branchRadar,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -97,6 +97,15 @@ router.get('/scorecard', async (req, res) => {
     branchId: g.branchId, year: parsed.data.year, month: parsed.data.month,
   });
   res.json({ year: parsed.data.year, month: parsed.data.month, rows });
+});
+
+// Branch radar — 5-axis comparison across all branches. ADMIN-only since a
+// supervisor's view collapses to one row. No branch override applied; the
+// radar's point is cross-branch comparison.
+router.get('/branch-radar', async (req, res) => {
+  if (req.user?.role !== 'ADMIN') return res.status(403).json({ error: 'forbidden' });
+  const data = await branchRadar();
+  res.json({ branches: data });
 });
 
 // Churn risk listing — top-N nasabah ranked by inactivity / DPD / failed
