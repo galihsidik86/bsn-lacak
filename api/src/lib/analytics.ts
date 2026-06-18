@@ -350,6 +350,97 @@ export async function portfolioHeatmap(branchId?: string | null): Promise<Heatma
   return out;
 }
 
+// Aging report: PENDING kunjungan grouped into age buckets so supervisors
+// can see how many laporan have been waiting too long. Per-branch counts
+// plus per-petugas top offenders. Age is measured from createdAt, not
+// tanggal, so backdated laporan don't appear instantly stale.
+export type AgingBucket = '0_1d' | '1_3d' | '3_7d' | '7d_plus';
+
+export interface AgingReport {
+  buckets: Record<AgingBucket, number>;
+  branches: Array<{
+    branchId: string; branchKode: string; branchNama: string;
+    buckets: Record<AgingBucket, number>;
+    total: number;
+  }>;
+  petugas: Array<{
+    petugasId: string; petugasKode: string; petugasNama: string;
+    branchKode: string;
+    oldest: Date; days: number;
+    count: number;
+  }>;
+}
+
+function bucketFor(ageMs: number): AgingBucket {
+  const days = ageMs / (24 * 60 * 60 * 1000);
+  if (days < 1) return '0_1d';
+  if (days < 3) return '1_3d';
+  if (days < 7) return '3_7d';
+  return '7d_plus';
+}
+
+const EMPTY_BUCKETS = (): Record<AgingBucket, number> => ({
+  '0_1d': 0, '1_3d': 0, '3_7d': 0, '7d_plus': 0,
+});
+
+export async function pendingAgingReport(branchId?: string | null): Promise<AgingReport> {
+  const now = Date.now();
+  const rows = await prisma.kunjungan.findMany({
+    where: {
+      reviewStatus: 'PENDING',
+      ...(branchId ? { branchId } : {}),
+    },
+    select: {
+      id: true, createdAt: true,
+      petugas: { select: { id: true, kode: true, nama: true } },
+      branch: { select: { id: true, kode: true, nama: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+    take: 5000,
+  });
+
+  const buckets = EMPTY_BUCKETS();
+  const byBranch = new Map<string, { branchId: string; branchKode: string; branchNama: string; buckets: Record<AgingBucket, number>; total: number }>();
+  const byPetugas = new Map<string, { petugasId: string; petugasKode: string; petugasNama: string; branchKode: string; oldest: Date; count: number }>();
+
+  for (const r of rows) {
+    const ageMs = now - r.createdAt.getTime();
+    const b = bucketFor(ageMs);
+    buckets[b]++;
+
+    const bk = byBranch.get(r.branch.id) ?? {
+      branchId: r.branch.id, branchKode: r.branch.kode, branchNama: r.branch.nama,
+      buckets: EMPTY_BUCKETS(), total: 0,
+    };
+    bk.buckets[b]++;
+    bk.total++;
+    byBranch.set(r.branch.id, bk);
+
+    const pk = byPetugas.get(r.petugas.id) ?? {
+      petugasId: r.petugas.id, petugasKode: r.petugas.kode, petugasNama: r.petugas.nama,
+      branchKode: r.branch.kode, oldest: r.createdAt, count: 0,
+    };
+    if (r.createdAt < pk.oldest) pk.oldest = r.createdAt;
+    pk.count++;
+    byPetugas.set(r.petugas.id, pk);
+  }
+
+  // Cap petugas list to top 20 oldest-first so the UI table stays scannable.
+  const petugasArr = Array.from(byPetugas.values())
+    .map(p => ({
+      ...p,
+      days: Math.round((now - p.oldest.getTime()) / (24 * 60 * 60 * 1000) * 10) / 10,
+    }))
+    .sort((a, b) => a.oldest.getTime() - b.oldest.getTime())
+    .slice(0, 20);
+
+  return {
+    buckets,
+    branches: Array.from(byBranch.values()).sort((a, b) => a.branchKode.localeCompare(b.branchKode)),
+    petugas: petugasArr,
+  };
+}
+
 // CSV with UTF-8 BOM so Indonesian accented names render in Excel.
 export function toClosingCsv(rows: ClosingRow[]): string {
   const headers = [

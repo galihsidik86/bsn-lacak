@@ -29,6 +29,8 @@ const ScreenNasabah = lazy(() => import('./screens/Nasabah').then(m => ({ defaul
 const ScreenPerforma = lazy(() => import('./screens/Performa').then(m => ({ default: m.ScreenPerforma })));
 const ScreenAnalytics = lazy(() => import('./screens/Analytics').then(m => ({ default: m.ScreenAnalytics })));
 const ScreenScorecard = lazy(() => import('./screens/Scorecard').then(m => ({ default: m.ScreenScorecard })));
+const ScreenAgingReport = lazy(() => import('./screens/AgingReport').then(m => ({ default: m.ScreenAgingReport })));
+const ScreenAttendanceMap = lazy(() => import('./screens/AttendanceMap').then(m => ({ default: m.ScreenAttendanceMap })));
 const ScreenNotifikasi = lazy(() => import('./screens/Notifikasi').then(m => ({ default: m.ScreenNotifikasi })));
 const ScreenPengumuman = lazy(() => import('./screens/Pengumuman').then(m => ({ default: m.ScreenPengumuman })));
 const ScreenWilayah = lazy(() => import('./screens/Wilayah').then(m => ({ default: m.ScreenWilayah })));
@@ -49,7 +51,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -62,6 +64,8 @@ function useNav(): NavGroup[] {
       { k: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
       { k: 'analytics', label: 'Analytics & Closing', icon: 'trend' },
       { k: 'scorecard', label: 'Scorecard & Heatmap', icon: 'target' },
+      { k: 'aging', label: 'Aging Report', icon: 'clock' },
+      { k: 'attendance-map', label: 'Peta Kehadiran', icon: 'pin' },
       { k: 'tracking', label: 'Tracking Petugas', icon: 'map' },
       { k: 'kolektabilitas', label: 'Kolektabilitas', icon: 'layers' },
       { k: 'angsuran', label: 'Pergerakan Angsuran', icon: 'chart' },
@@ -116,6 +120,8 @@ const TITLES: Record<PageKey, [string, string]> = {
   performa: ['Performa Petugas', 'Approval rate, flag rate, dan respon supervisor per petugas'],
   analytics: ['Analytics & Closing', 'Tren penagihan bulanan, leaderboard, dan ekspor closing CSV'],
   scorecard: ['Scorecard & Heatmap', 'KPI cabang vs target bulan ini + heatmap risiko per kolektabilitas'],
+  aging: ['Aging Report', 'Distribusi usia PENDING laporan per cabang & per petugas'],
+  'attendance-map': ['Peta Kehadiran', 'Titik clock-in petugas pada peta basemap'],
   notifikasi: ['Notifikasi', 'Riwayat semua notifikasi sistem dan supervisor'],
   pengumuman: ['Pengumuman', 'Broadcast notifikasi ke seluruh petugas di cabang'],
   wilayah: ['Wilayah Binaan', 'Gambar polygon geofence per wilayah dan tugaskan ke petugas'],
@@ -376,6 +382,8 @@ export function App() {
             {page === 'performa' && <ScreenPerforma />}
             {page === 'analytics' && <ScreenAnalytics />}
             {page === 'scorecard' && <ScreenScorecard />}
+            {page === 'aging' && <ScreenAgingReport />}
+            {page === 'attendance-map' && <ScreenAttendanceMap />}
             {page === 'notifikasi' && <ScreenNotifikasi go={go} />}
             {page === 'pengumuman' && <ScreenPengumuman />}
             {page === 'wilayah' && <ScreenWilayah />}

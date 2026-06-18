@@ -5,6 +5,7 @@ import { audit, fromReq } from '../lib/audit.js';
 import {
   monthlyRevenueByBranch, topPetugasLeaderboard, kolPosture,
   monthlyClosing, toClosingCsv, branchScorecard, portfolioHeatmap,
+  pendingAgingReport,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -96,6 +97,15 @@ router.get('/scorecard', async (req, res) => {
     branchId: g.branchId, year: parsed.data.year, month: parsed.data.month,
   });
   res.json({ year: parsed.data.year, month: parsed.data.month, rows });
+});
+
+// PENDING-laporan aging report. Buckets: <1d, 1-3d, 3-7d, 7d+. Returns
+// per-branch breakdown and top-20 worst-offender petugas. Branch-scoped.
+router.get('/aging', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const report = await pendingAgingReport(g.branchId);
+  res.json(report);
 });
 
 // Risk-based portfolio heatmap (branch × kol). Same scope rules as the rest

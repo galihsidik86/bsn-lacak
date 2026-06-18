@@ -114,4 +114,52 @@ router.get('/today', async (req, res) => {
   res.json(rows);
 });
 
+// SUPERVISOR + ADMIN: clock-in points (and clock-out when present) over the
+// last N days, scoped by branch. Drives the Peta Kehadiran screen — dots
+// on the map per petugas/per day. Defaults to today only; capped at 30
+// days because the underlying index is (branchId, clockInAt).
+router.get('/map', async (req, res) => {
+  if (req.user?.role === 'PETUGAS') return res.status(403).json({ error: 'forbidden' });
+  const branchId = scopedBranchId(req);
+  const days = Number.parseInt(String(req.query.days ?? '1'), 10);
+  const windowDays = Number.isFinite(days) && days > 0 && days <= 30 ? days : 1;
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  since.setDate(since.getDate() - (windowDays - 1));
+
+  const rows = await prisma.attendance.findMany({
+    where: {
+      clockInAt: { gte: since },
+      clockInLat: { not: null }, // skip rows without coords (clock-in via UI lacking GPS)
+      ...(branchId ? { branchId } : {}),
+    },
+    include: {
+      petugas: { select: { id: true, kode: true, nama: true, inisial: true, hue: true } },
+      branch: { select: { kode: true, nama: true } },
+    },
+    orderBy: { clockInAt: 'desc' },
+    take: 1000,
+  });
+  res.json({
+    since: since.toISOString(),
+    windowDays,
+    points: rows.map(r => ({
+      id: r.id,
+      petugasId: r.petugasId,
+      petugasKode: r.petugas.kode,
+      petugasNama: r.petugas.nama,
+      petugasInisial: r.petugas.inisial,
+      petugasHue: r.petugas.hue,
+      branchKode: r.branch.kode,
+      branchNama: r.branch.nama,
+      clockInAt: r.clockInAt,
+      clockInLat: r.clockInLat,
+      clockInLng: r.clockInLng,
+      clockOutAt: r.clockOutAt,
+      clockOutLat: r.clockOutLat,
+      clockOutLng: r.clockOutLng,
+    })),
+  });
+});
+
 export default router;
