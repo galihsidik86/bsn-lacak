@@ -95,6 +95,10 @@ const upsert = z.object({
   targetCollection: z.coerce.bigint().nonnegative().optional(),
   targetVisits: z.coerce.number().int().nonnegative().optional(),
   targetApprovalRate: z.coerce.number().int().min(0).max(100).optional(),
+  // CV — monthly budget pots. Stored as bigint so we don't lose precision
+  // on large branches; the UI renders them as Rp.
+  budgetOperational: z.coerce.bigint().nonnegative().optional(),
+  budgetCommission: z.coerce.bigint().nonnegative().optional(),
 });
 
 router.post('/', requireRole('ADMIN'), async (req, res) => {

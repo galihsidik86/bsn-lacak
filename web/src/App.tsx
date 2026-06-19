@@ -7,6 +7,7 @@ import { TweakRadio, TweakSection, TweakSelect, TweakToggle, TweaksPanel, useTwe
 import { useSegmen } from './data/queries';
 import { doLogout, useAuth } from './lib/auth';
 import { useEventStream } from './lib/useEventStream';
+import { useHeartbeat } from './lib/useHeartbeat';
 import { ChangePassword } from './screens/ChangePassword';
 import { Login } from './screens/Login';
 
@@ -234,6 +235,10 @@ export function App() {
   // this also runs before the conditional returns; the underlying connect
   // is no-op without a token.
   useEventStream();
+  // CU — heartbeat stamps lastSeenAt while a user is signed in + tab is
+  // focused. user check kept outside the hook so it can no-op during the
+  // public feedback flow below.
+  useHeartbeat(!!user);
 
   // Public feedback page — opened from an SMS link by the nasabah, who has
   // no account. Bypass auth + nav entirely; only the hash matters.

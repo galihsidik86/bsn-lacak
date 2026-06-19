@@ -112,6 +112,8 @@ export function ScreenScorecard() {
         rows={rows} year={year} month={month}
         onYear={setYear} onMonth={setMonth}
       />
+      <PresenceCard />
+      <BudgetPanel year={year} month={month} />
       <SlaPanel />
       <RadarPanel />
       <HeatmapPanel cells={cells} />
@@ -557,4 +559,137 @@ function cellColor(outstanding: number, max: number, kol: string): string {
   const chroma = 0.08 + intensity * 0.10;
   const light = 0.94 - intensity * 0.22;
   return `oklch(${light} ${chroma} ${hue})`;
+}
+
+// CU — presence card. Refreshes every 30s. Shows who's online + by role.
+interface PresenceRow {
+  id: string; username: string; nama: string; role: string;
+  branch: { kode: string; nama: string } | null;
+  lastSeenAt: string;
+}
+async function fetchPresence(): Promise<{ windowMinutes: number; rows: PresenceRow[] }> {
+  const t = tokenStore.get();
+  const h: Record<string, string> = {};
+  if (t) h.Authorization = `Bearer ${t}`;
+  return (await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/users/presence`,
+    { withCredentials: true, headers: h })).data;
+}
+function PresenceCard() {
+  const q = useQuery({ queryKey: ['presence'], queryFn: fetchPresence, refetchInterval: 30_000 });
+  if (q.isPending) return null;
+  if (q.error) return null;
+  const rows = q.data?.rows ?? [];
+  const byRole = rows.reduce((m, r) => { m[r.role] = (m[r.role] ?? 0) + 1; return m; }, {} as Record<string, number>);
+
+  return (
+    <div className="card fade-up" style={{ overflow: 'hidden' }}>
+      <div className="between card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
+        <div>
+          <div className="section-title">Online sekarang · {rows.length}</div>
+          <div className="page-sub">
+            Aktivitas {q.data?.windowMinutes}m terakhir · ADMIN {byRole.ADMIN ?? 0} · SUP {byRole.SUPERVISOR ?? 0} · PETUGAS {byRole.PETUGAS ?? 0}
+          </div>
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <EmptyState title="Tidak ada user online" />
+      ) : (
+        <div style={{ padding: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {rows.map(r => {
+            const ago = Math.round((Date.now() - new Date(r.lastSeenAt).getTime()) / 1000);
+            return (
+              <div key={r.id} className="chip" style={{
+                background: r.role === 'ADMIN' ? 'var(--col-macet-soft)'
+                  : r.role === 'SUPERVISOR' ? 'var(--col-dpk-soft)' : 'var(--accent-soft)',
+                color: r.role === 'ADMIN' ? 'var(--col-macet)'
+                  : r.role === 'SUPERVISOR' ? 'var(--col-dpk)' : 'var(--accent-ink)',
+                fontSize: 11.5, padding: '4px 8px',
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: 99, background: 'var(--accent)', display: 'inline-block', marginRight: 2 }} />
+                {r.nama} <span className="mono" style={{ opacity: 0.75 }}>· {r.role[0]}</span>
+                <span className="muted" style={{ marginLeft: 4, fontWeight: 500 }}>{ago < 60 ? `${ago}s` : `${Math.round(ago / 60)}m`}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// CV — branch budget tracker.
+interface BudgetRow {
+  branchId: string; branchKode: string; branchNama: string;
+  budgetOperational: number; budgetCommission: number;
+  commissionUsed: number; commissionPct: number;
+}
+interface BudgetResponse {
+  year: number; month: number;
+  rows: BudgetRow[];
+  total: { budgetOperational: number; budgetCommission: number; commissionUsed: number };
+}
+async function fetchBudget(year: number, month: number): Promise<BudgetResponse> {
+  const t = tokenStore.get();
+  const h: Record<string, string> = {};
+  if (t) h.Authorization = `Bearer ${t}`;
+  return (await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/analytics/branch-budget`,
+    { withCredentials: true, headers: h, params: { year, month } })).data;
+}
+function BudgetPanel({ year, month }: { year: number; month: number }) {
+  const q = useQuery({ queryKey: ['branch-budget', year, month], queryFn: () => fetchBudget(year, month) });
+  if (q.isPending) return <div className="card fade-up"><Skeleton h={200} /></div>;
+  if (q.error) return null;
+  const d = q.data!;
+  return (
+    <div className="card fade-up" style={{ overflow: 'hidden' }}>
+      <div className="card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
+        <div className="section-title">Budget Cabang · {year}-{String(month).padStart(2, '0')}</div>
+        <div className="page-sub">
+          Komisi terpakai bulan ini = sum(tertagih × commissionBps). Operasional belum tertrack — placeholder.
+        </div>
+      </div>
+      <div className="grid gap-3" style={{ padding: 16, gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <Tile label="Total budget operasional" value={RPjt(d.total.budgetOperational)} />
+        <Tile label="Total budget komisi" value={RPjt(d.total.budgetCommission)} />
+        <Tile label="Total komisi terpakai" value={RPjt(d.total.commissionUsed)} />
+      </div>
+      <table className="table">
+        <thead><tr><th>Cabang</th><th style={{ textAlign: 'right' }}>Operasional</th>
+          <th style={{ textAlign: 'right' }}>Budget Komisi</th>
+          <th style={{ textAlign: 'right' }}>Komisi Terpakai</th>
+          <th>Utilization</th></tr></thead>
+        <tbody>
+          {d.rows.map(r => (
+            <tr key={r.branchId}>
+              <td>
+                <div style={{ fontWeight: 700 }}>{r.branchNama}</div>
+                <div className="muted mono" style={{ fontSize: 11 }}>{r.branchKode}</div>
+              </td>
+              <td className="num" style={{ textAlign: 'right' }}>{RPjt(r.budgetOperational)}</td>
+              <td className="num" style={{ textAlign: 'right' }}>{RPjt(r.budgetCommission)}</td>
+              <td className="num" style={{ textAlign: 'right', fontWeight: 700 }}>{RPjt(r.commissionUsed)}</td>
+              <td>
+                <div style={{ minWidth: 120, position: 'relative', height: 8, background: 'var(--surface-2)', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{
+                    width: `${Math.min(100, r.commissionPct)}%`, height: '100%',
+                    background: r.commissionPct > 100 ? 'var(--col-macet)'
+                      : r.commissionPct > 80 ? 'var(--gold-ink)' : 'var(--accent)',
+                  }} />
+                </div>
+                <div className="num muted" style={{ fontSize: 11, marginTop: 2 }}>{r.commissionPct}%</div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function Tile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="card card-pad" style={{ background: 'var(--surface-2)', boxShadow: 'none', padding: 14 }}>
+      <div className="muted" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>{label}</div>
+      <div className="num" style={{ fontWeight: 800, fontSize: 18, marginTop: 2 }}>{value}</div>
+    </div>
+  );
 }

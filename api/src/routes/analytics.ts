@@ -7,6 +7,7 @@ import {
   monthlyClosing, toClosingCsv, branchScorecard, portfolioHeatmap,
   pendingAgingReport, petugasRace, churnRiskList, branchRadar,
   monthlyLeaderboard, supervisorSlaStats, commissionForMonth, periodDelta,
+  branchBudgetForMonth,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -98,6 +99,20 @@ router.get('/scorecard', async (req, res) => {
     branchId: g.branchId, year: parsed.data.year, month: parsed.data.month,
   });
   res.json({ year: parsed.data.year, month: parsed.data.month, rows });
+});
+
+// Branch budget tracker (CV). Defaults to current month.
+router.get('/branch-budget', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const now = new Date();
+  const year = Number.parseInt(String(req.query.year ?? now.getFullYear()), 10);
+  const month = Number.parseInt(String(req.query.month ?? now.getMonth() + 1), 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return res.status(400).json({ error: 'bad_request' });
+  }
+  const data = await branchBudgetForMonth({ branchId: g.branchId, year, month });
+  res.json(data);
 });
 
 // Period delta (CI) — this-month vs last-month for collection, visits,

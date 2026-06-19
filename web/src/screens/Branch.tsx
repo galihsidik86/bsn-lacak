@@ -18,6 +18,8 @@ interface Branch {
   targetCollection: string | number;
   targetVisits: number;
   targetApprovalRate: number;
+  budgetOperational: string | number;
+  budgetCommission: string | number;
   _count: { petugas: number; nasabah: number; users: number };
   createdAt: string;
   updatedAt: string;
@@ -42,6 +44,8 @@ interface UpsertPayload {
   targetCollection?: string | number;
   targetVisits?: number;
   targetApprovalRate?: number;
+  budgetOperational?: string | number;
+  budgetCommission?: string | number;
 }
 
 async function createBranch(p: UpsertPayload) {
@@ -144,12 +148,16 @@ function BranchForm({ initial, onClose, onSaved }: {
   const [targetCollection, setTargetCollection] = useState(String(initial?.targetCollection ?? '0'));
   const [targetVisits, setTargetVisits] = useState(String(initial?.targetVisits ?? '0'));
   const [targetApprovalRate, setTargetApprovalRate] = useState(String(initial?.targetApprovalRate ?? '85'));
+  const [budgetOperational, setBudgetOperational] = useState(String(initial?.budgetOperational ?? '0'));
+  const [budgetCommission, setBudgetCommission] = useState(String(initial?.budgetCommission ?? '0'));
   const [err, setErr] = useState<string | null>(null);
 
   const targetPayload = () => ({
     targetCollection: targetCollection.replace(/[^\d]/g, '') || '0',
     targetVisits: Number(targetVisits.replace(/[^\d]/g, '')) || 0,
     targetApprovalRate: Math.max(0, Math.min(100, Number(targetApprovalRate) || 0)),
+    budgetOperational: budgetOperational.replace(/[^\d]/g, '') || '0',
+    budgetCommission: budgetCommission.replace(/[^\d]/g, '') || '0',
   });
 
   const isEdit = !!initial;
@@ -229,6 +237,16 @@ function BranchForm({ initial, onClose, onSaved }: {
               <Field label="Approval Rate %">
                 <input className="input" type="number" min={0} max={100}
                   value={targetApprovalRate} onChange={e => setTargetApprovalRate(e.target.value)} />
+              </Field>
+            </div>
+            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginTop: 10 }}>
+              <Field label="Budget Operasional (Rp)">
+                <input className="input" type="text" inputMode="numeric"
+                  value={budgetOperational} onChange={e => setBudgetOperational(e.target.value)} placeholder="0" />
+              </Field>
+              <Field label="Budget Komisi (Rp)">
+                <input className="input" type="text" inputMode="numeric"
+                  value={budgetCommission} onChange={e => setBudgetCommission(e.target.value)} placeholder="0" />
               </Field>
             </div>
           </div>

@@ -211,4 +211,46 @@ router.post('/:id/reset-password', async (req, res) => {
   res.json({ ok: true, tempPassword: password });
 });
 
+// CU — presence. The SPA pings this every ~60s while focused; the row's
+// lastSeenAt is what the "online now" list reads. updateMany with a
+// where-id is cheaper than findUnique+update and we don't care about the
+// returned row.
+router.post('/heartbeat', async (req, res) => {
+  await prisma.user.updateMany({
+    where: { id: req.user!.sub },
+    data: { lastSeenAt: new Date() },
+  });
+  res.json({ ok: true });
+});
+
+// "Who's online right now". Default 5-minute window. SUPERVISOR sees only
+// their branch + ADMINs (HQ branchId=null); ADMIN sees everyone.
+router.get('/presence', async (req, res) => {
+  if (req.user?.role === 'PETUGAS') return res.status(403).json({ error: 'forbidden' });
+  const windowMin = Number.parseInt(String(req.query.windowMin ?? '5'), 10);
+  const window = Number.isFinite(windowMin) && windowMin > 0 && windowMin <= 60 ? windowMin : 5;
+  const since = new Date(Date.now() - window * 60_000);
+  const where: Record<string, unknown> = {
+    active: true,
+    lastSeenAt: { gte: since },
+  };
+  if (req.user?.role === 'SUPERVISOR') {
+    where.OR = [
+      { branchId: req.user.branchId },
+      { role: 'ADMIN' },
+    ];
+  }
+  const rows = await prisma.user.findMany({
+    where,
+    select: {
+      id: true, username: true, nama: true, role: true,
+      branch: { select: { kode: true, nama: true } },
+      lastSeenAt: true,
+    },
+    orderBy: { lastSeenAt: 'desc' },
+    take: 200,
+  });
+  res.json({ windowMinutes: window, rows });
+});
+
 export default router;

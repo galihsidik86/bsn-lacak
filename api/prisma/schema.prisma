@@ -32,6 +32,11 @@ model Branch {
   targetCollection   BigInt  @default(0)   // total tertagih (Rp) per bulan
   targetVisits       Int     @default(0)   // jumlah kunjungan per bulan
   targetApprovalRate Int     @default(85)  // approval rate % (0-100)
+  // CV — monthly budget (Rp) per branch. Operational covers transport,
+  // pulsa, etc; commission is the pot from which petugas komisi is paid.
+  // Both default zero so untouched branches don't show fake utilization.
+  budgetOperational  BigInt  @default(0)
+  budgetCommission   BigInt  @default(0)
   users        User[]
   petugas      Petugas[]
   nasabah      Nasabah[]
@@ -103,6 +108,10 @@ model User {
   failedAttempts      Int            @default(0)
   lockedUntil         DateTime?
   lastLoginAt         DateTime?
+  // CU — presence: stamped each time the user hits /api/users/heartbeat
+  // (the SPA fires one every 60s while focused). "Online now" lists pull
+  // users whose lastSeenAt is within the last few minutes.
+  lastSeenAt          DateTime?
   passwordChangedAt   DateTime       @default(now())
   mustChangePassword  Boolean        @default(false)
   active              Boolean        @default(true)

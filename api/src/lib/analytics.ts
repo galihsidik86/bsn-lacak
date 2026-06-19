@@ -423,6 +423,75 @@ export async function periodDelta(opts: { branchId?: string | null }): Promise<P
   };
 }
 
+// CV — branch budget tracker. Returns per-branch (budget vs actual) for
+// commission this month. Operational spend isn't tracked anywhere yet so
+// the UI shows the budget pot only for transparency.
+export interface BranchBudgetRow {
+  branchId: string; branchKode: string; branchNama: string;
+  budgetOperational: number;
+  budgetCommission: number;
+  commissionUsed: number;
+  commissionPct: number;
+}
+
+export async function branchBudgetForMonth(opts: {
+  branchId?: string | null;
+  year: number;
+  month: number;
+}): Promise<{ year: number; month: number; rows: BranchBudgetRow[]; total: { budgetOperational: number; budgetCommission: number; commissionUsed: number } }> {
+  const start = new Date(opts.year, opts.month - 1, 1);
+  const end = new Date(opts.year, opts.month, 1);
+  const branchFilter = opts.branchId
+    ? Prisma.sql`AND b."id" = ${opts.branchId}`
+    : Prisma.empty;
+
+  // Sum collected × commissionBps per petugas → branch in a single query.
+  // We need integer math friendly to bigint inputs, so cast the bps to
+  // bigint to keep the result type aligned.
+  const rows = await prisma.$queryRaw<Array<{
+    branchId: string; branchKode: string; branchNama: string;
+    budgetOperational: bigint; budgetCommission: bigint;
+    commissionUsed: bigint;
+  }>>`
+    SELECT
+      b."id" as "branchId", b."kode" as "branchKode", b."nama" as "branchNama",
+      b."budgetOperational", b."budgetCommission",
+      COALESCE(SUM(
+        (CASE WHEN pay."status" = 'berhasil' THEN pay."nominal" ELSE 0 END)
+        * p."commissionBps"
+        / 10000
+      ), 0) as "commissionUsed"
+    FROM "Branch" b
+    LEFT JOIN "Petugas" p ON p."branchId" = b."id" AND p."active" = true
+    LEFT JOIN "Nasabah" n ON n."petugasId" = p."id"
+    LEFT JOIN "Pembayaran" pay
+      ON pay."nasabahId" = n."id"
+      AND pay."tanggal" >= ${start}
+      AND pay."tanggal" < ${end}
+    WHERE b."active" = true ${branchFilter}
+    GROUP BY b."id", b."kode", b."nama", b."budgetOperational", b."budgetCommission"
+    ORDER BY b."kode"
+  `;
+
+  const out: BranchBudgetRow[] = rows.map(r => {
+    const used = Number(r.commissionUsed);
+    const budget = Number(r.budgetCommission);
+    return {
+      branchId: r.branchId, branchKode: r.branchKode, branchNama: r.branchNama,
+      budgetOperational: Number(r.budgetOperational),
+      budgetCommission: budget,
+      commissionUsed: used,
+      commissionPct: budget === 0 ? 0 : Math.round((used / budget) * 100),
+    };
+  });
+  const total = out.reduce((s, r) => ({
+    budgetOperational: s.budgetOperational + r.budgetOperational,
+    budgetCommission: s.budgetCommission + r.budgetCommission,
+    commissionUsed: s.commissionUsed + r.commissionUsed,
+  }), { budgetOperational: 0, budgetCommission: 0, commissionUsed: 0 });
+  return { year: opts.year, month: opts.month, rows: out, total };
+}
+
 // CD — commission table per petugas for one (year, month). Multiplies
 // `commissionBps` against successful pembayaran in the window. Caller-side
 // branch scope (admin sees all; supervisor passes branchId).
