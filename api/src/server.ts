@@ -52,12 +52,14 @@ import systemHealth from './routes/systemHealth.js';
 import escalation from './routes/escalation.js';
 import leaves from './routes/leaves.js';
 import tags from './routes/tags.js';
+import restructures from './routes/restructures.js';
 import { startEscalationWorker, stopEscalationWorker } from './workers/escalationWorker.js';
 import { startWeeklyDigestWorker, stopWeeklyDigestWorker } from './workers/weeklyDigestWorker.js';
 import { startInactivityWorker, stopInactivityWorker } from './workers/inactivityWorker.js';
 import { startLeaveAssignmentWorker, stopLeaveAssignmentWorker } from './workers/leaveAssignmentWorker.js';
 import { startStaleNasabahWorker, stopStaleNasabahWorker } from './workers/staleNasabahWorker.js';
 import { startTagRuleWorker, stopTagRuleWorker } from './workers/tagRuleWorker.js';
+import { startJanjiReminderWorker, stopJanjiReminderWorker } from './workers/janjiReminderWorker.js';
 import { startWebhookDispatcher } from './lib/webhookDispatcher.js';
 import { initSentry, sentryErrorHandler, setupSentryRequest } from './lib/sentry.js';
 import { apiKeyAuth } from './lib/apiKey.js';
@@ -171,6 +173,7 @@ app.use('/api/system-health', systemHealth);
 app.use('/api/escalation', escalation);
 app.use('/api/leaves', leaves);
 app.use('/api/tags', tags);
+app.use('/api/restructures', restructures);
 
 // Static uploads — Cache-Control prevents stale photo IDs from sticking.
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {
@@ -219,6 +222,7 @@ startInactivityWorker();
 startLeaveAssignmentWorker();
 startStaleNasabahWorker();
 startTagRuleWorker();
+startJanjiReminderWorker();
 if (env.NODE_ENV !== 'test') startWebhookDispatcher();
 const stopSamplers = startMetricsSamplers();
 const stopRetention = startAuditRetention();
@@ -239,6 +243,7 @@ const shutdown = (sig: string) => {
   stopLeaveAssignmentWorker();
   stopStaleNasabahWorker();
   stopTagRuleWorker();
+  stopJanjiReminderWorker();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
 };

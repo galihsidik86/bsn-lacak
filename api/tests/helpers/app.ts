@@ -33,6 +33,7 @@ import systemHealth from '../../src/routes/systemHealth.js';
 import escalation from '../../src/routes/escalation.js';
 import leaves from '../../src/routes/leaves.js';
 import tags from '../../src/routes/tags.js';
+import restructures from '../../src/routes/restructures.js';
 import auditRoutes from '../../src/routes/audit.js';
 import users from '../../src/routes/users.js';
 import branches from '../../src/routes/branches.js';
@@ -73,6 +74,7 @@ export function buildApp() {
   app.use('/api/escalation', escalation);
   app.use('/api/leaves', leaves);
   app.use('/api/tags', tags);
+  app.use('/api/restructures', restructures);
   app.use('/api/audit', auditRoutes);
   app.use('/api/users', users);
   app.use('/api/branches', branches);

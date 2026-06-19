@@ -146,6 +146,8 @@ model User {
   createdTags         Tag[]                 @relation("TagCreator")
   createdTagRules     TagRule[]             @relation("TagRuleCreator")
   authoredNasabahNotes NasabahNote[]        @relation("NasabahNoteAuthor")
+  proposedRestructures NasabahRestructure[] @relation("RestructureProposer")
+  decidedRestructures  NasabahRestructure[] @relation("RestructureDecider")
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -415,6 +417,7 @@ model Nasabah {
   escalations    EscalationTicket[]
   tags           NasabahTag[]
   notes          NasabahNote[]
+  restructures   NasabahRestructure[]
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -798,4 +801,40 @@ model NasabahNote {
   createdAt DateTime @default(now())
 
   @@index([nasabahId, createdAt])
+}
+
+// DL — restructure / pelunasan dipercepat proposal. Petugas/Supervisor
+// drafts new sisa/angsuran/tenor; supervisor (or admin) approves to
+// flip Nasabah's plan. Old values stored so audit trail is preserved
+// even if Nasabah was later edited.
+enum RestructureStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model NasabahRestructure {
+  id            String            @id @default(cuid())
+  nasabah       Nasabah           @relation(fields: [nasabahId], references: [id], onDelete: Cascade)
+  nasabahId     String
+  status        RestructureStatus @default(PENDING)
+  reason        String
+  oldSisa       BigInt
+  newSisa       BigInt
+  oldAngsuran   BigInt
+  newAngsuran   BigInt
+  oldTenor      Int
+  newTenor      Int
+  proposedBy    User              @relation("RestructureProposer", fields: [proposedById], references: [id])
+  proposedById  String
+  decidedBy     User?             @relation("RestructureDecider", fields: [decidedById], references: [id])
+  decidedById   String?
+  decisionNote  String?
+  decidedAt     DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([nasabahId, createdAt])
+  @@index([status])
 }

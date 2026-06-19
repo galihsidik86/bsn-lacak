@@ -88,6 +88,8 @@ const schema = z.object({
   // DH — auto-tag sweep. Runs once an hour but only does work at this
   // hour-of-day so it doesn't churn through nasabah constantly.
   TAG_RULE_HOUR: z.coerce.number().int().min(0).max(23).default(8),
+  // DM — JANJI deadline reminder push to petugas. Fires once a day.
+  JANJI_REMINDER_HOUR: z.coerce.number().int().min(0).max(23).default(8),
   // Public-facing base URL used to compose share links (receipt PDF, feedback).
   // Defaults to WEB_ORIGIN; override in prod when behind a separate ingress.
   PUBLIC_BASE_URL: z.string().url().optional(),

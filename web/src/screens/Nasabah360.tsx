@@ -255,6 +255,9 @@ export function ScreenNasabah360({ nasabahId, onClose }: { nasabahId: string; on
           )}
         </Section>
 
+        {/* DL — restructure */}
+        <RestructureSection nasabah={n} />
+
         {/* DI — internal notes */}
         <NotesSection nasabahId={nasabahId} />
 
@@ -430,6 +433,194 @@ function TimelineSummary({ type, data }: { type: string; data: any }) {
     );
   }
   return null;
+}
+
+interface RestructureRow {
+  id: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  reason: string;
+  oldSisa: string; newSisa: string;
+  oldAngsuran: string; newAngsuran: string;
+  oldTenor: number; newTenor: number;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+  proposedBy: { username: string; nama: string; role: string };
+  decidedBy: { username: string; nama: string } | null;
+}
+
+const STATUS_STYLE: Record<RestructureRow['status'], { bg: string; fg: string; label: string }> = {
+  PENDING:   { bg: 'oklch(0.93 0.05 75)',    fg: 'oklch(0.4 0.13 75)', label: 'Pending' },
+  APPROVED:  { bg: 'var(--col-lancar-soft)', fg: 'var(--col-lancar)',  label: 'Disetujui' },
+  REJECTED:  { bg: 'var(--col-macet-soft)',  fg: 'var(--col-macet)',   label: 'Ditolak' },
+  CANCELLED: { bg: 'var(--surface-2)',       fg: 'var(--ink-3)',       label: 'Dibatalkan' },
+};
+
+function fmtRp(v: string | number): string {
+  return 'Rp ' + Number(v).toLocaleString('id-ID');
+}
+
+function RestructureSection({ nasabah }: { nasabah: NasabahDetail }) {
+  const qc = useQueryClient();
+  const me = useAuth(s => s.user);
+  const [open, setOpen] = useState(false);
+  const q = useQuery<RestructureRow[]>({
+    queryKey: ['nasabah-restructures', nasabah.id],
+    queryFn: async () => (await axios.get(`${BASE}/restructures/nasabah/${nasabah.id}`,
+      { withCredentials: true, headers: headers() })).data,
+  });
+  const decide = useMutation({
+    mutationFn: async (p: { id: string; decision: 'APPROVED' | 'REJECTED'; note?: string }) =>
+      axios.patch(`${BASE}/restructures/${p.id}/decision`,
+        { decision: p.decision, note: p.note },
+        { withCredentials: true, headers: headers() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['nasabah-restructures', nasabah.id] });
+      qc.invalidateQueries({ queryKey: ['nasabah-360', nasabah.id] });
+    },
+  });
+  const cancel = useMutation({
+    mutationFn: async (id: string) =>
+      axios.delete(`${BASE}/restructures/${id}`, { withCredentials: true, headers: headers() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['nasabah-restructures', nasabah.id] }),
+  });
+  const rows = q.data ?? [];
+  const hasPending = rows.some(r => r.status === 'PENDING');
+  const canDecide = me?.role === 'SUPERVISOR' || me?.role === 'ADMIN';
+
+  return (
+    <Section title={`Restructure (${rows.length})`}>
+      <div style={{ display: 'grid', gap: 10 }}>
+        <div className="center gap-2">
+          <button className="btn btn-sm" disabled={hasPending} onClick={() => setOpen(true)}>
+            <Ic.plus size={14} />Ajukan restructure
+          </button>
+          {hasPending && <span className="muted" style={{ fontSize: 12 }}>Ada pengajuan PENDING — tunggu keputusan dulu.</span>}
+        </div>
+        {q.isLoading ? <Skeleton h={80} />
+          : rows.length === 0 ? <EmptyState title="Belum ada pengajuan" />
+          : rows.map(r => {
+            const s = STATUS_STYLE[r.status];
+            const canCancel = r.status === 'PENDING' && (me?.role === 'ADMIN' || me?.id === r.proposedBy.username);
+            return (
+              <div key={r.id} className="card card-pad" style={{ boxShadow: 'none', background: 'var(--surface-2)' }}>
+                <div className="between" style={{ marginBottom: 6 }}>
+                  <div className="center gap-2">
+                    <span className="chip" style={{ background: s.bg, color: s.fg, fontWeight: 700, fontSize: 11 }}>{s.label}</span>
+                    <span style={{ fontSize: 12 }}>oleh <strong>{r.proposedBy.nama || r.proposedBy.username}</strong> ({r.proposedBy.role})</span>
+                  </div>
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    {new Date(r.createdAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(3, 1fr)', fontSize: 12.5, marginBottom: 6 }}>
+                  <Kv label="Sisa" value={`${fmtRp(r.oldSisa)} → ${fmtRp(r.newSisa)}`} />
+                  <Kv label="Angsuran" value={`${fmtRp(r.oldAngsuran)} → ${fmtRp(r.newAngsuran)}`} />
+                  <Kv label="Tenor" value={`${r.oldTenor} → ${r.newTenor}`} />
+                </div>
+                <div style={{ fontSize: 12.5, color: 'var(--ink-2)' }}>
+                  <strong>Alasan:</strong> {r.reason}
+                </div>
+                {r.decidedAt && (
+                  <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                    Diputus {new Date(r.decidedAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {r.decidedBy ? ` oleh ${r.decidedBy.nama || r.decidedBy.username}` : ''}
+                    {r.decisionNote ? ` — ${r.decisionNote}` : ''}
+                  </div>
+                )}
+                {r.status === 'PENDING' && (
+                  <div className="center gap-2" style={{ marginTop: 8 }}>
+                    {canDecide && (
+                      <>
+                        <button className="btn btn-sm btn-primary" disabled={decide.isPending}
+                          onClick={() => decide.mutate({ id: r.id, decision: 'APPROVED' })}>
+                          <Ic.check size={12} />Setujui
+                        </button>
+                        <button className="btn btn-sm" disabled={decide.isPending}
+                          onClick={() => decide.mutate({ id: r.id, decision: 'REJECTED' })}>
+                          <Ic.x size={12} />Tolak
+                        </button>
+                      </>
+                    )}
+                    {canCancel && (
+                      <button className="btn btn-sm btn-ghost" disabled={cancel.isPending}
+                        onClick={() => cancel.mutate(r.id)}>
+                        Batalkan
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+      </div>
+      {open && (
+        <RestructureProposeModal nasabah={nasabah} onClose={() => setOpen(false)}
+          onSaved={() => { setOpen(false); q.refetch(); }} />
+      )}
+    </Section>
+  );
+}
+
+function RestructureProposeModal({ nasabah, onClose, onSaved }: {
+  nasabah: NasabahDetail; onClose: () => void; onSaved: () => void;
+}) {
+  const [newSisa, setNewSisa] = useState(String(nasabah.sisa));
+  const [newAngsuran, setNewAngsuran] = useState(String(nasabah.angsuran));
+  const [newTenor, setNewTenor] = useState(String(nasabah.tenor));
+  const [reason, setReason] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: async () => axios.post(`${BASE}/restructures`, {
+      nasabahId: nasabah.id,
+      newSisa: Number(newSisa),
+      newAngsuran: Number(newAngsuran),
+      newTenor: Number(newTenor),
+      reason: reason.trim(),
+    }, { withCredentials: true, headers: headers() }),
+    onSuccess: () => onSaved(),
+    onError: (e: any) => setErr(e?.response?.data?.error === 'pending_exists'
+      ? 'Sudah ada pengajuan PENDING untuk nasabah ini.' : 'Gagal menyimpan.'),
+  });
+  return (
+    <Modal onClose={onClose} max={480}>
+      <div className="modal-head">
+        <div style={{ flex: 1 }}><div className="section-title">Ajukan Restructure</div></div>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+      </div>
+      <div className="modal-body" style={{ display: 'grid', gap: 10 }}>
+        <div className="grid gap-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <Field label="Sisa lama"><input className="input" readOnly value={fmtRp(nasabah.sisa)} /></Field>
+          <Field label="Sisa baru"><input className="input" type="number" min={0} value={newSisa} onChange={e => setNewSisa(e.target.value)} /></Field>
+          <Field label="Angsuran lama"><input className="input" readOnly value={fmtRp(nasabah.angsuran)} /></Field>
+          <Field label="Angsuran baru"><input className="input" type="number" min={0} value={newAngsuran} onChange={e => setNewAngsuran(e.target.value)} /></Field>
+          <Field label="Tenor lama"><input className="input" readOnly value={`${nasabah.tenor} bln`} /></Field>
+          <Field label="Tenor baru (bln)"><input className="input" type="number" min={1} max={360} value={newTenor} onChange={e => setNewTenor(e.target.value)} /></Field>
+        </div>
+        <Field label="Alasan">
+          <textarea className="input" rows={3} maxLength={2000} value={reason}
+            onChange={e => setReason(e.target.value)} placeholder="Mis. pelunasan dipercepat dengan diskon" />
+        </Field>
+        {err && <div style={{ color: 'var(--col-macet)', fontSize: 12, fontWeight: 600 }}>{err}</div>}
+      </div>
+      <div className="modal-foot">
+        <button className="btn" onClick={onClose}>Batal</button>
+        <button className="btn btn-primary" disabled={!reason.trim() || save.isPending}
+          onClick={() => save.mutate()}>
+          {save.isPending ? 'Menyimpan…' : 'Ajukan'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>{label}</div>
+      {children}
+    </div>
+  );
 }
 
 function BlacklistToggle({ nasabah }: { nasabah: NasabahDetail }) {
