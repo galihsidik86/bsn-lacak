@@ -72,6 +72,13 @@ const schema = z.object({
   // CK — escalation sweep. Once every 6h is plenty since the trigger
   // (days without payment) moves slowly.
   ESCALATION_POLL_MS: z.coerce.number().int().positive().default(6 * 60 * 60 * 1000),
+  // CN — petugas weekly digest. ISO week dedup + Mon-anchored default.
+  WEEKLY_DIGEST_ENABLED: z.enum(['true', 'false']).default('true').transform(v => v === 'true'),
+  WEEKLY_DIGEST_DAY_OF_WEEK: z.coerce.number().int().min(0).max(6).default(1),  // 0=Sun..6=Sat
+  WEEKLY_DIGEST_HOUR: z.coerce.number().int().min(0).max(23).default(6),
+  // CO — inactivity detector. Daily at the configured hour; threshold in days.
+  INACTIVITY_DAYS: z.coerce.number().int().min(1).max(60).default(3),
+  INACTIVITY_CHECK_HOUR: z.coerce.number().int().min(0).max(23).default(8),
   // Public-facing base URL used to compose share links (receipt PDF, feedback).
   // Defaults to WEB_ORIGIN; override in prod when behind a separate ingress.
   PUBLIC_BASE_URL: z.string().url().optional(),
