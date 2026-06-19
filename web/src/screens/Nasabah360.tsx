@@ -258,6 +258,9 @@ export function ScreenNasabah360({ nasabahId, onClose }: { nasabahId: string; on
         {/* DL — restructure */}
         <RestructureSection nasabah={n} />
 
+        {/* DN — documents */}
+        <DocumentsSection nasabahId={nasabahId} />
+
         {/* DI — internal notes */}
         <NotesSection nasabahId={nasabahId} />
 
@@ -685,6 +688,135 @@ function BlacklistToggle({ nasabah }: { nasabah: NasabahDetail }) {
         </Modal>
       )}
     </>
+  );
+}
+
+interface DocRow {
+  id: string;
+  kind: 'KTP' | 'KONTRAK' | 'AGUNAN' | 'SLIP_GAJI' | 'LAIN';
+  fileName: string; filePath: string;
+  mimeType: string; sizeBytes: number;
+  notes: string | null;
+  createdAt: string;
+  uploadedBy: { username: string; nama: string } | null;
+}
+
+const KIND_LABEL: Record<DocRow['kind'], string> = {
+  KTP: 'KTP', KONTRAK: 'Kontrak', AGUNAN: 'Agunan',
+  SLIP_GAJI: 'Slip gaji', LAIN: 'Lain-lain',
+};
+
+function humanBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function DocumentsSection({ nasabahId }: { nasabahId: string }) {
+  const qc = useQueryClient();
+  const me = useAuth(s => s.user);
+  const q = useQuery<DocRow[]>({
+    queryKey: ['nasabah-docs', nasabahId],
+    queryFn: async () => (await axios.get(`${BASE}/nasabah-docs/${nasabahId}`,
+      { withCredentials: true, headers: headers() })).data,
+  });
+  const [file, setFile] = useState<File | null>(null);
+  const [kind, setKind] = useState<DocRow['kind']>('KTP');
+  const [notes, setNotes] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const upload = useMutation({
+    mutationFn: async () => {
+      if (!file) throw new Error('no file');
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('kind', kind);
+      if (notes) fd.append('notes', notes);
+      return axios.post(`${BASE}/nasabah-docs/${nasabahId}`, fd,
+        { withCredentials: true, headers: headers() });
+    },
+    onSuccess: () => {
+      setFile(null); setNotes(''); setErr(null);
+      qc.invalidateQueries({ queryKey: ['nasabah-docs', nasabahId] });
+    },
+    onError: (e: any) => setErr(e?.response?.data?.error ?? 'Gagal upload.'),
+  });
+  const remove = useMutation({
+    mutationFn: async (id: string) =>
+      axios.delete(`${BASE}/nasabah-docs/${nasabahId}/${id}`,
+        { withCredentials: true, headers: headers() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['nasabah-docs', nasabahId] }),
+  });
+  const canMutate = me?.role === 'SUPERVISOR' || me?.role === 'ADMIN';
+  const rows = q.data ?? [];
+
+  return (
+    <Section title={`Dokumen (${rows.length})`}>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {canMutate && (
+          <div className="card card-pad" style={{ boxShadow: 'none', background: 'var(--surface-2)' }}>
+            <div className="grid gap-2" style={{ gridTemplateColumns: '1fr 1fr', alignItems: 'end' }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Jenis dokumen</div>
+                <select className="input" value={kind} onChange={e => setKind(e.target.value as DocRow['kind'])}>
+                  {(Object.keys(KIND_LABEL) as DocRow['kind'][]).map(k =>
+                    <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>File (JPG/PNG/PDF, max 10MB)</div>
+                <input className="input" type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  onChange={e => setFile(e.target.files?.[0] ?? null)} />
+              </div>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Catatan (opsional)</div>
+              <input className="input" value={notes} onChange={e => setNotes(e.target.value)}
+                maxLength={500} placeholder="Mis. KTP istri, ada di halaman 2 kontrak" />
+            </div>
+            {err && <div style={{ color: 'var(--col-macet)', fontSize: 12, fontWeight: 600, marginTop: 6 }}>{err}</div>}
+            <div className="center gap-2" style={{ marginTop: 8 }}>
+              <button className="btn btn-primary" disabled={!file || upload.isPending}
+                onClick={() => upload.mutate()}>
+                <Ic.plus size={14} />{upload.isPending ? 'Mengunggah…' : 'Upload'}
+              </button>
+            </div>
+          </div>
+        )}
+        {q.isLoading ? <Skeleton h={60} />
+          : rows.length === 0 ? <EmptyState title="Belum ada dokumen" />
+          : (
+            <table className="table">
+              <thead><tr><th>Jenis</th><th>Nama file</th><th>Ukuran</th><th>Catatan</th><th>Diunggah</th><th></th></tr></thead>
+              <tbody>
+                {rows.map(d => (
+                  <tr key={d.id}>
+                    <td><span className="chip" style={{ fontSize: 11 }}>{KIND_LABEL[d.kind]}</span></td>
+                    <td>
+                      <a href={`/${d.filePath}`} target="_blank" rel="noreferrer"
+                        style={{ fontWeight: 600, color: 'var(--accent)' }}>{d.fileName}</a>
+                    </td>
+                    <td className="muted">{humanBytes(d.sizeBytes)}</td>
+                    <td className="muted" style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.notes ?? '—'}</td>
+                    <td className="muted" style={{ fontSize: 11 }}>
+                      {new Date(d.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {d.uploadedBy && <div>{d.uploadedBy.nama || d.uploadedBy.username}</div>}
+                    </td>
+                    <td>
+                      {canMutate && (
+                        <button className="btn btn-sm btn-ghost" disabled={remove.isPending}
+                          onClick={() => remove.mutate(d.id)}>
+                          <Ic.x size={12} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+      </div>
+    </Section>
   );
 }
 

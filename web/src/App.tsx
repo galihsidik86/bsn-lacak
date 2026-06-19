@@ -48,6 +48,7 @@ const ScreenApiKeys = lazy(() => import('./screens/ApiKeys').then(m => ({ defaul
 const ScreenWebhooks = lazy(() => import('./screens/Webhooks').then(m => ({ default: m.ScreenWebhooks })));
 const ScreenLeaveCalendar = lazy(() => import('./screens/LeaveCalendar').then(m => ({ default: m.ScreenLeaveCalendar })));
 const ScreenPromiseTracker = lazy(() => import('./screens/PromiseTracker').then(m => ({ default: m.ScreenPromiseTracker })));
+const ScreenAttendanceDisputes = lazy(() => import('./screens/AttendanceDisputes').then(m => ({ default: m.ScreenAttendanceDisputes })));
 
 function ScreenFallback() {
   return (
@@ -60,7 +61,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'churn' | 'activity' | 'leaderboard' | 'system-health' | 'commission' | 'escalation' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks' | 'leave-calendar' | 'promise-tracker';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'churn' | 'activity' | 'leaderboard' | 'system-health' | 'commission' | 'escalation' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks' | 'leave-calendar' | 'promise-tracker' | 'attendance-disputes';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -93,6 +94,7 @@ function useNav(): NavGroup[] {
       { k: 'escalation', label: 'Escalation', icon: 'alert' },
       { k: 'leave-calendar', label: 'Kalender Cuti', icon: 'clock' },
       { k: 'promise-tracker', label: 'Tracker Janji', icon: 'wa' },
+      { k: 'attendance-disputes', label: 'Dispute Absensi', icon: 'alert' },
     ] },
     { group: 'Lapangan', items: [
       { k: 'wilayah', label: 'Wilayah Binaan', icon: 'map' },
@@ -154,6 +156,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   webhooks: ['Webhooks', 'Daftarkan URL eksternal untuk menerima event sistem'],
   'leave-calendar': ['Kalender Cuti', 'Visualisasi 30 hari semua cuti petugas lintas cabang + status substitute'],
   'promise-tracker': ['Tracker Janji', 'Daftar JANJI 30 hari dengan status ditepati / wanprestasi / menunggu'],
+  'attendance-disputes': ['Dispute Absensi', 'Antrian dispute clock-in / clock-out petugas; supervisor approve/reject'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -428,6 +431,7 @@ export function App() {
             {page === 'webhooks' && <ScreenWebhooks />}
             {page === 'leave-calendar' && <ScreenLeaveCalendar />}
             {page === 'promise-tracker' && <ScreenPromiseTracker />}
+            {page === 'attendance-disputes' && <ScreenAttendanceDisputes />}
           </Suspense>
         </main>
       </div>

@@ -148,6 +148,8 @@ model User {
   authoredNasabahNotes NasabahNote[]        @relation("NasabahNoteAuthor")
   proposedRestructures NasabahRestructure[] @relation("RestructureProposer")
   decidedRestructures  NasabahRestructure[] @relation("RestructureDecider")
+  uploadedNasabahDocuments NasabahDocument[] @relation("NasabahDocumentUploader")
+  decidedAttendanceDisputes AttendanceDispute[] @relation("AttendanceDisputeDecider")
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -241,6 +243,7 @@ model Petugas {
   leaves      PetugasLeave[]
   substituteFor PetugasLeave[] @relation("LeaveSubstitute")
   transfers   PetugasTransfer[]
+  attendanceDisputes AttendanceDispute[] @relation("AttendanceDisputePetugas")
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -357,6 +360,7 @@ model Attendance {
   clockOutAt   DateTime?
   clockOutLat  Float?
   clockOutLng  Float?
+  disputes     AttendanceDispute[]
   createdAt    DateTime @default(now())
 
   @@index([petugasId, clockInAt])
@@ -418,6 +422,7 @@ model Nasabah {
   tags           NasabahTag[]
   notes          NasabahNote[]
   restructures   NasabahRestructure[]
+  documents      NasabahDocument[]
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -801,6 +806,66 @@ model NasabahNote {
   createdAt DateTime @default(now())
 
   @@index([nasabahId, createdAt])
+}
+
+// DN — nasabah document attachments (KTP, kontrak, foto agunan, etc).
+// File lives on disk via the same /uploads mount as kunjungan photos.
+// `path` is relative to the project root.
+enum NasabahDocumentKind {
+  KTP
+  KONTRAK
+  AGUNAN
+  SLIP_GAJI
+  LAIN
+}
+
+model NasabahDocument {
+  id          String              @id @default(cuid())
+  nasabah     Nasabah             @relation(fields: [nasabahId], references: [id], onDelete: Cascade)
+  nasabahId   String
+  kind        NasabahDocumentKind
+  fileName    String
+  filePath    String
+  mimeType    String
+  sizeBytes   Int
+  notes       String?
+  uploadedBy  User?               @relation("NasabahDocumentUploader", fields: [uploadedById], references: [id])
+  uploadedById String?
+  createdAt   DateTime            @default(now())
+
+  @@index([nasabahId, createdAt])
+}
+
+// DO — attendance dispute. Petugas requests a correction (e.g. forgot
+// to clock out) on one of their own Attendance rows. SUPERVISOR/ADMIN
+// approves to apply the suggested clockIn / clockOut times atomically.
+enum AttendanceDisputeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model AttendanceDispute {
+  id              String                  @id @default(cuid())
+  attendance      Attendance              @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  attendanceId    String
+  petugas         Petugas                 @relation("AttendanceDisputePetugas", fields: [petugasId], references: [id])
+  petugasId       String
+  status          AttendanceDisputeStatus @default(PENDING)
+  reason          String
+  proposedClockIn  DateTime?
+  proposedClockOut DateTime?
+  decidedBy       User?                   @relation("AttendanceDisputeDecider", fields: [decidedById], references: [id])
+  decidedById     String?
+  decisionNote    String?
+  decidedAt       DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([attendanceId])
+  @@index([status])
+  @@index([petugasId, createdAt])
 }
 
 // DL — restructure / pelunasan dipercepat proposal. Petugas/Supervisor
