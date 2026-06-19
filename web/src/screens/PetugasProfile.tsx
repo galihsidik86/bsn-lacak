@@ -533,14 +533,27 @@ function LeaveForm({ petugasId, onClose, onSaved }: {
   const [end, setEnd] = useState(today);
   const [type, setType] = useState<'cuti_tahunan' | 'sakit' | 'dinas_luar' | 'lain'>('cuti_tahunan');
   const [reason, setReason] = useState('');
+  const [substituteId, setSubstituteId] = useState('');
   const [autoApprove, setAutoApprove] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Petugas list for substitute picker. Filter out the current petugas
+  // since they can't be their own substitute.
+  const petugasQ = useQuery({
+    queryKey: ['petugas-substitute-list'],
+    queryFn: async () => {
+      const r = await axios.get(`${import.meta.env.VITE_API_URL || '/api'}/petugas`,
+        { withCredentials: true, headers: certHeaders() });
+      return (r.data as Array<{ id: string; kode: string; nama: string; branchId: string; active?: boolean }>)
+        .filter(p => p.id !== petugasId && p.active !== false);
+    },
+  });
   const save = useMutation({
     mutationFn: () => axios.post(`${import.meta.env.VITE_API_URL || '/api'}/leaves`,
       {
         petugasId, startDate: start, endDate: end, type,
         reason: reason || null,
         status: autoApprove ? 'approved' : 'pending',
+        substitutePetugasId: substituteId || null,
       },
       { withCredentials: true, headers: certHeaders() }),
     onSuccess: () => onSaved(),
@@ -572,6 +585,17 @@ function LeaveForm({ petugasId, onClose, onSaved }: {
         </Field>
         <Field label="Alasan / catatan">
           <textarea className="input" rows={2} value={reason} onChange={e => setReason(e.target.value)} style={{ resize: 'none' }} />
+        </Field>
+        <Field label="Substitute petugas (opsional)">
+          <select className="input" value={substituteId} onChange={e => setSubstituteId(e.target.value)}>
+            <option value="">— Tidak ada —</option>
+            {(petugasQ.data ?? []).map(p => (
+              <option key={p.id} value={p.id}>{p.kode} · {p.nama}</option>
+            ))}
+          </select>
+          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+            Saat cuti dimulai, nasabah akan dipindah ke substitute, lalu dikembalikan otomatis.
+          </div>
         </Field>
         <label className="center gap-2" style={{ fontSize: 12.5, fontWeight: 600 }}>
           <input type="checkbox" checked={autoApprove} onChange={e => setAutoApprove(e.target.checked)} />

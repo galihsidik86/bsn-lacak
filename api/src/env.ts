@@ -79,6 +79,12 @@ const schema = z.object({
   // CO — inactivity detector. Daily at the configured hour; threshold in days.
   INACTIVITY_DAYS: z.coerce.number().int().min(1).max(60).default(3),
   INACTIVITY_CHECK_HOUR: z.coerce.number().int().min(0).max(23).default(8),
+  // DG — leave auto-reassign sweep. Every 30 min covers same-day starts
+  // without churning the DB.
+  LEAVE_REASSIGN_POLL_MS: z.coerce.number().int().positive().default(30 * 60 * 1000),
+  // DF — stale-nasabah alert. Threshold in days; daily check.
+  STALE_NASABAH_DAYS: z.coerce.number().int().min(1).max(180).default(14),
+  STALE_NASABAH_HOUR: z.coerce.number().int().min(0).max(23).default(9),
   // Public-facing base URL used to compose share links (receipt PDF, feedback).
   // Defaults to WEB_ORIGIN; override in prod when behind a separate ingress.
   PUBLIC_BASE_URL: z.string().url().optional(),

@@ -61,6 +61,7 @@ const createSchema = z.object({
   type: z.enum(['cuti_tahunan', 'sakit', 'dinas_luar', 'lain']),
   reason: z.string().max(2000).optional().nullable(),
   status: z.enum(['pending', 'approved']).default('pending'),
+  substitutePetugasId: z.string().min(1).max(64).optional().nullable(),
 });
 
 router.post('/', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
@@ -97,6 +98,7 @@ const patchSchema = z.object({
   endDate: z.coerce.date().optional(),
   reason: z.string().max(2000).nullable().optional(),
   type: z.enum(['cuti_tahunan', 'sakit', 'dinas_luar', 'lain']).optional(),
+  substitutePetugasId: z.string().min(1).max(64).nullable().optional(),
 });
 
 router.patch('/:id', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {

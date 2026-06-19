@@ -230,6 +230,7 @@ model Petugas {
   feedback    CustomerFeedback[]
   certifications PetugasCertification[]
   leaves      PetugasLeave[]
+  substituteFor PetugasLeave[] @relation("LeaveSubstitute")
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -667,6 +668,14 @@ model PetugasLeave {
   approvedBy  User?     @relation("LeaveApprover", fields: [approvedById], references: [id])
   approvedById String?
   decisionAt  DateTime?
+  // DG — optional substitute. Worker swaps all nasabah of `petugasId`
+  // over to `substitutePetugasId` on the leave's start date, then
+  // restores them when the leave ends. Both transitions are audited.
+  substitutePetugas   Petugas?  @relation("LeaveSubstitute", fields: [substitutePetugasId], references: [id])
+  substitutePetugasId String?
+  // True after the start-of-leave swap has fired; flipped back to false
+  // after restoration so the worker stays idempotent.
+  reassigned          Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
