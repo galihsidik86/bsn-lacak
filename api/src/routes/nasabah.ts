@@ -146,6 +146,106 @@ router.get('/:id/360', async (req, res) => {
   });
 });
 
+// CL — chronological timeline merging kunjungan, pembayaran, feedback,
+// reassign audit, and escalation tickets into one event stream. Each
+// item carries its own type + payload so the UI can render variants
+// without re-fetching anything.
+router.get('/:id/timeline', async (req, res) => {
+  const id = String(req.params.id);
+  const n = await prisma.nasabah.findFirst({
+    where: { id, ...scope(req) },
+    select: { id: true },
+  });
+  if (!n) return res.status(404).json({ error: 'not_found' });
+
+  const [kunjungan, pembayaran, feedback, reassigns, escalations] = await Promise.all([
+    prisma.kunjungan.findMany({
+      where: { nasabahId: id },
+      orderBy: { tanggal: 'desc' }, take: 200,
+      select: {
+        id: true, tanggal: true, jam: true, hasil: true, nominal: true,
+        reviewStatus: true, riskFlags: true, catatan: true,
+        petugas: { select: { kode: true, nama: true } },
+      },
+    }),
+    prisma.pembayaran.findMany({
+      where: { nasabahId: id },
+      orderBy: { tanggal: 'desc' }, take: 200,
+      select: { id: true, tanggal: true, jam: true, nominal: true, metode: true, status: true },
+    }),
+    prisma.customerFeedback.findMany({
+      where: { nasabahId: id, repliedAt: { not: null } },
+      orderBy: { repliedAt: 'desc' }, take: 50,
+      select: { id: true, repliedAt: true, rating: true, comment: true },
+    }),
+    prisma.auditLog.findMany({
+      where: { action: 'nasabah.reassign', target: id },
+      orderBy: { createdAt: 'desc' }, take: 50,
+      select: { id: true, createdAt: true, actor: true, meta: true },
+    }),
+    prisma.escalationTicket.findMany({
+      where: { nasabahId: id },
+      orderBy: { createdAt: 'desc' }, take: 50,
+      select: { id: true, createdAt: true, resolvedAt: true, severity: true, reason: true, status: true },
+    }),
+  ]);
+
+  interface Event {
+    ts: string; type: string; data: unknown;
+  }
+  const items: Event[] = [];
+
+  for (const k of kunjungan) {
+    items.push({
+      ts: k.tanggal.toISOString(),
+      type: 'kunjungan',
+      data: {
+        id: k.id, jam: k.jam, hasil: k.hasil, nominal: String(k.nominal),
+        reviewStatus: k.reviewStatus, riskFlags: k.riskFlags,
+        catatan: k.catatan,
+        petugas: k.petugas,
+      },
+    });
+  }
+  for (const p of pembayaran) {
+    items.push({
+      ts: p.tanggal.toISOString(),
+      type: 'pembayaran',
+      data: {
+        id: p.id, jam: p.jam, nominal: String(p.nominal),
+        metode: p.metode, status: p.status,
+      },
+    });
+  }
+  for (const f of feedback) {
+    items.push({
+      ts: f.repliedAt!.toISOString(),
+      type: 'feedback',
+      data: { id: f.id, rating: f.rating, comment: f.comment },
+    });
+  }
+  for (const r of reassigns) {
+    items.push({
+      ts: r.createdAt.toISOString(),
+      type: 'reassign',
+      data: { id: r.id, actor: r.actor, meta: r.meta },
+    });
+  }
+  for (const e of escalations) {
+    items.push({
+      ts: e.createdAt.toISOString(),
+      type: 'escalation',
+      data: {
+        id: e.id, severity: e.severity, reason: e.reason, status: e.status,
+        resolvedAt: e.resolvedAt,
+      },
+    });
+  }
+
+  items.sort((a, b) => b.ts.localeCompare(a.ts));
+  res.json({ items });
+});
+
 const reassign = z.object({ petugasId: z.string().min(1).max(64) });
 router.patch('/:id/petugas', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
   const parsed = reassign.safeParse(req.body);

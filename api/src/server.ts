@@ -49,6 +49,8 @@ import activity from './routes/activity.js';
 import verify from './routes/verify.js';
 import certifications from './routes/certifications.js';
 import systemHealth from './routes/systemHealth.js';
+import escalation from './routes/escalation.js';
+import { startEscalationWorker, stopEscalationWorker } from './workers/escalationWorker.js';
 import { startWebhookDispatcher } from './lib/webhookDispatcher.js';
 import { initSentry, sentryErrorHandler, setupSentryRequest } from './lib/sentry.js';
 import { apiKeyAuth } from './lib/apiKey.js';
@@ -159,6 +161,7 @@ app.use('/api/activity', activity);
 app.use('/api/verify', verify);
 app.use('/api/certifications', certifications);
 app.use('/api/system-health', systemHealth);
+app.use('/api/escalation', escalation);
 
 // Static uploads — Cache-Control prevents stale photo IDs from sticking.
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {
@@ -201,6 +204,7 @@ startClosingEmailWorker();
 startMorningReminderWorker();
 startArchiveWorker();
 startFollowupWorker();
+startEscalationWorker();
 if (env.NODE_ENV !== 'test') startWebhookDispatcher();
 const stopSamplers = startMetricsSamplers();
 const stopRetention = startAuditRetention();
@@ -215,6 +219,7 @@ const shutdown = (sig: string) => {
   stopMorningReminderWorker();
   stopArchiveWorker();
   stopFollowupWorker();
+  stopEscalationWorker();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
 };

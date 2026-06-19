@@ -172,6 +172,8 @@ export function ScreenNasabah360({ nasabahId, onClose }: { nasabahId: string; on
           </div>
         </div>
 
+        <UnifiedTimeline nasabahId={n.id} />
+
         {/* Kunjungan timeline */}
         <Section title={`Riwayat Kunjungan (${kunjungan.length})`}>
           {kunjungan.length === 0 ? <EmptyState title="Belum ada kunjungan" /> : (
@@ -309,4 +311,108 @@ function ReviewBadge({ status }: { status: KunjunganHit['reviewStatus'] }) {
   return (
     <span className="chip" style={{ background: meta.bg, color: meta.c }}>{meta.label}</span>
   );
+}
+
+// CL — unified chronological timeline (kunjungan + pembayaran + feedback +
+// reassign + escalation) collapsed to a single column with type badges.
+interface TimelineEvent { ts: string; type: string; data: any }
+function UnifiedTimeline({ nasabahId }: { nasabahId: string }) {
+  const q = useQuery({
+    queryKey: ['nasabah-timeline', nasabahId],
+    queryFn: async (): Promise<TimelineEvent[]> => {
+      const r = await axios.get(`${BASE}/nasabah/${nasabahId}/timeline`,
+        { withCredentials: true, headers: headers() });
+      return r.data.items as TimelineEvent[];
+    },
+  });
+  if (q.isPending) return null;
+  if (q.error) return null;
+  const items = q.data ?? [];
+  if (items.length === 0) return null;
+
+  const tint: Record<string, { bg: string; fg: string; label: string }> = {
+    kunjungan:   { bg: 'var(--accent-soft)',   fg: 'var(--accent-ink)',  label: 'Kunjungan' },
+    pembayaran:  { bg: 'var(--gold-soft)',     fg: 'var(--gold-ink)',    label: 'Bayar' },
+    feedback:    { bg: 'oklch(0.93 0.04 245)', fg: 'var(--sms)',         label: 'Feedback' },
+    reassign:    { bg: 'var(--surface-2)',     fg: 'var(--ink-2)',       label: 'Reassign' },
+    escalation:  { bg: 'var(--col-macet-soft)',fg: 'var(--col-macet)',   label: 'Escalation' },
+  };
+
+  return (
+    <Section title={`Timeline (${items.length})`}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
+        {items.slice(0, 50).map((it, i) => {
+          const t = tint[it.type] ?? tint.reassign;
+          const ts = new Date(it.ts);
+          return (
+            <div key={`${it.type}-${it.data.id ?? i}`} style={{
+              display: 'flex', gap: 12, padding: 10, borderRadius: 12,
+              background: 'var(--surface)', border: '1px solid var(--line)',
+              borderLeft: `3px solid ${t.fg}`,
+            }}>
+              <div style={{ minWidth: 80, fontSize: 11.5 }}>
+                <div style={{ fontWeight: 700 }}>
+                  {ts.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+                </div>
+                <div className="muted mono" style={{ fontSize: 11 }}>
+                  {ts.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="center gap-2" style={{ marginBottom: 4 }}>
+                  <span className="chip" style={{ background: t.bg, color: t.fg, fontSize: 10.5 }}>{t.label}</span>
+                  <TimelineSummary type={it.type} data={it.data} />
+                </div>
+                {it.type === 'kunjungan' && it.data.catatan && (
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{it.data.catatan}</div>
+                )}
+                {it.type === 'feedback' && it.data.comment && (
+                  <div className="muted" style={{ fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>
+                    "{it.data.comment}"
+                  </div>
+                )}
+                {it.type === 'escalation' && (
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{it.data.reason}</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+function TimelineSummary({ type, data }: { type: string; data: any }) {
+  if (type === 'kunjungan') {
+    return (
+      <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+        {data.hasil} oleh {data.petugas?.nama ?? '—'}
+        {Number(data.nominal) > 0 && (
+          <> · Rp {Number(data.nominal).toLocaleString('id-ID')}</>
+        )}
+      </span>
+    );
+  }
+  if (type === 'pembayaran') {
+    return (
+      <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+        Rp {Number(data.nominal).toLocaleString('id-ID')} · {data.metode} · {data.status}
+      </span>
+    );
+  }
+  if (type === 'feedback') {
+    return <span style={{ fontSize: 12.5, fontWeight: 600 }}>Rating {data.rating}/5</span>;
+  }
+  if (type === 'reassign') {
+    return <span style={{ fontSize: 12.5, fontWeight: 600 }}>Dipindah oleh {data.actor ?? '—'}</span>;
+  }
+  if (type === 'escalation') {
+    return (
+      <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+        {data.severity.toUpperCase()} · {data.status}
+      </span>
+    );
+  }
+  return null;
 }

@@ -69,6 +69,9 @@ const schema = z.object({
   // next day at the earliest.
   FOLLOWUP_DELAY_HOURS: z.coerce.number().int().positive().default(24),
   FOLLOWUP_POLL_MS: z.coerce.number().int().positive().default(30 * 60 * 1000),
+  // CK — escalation sweep. Once every 6h is plenty since the trigger
+  // (days without payment) moves slowly.
+  ESCALATION_POLL_MS: z.coerce.number().int().positive().default(6 * 60 * 60 * 1000),
   // Public-facing base URL used to compose share links (receipt PDF, feedback).
   // Defaults to WEB_ORIGIN; override in prod when behind a separate ingress.
   PUBLIC_BASE_URL: z.string().url().optional(),

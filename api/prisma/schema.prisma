@@ -43,6 +43,7 @@ model Branch {
   apiKeys      ApiKey[]
   webhooks     WebhookSubscription[]
   blast        Blast[]
+  escalations  EscalationTicket[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 }
@@ -127,6 +128,7 @@ model User {
   createdWebhooks     WebhookSubscription[] @relation("WebhookCreator")
   createdCertifications PetugasCertification[] @relation("CertCreator")
   kunjunganEdits      KunjunganEditLog[]    @relation("EditLogEditor")
+  escalationAssignments EscalationTicket[]  @relation("EscalationAssignee")
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -384,6 +386,7 @@ model Nasabah {
   pembayaran     Pembayaran[]
   blastRecipient BlastRecipient[]
   feedback       CustomerFeedback[]
+  escalations    EscalationTicket[]
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -609,4 +612,30 @@ model KunjunganEditLog {
   createdAt    DateTime  @default(now())
 
   @@index([kunjunganId, createdAt])
+}
+
+// CK — escalation ticket. Worker creates one per (nasabah × open ticket)
+// when a high-kol customer goes too long without successful payment.
+// Supervisors close them once contact has been made or another action
+// taken; closed tickets stay in the table as the paper trail.
+model EscalationTicket {
+  id         String    @id @default(cuid())
+  nasabah    Nasabah   @relation(fields: [nasabahId], references: [id])
+  nasabahId  String
+  branch     Branch    @relation(fields: [branchId], references: [id])
+  branchId   String
+  // 'critical' (kol K5 or DPD > 90), 'high' (K4), 'medium' (K3 + no payment ≥ 30d)
+  severity   String
+  reason     String    // human-readable: "K5 — 45 hari tanpa bayar"
+  // 'open' (auto-created) → 'in_progress' (supervisor acknowledged)
+  // → 'resolved' (action taken) | 'dismissed' (false positive)
+  status     String    @default("open")
+  note       String?
+  assignedTo User?     @relation("EscalationAssignee", fields: [assignedToId], references: [id])
+  assignedToId String?
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([branchId, status, createdAt])
+  @@index([nasabahId, status])
 }

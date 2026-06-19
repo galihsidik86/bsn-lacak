@@ -36,6 +36,7 @@ const ScreenActivityFeed = lazy(() => import('./screens/ActivityFeed').then(m =>
 const ScreenLeaderboard = lazy(() => import('./screens/Leaderboard').then(m => ({ default: m.ScreenLeaderboard })));
 const ScreenSystemHealth = lazy(() => import('./screens/SystemHealth').then(m => ({ default: m.ScreenSystemHealth })));
 const ScreenCommission = lazy(() => import('./screens/Commission').then(m => ({ default: m.ScreenCommission })));
+const ScreenEscalation = lazy(() => import('./screens/Escalation').then(m => ({ default: m.ScreenEscalation })));
 const ScreenNotifikasi = lazy(() => import('./screens/Notifikasi').then(m => ({ default: m.ScreenNotifikasi })));
 const ScreenPengumuman = lazy(() => import('./screens/Pengumuman').then(m => ({ default: m.ScreenPengumuman })));
 const ScreenWilayah = lazy(() => import('./screens/Wilayah').then(m => ({ default: m.ScreenWilayah })));
@@ -56,7 +57,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'churn' | 'activity' | 'leaderboard' | 'system-health' | 'commission' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'churn' | 'activity' | 'leaderboard' | 'system-health' | 'commission' | 'escalation' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -86,6 +87,7 @@ function useNav(): NavGroup[] {
       { k: 'distribusi', label: 'Distribusi Nasabah', icon: 'users' },
       { k: 'performa', label: 'Performa Petugas', icon: 'chart' },
       { k: 'feedback', label: 'Feedback Nasabah', icon: 'wa' },
+      { k: 'escalation', label: 'Escalation', icon: 'alert' },
     ] },
     { group: 'Lapangan', items: [
       { k: 'wilayah', label: 'Wilayah Binaan', icon: 'map' },
@@ -136,6 +138,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   activity: ['Activity Feed', 'Timeline kunjungan, pembayaran, blast, review per cabang'],
   leaderboard: ['Leaderboard', 'Top petugas tertagih bulan ini dengan podium juara'],
   commission: ['Komisi Petugas', 'Tabel komisi per petugas berdasarkan tertagih bulan berjalan'],
+  escalation: ['Escalation Matrix', 'Tiket eskalasi nasabah dengan KOL tinggi tanpa progress pembayaran'],
   'system-health': ['System Health', 'DB ping, worker freshness, queue depth, process uptime'],
   notifikasi: ['Notifikasi', 'Riwayat semua notifikasi sistem dan supervisor'],
   pengumuman: ['Pengumuman', 'Broadcast notifikasi ke seluruh petugas di cabang'],
@@ -403,6 +406,7 @@ export function App() {
             {page === 'activity' && <ScreenActivityFeed />}
             {page === 'leaderboard' && <ScreenLeaderboard />}
             {page === 'commission' && <ScreenCommission />}
+            {page === 'escalation' && <ScreenEscalation />}
             {page === 'system-health' && <ScreenSystemHealth />}
             {page === 'notifikasi' && <ScreenNotifikasi go={go} />}
             {page === 'pengumuman' && <ScreenPengumuman />}

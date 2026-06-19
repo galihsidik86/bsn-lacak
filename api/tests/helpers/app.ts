@@ -30,6 +30,7 @@ import activity from '../../src/routes/activity.js';
 import verify from '../../src/routes/verify.js';
 import certifications from '../../src/routes/certifications.js';
 import systemHealth from '../../src/routes/systemHealth.js';
+import escalation from '../../src/routes/escalation.js';
 import branches from '../../src/routes/branches.js';
 import { apiKeyAuth } from '../../src/lib/apiKey.js';
 
@@ -65,6 +66,7 @@ export function buildApp() {
   app.use('/api/verify', verify);
   app.use('/api/certifications', certifications);
   app.use('/api/system-health', systemHealth);
+  app.use('/api/escalation', escalation);
   app.use('/api/branches', branches);
   return app;
 }
@@ -86,6 +88,7 @@ export async function resetDb() {
       "RefreshToken",
       "PetugasPosition",
       "Attendance",
+      "EscalationTicket",
       "Nasabah",
       "PetugasCertification",
       "User",
