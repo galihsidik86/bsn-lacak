@@ -71,6 +71,26 @@ async function createTag(name: string, color: string, branchId?: string | null):
 async function deleteTag(id: string) {
   return (await axios.delete(`${BASE}/tags/${id}`, { withCredentials: true, headers: headers() })).data;
 }
+
+interface TagRuleRow {
+  id: string; tagId: string; name: string;
+  type: 'DPD_ABOVE' | 'DAYS_SINCE_PAYMENT_ABOVE' | 'KOL_IN';
+  threshold: number | null; kolValues: string[]; active: boolean;
+  tag: { id: string; name: string; color: string; branchId: string | null };
+}
+
+async function listTagRules(): Promise<TagRuleRow[]> {
+  return (await axios.get(`${BASE}/tags/rules`, { withCredentials: true, headers: headers() })).data;
+}
+async function createTagRule(p: {
+  tagId: string; name: string;
+  type: TagRuleRow['type']; threshold?: number; kolValues?: string[];
+}) {
+  return (await axios.post(`${BASE}/tags/rules`, p, { withCredentials: true, headers: headers() })).data;
+}
+async function deleteTagRule(id: string) {
+  return (await axios.delete(`${BASE}/tags/rules/${id}`, { withCredentials: true, headers: headers() })).data;
+}
 async function assignTag(nasabahId: string, tagId: string) {
   return (await axios.post(`${BASE}/nasabah/${nasabahId}/tags`, { tagId },
     { withCredentials: true, headers: headers() })).data;
@@ -385,6 +405,8 @@ function TagAdminModal({ tags, onClose, onChanged }: {
   const [name, setName] = useState('');
   const [color, setColor] = useState('#0ea5e9');
   const [err, setErr] = useState<string | null>(null);
+  const [showRules, setShowRules] = useState(false);
+  const rulesQ = useQuery({ queryKey: ['tag-rules'], queryFn: listTagRules, enabled: showRules });
   const create = useMutation({
     mutationFn: () => createTag(name.trim(), color),
     onSuccess: () => { setName(''); setErr(null); onChanged(); },
@@ -393,6 +415,10 @@ function TagAdminModal({ tags, onClose, onChanged }: {
   const remove = useMutation({
     mutationFn: (id: string) => deleteTag(id),
     onSuccess: () => onChanged(),
+  });
+  const removeRule = useMutation({
+    mutationFn: (id: string) => deleteTagRule(id),
+    onSuccess: () => rulesQ.refetch(),
   });
   return (
     <Modal onClose={onClose} max={520}>
@@ -439,11 +465,107 @@ function TagAdminModal({ tags, onClose, onChanged }: {
               </div>
             ))}
         </div>
+        <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12, marginTop: 4 }}>
+          <button className="btn btn-sm btn-ghost" onClick={() => setShowRules(s => !s)}>
+            <Ic.layers size={12} />{showRules ? 'Sembunyikan' : 'Auto-tagging rules'}
+          </button>
+          {showRules && (
+            <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+              <RuleCreator tags={tags} onCreated={() => rulesQ.refetch()} />
+              <div className="grid gap-2">
+                {(rulesQ.data ?? []).length === 0
+                  ? <div className="muted" style={{ fontSize: 12 }}>Belum ada rule.</div>
+                  : (rulesQ.data ?? []).map(r => (
+                    <div key={r.id} className="center gap-2"
+                      style={{ padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 8, fontSize: 12 }}>
+                      <span style={{ background: r.tag.color, color: '#fff', fontWeight: 700, padding: '2px 6px', borderRadius: 4 }}>
+                        {r.tag.name}
+                      </span>
+                      <span style={{ fontWeight: 600 }}>{r.name}</span>
+                      <span className="muted">— {ruleSummary(r)}</span>
+                      <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }}
+                        disabled={removeRule.isPending} onClick={() => removeRule.mutate(r.id)}>
+                        <Ic.x size={12} />
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       <div className="modal-foot">
         <button className="btn" onClick={onClose}>Tutup</button>
       </div>
     </Modal>
+  );
+}
+
+function ruleSummary(r: TagRuleRow): string {
+  if (r.type === 'DPD_ABOVE') return `DPD > ${r.threshold} hari`;
+  if (r.type === 'DAYS_SINCE_PAYMENT_ABOVE') return `Belum bayar > ${r.threshold} hari`;
+  return `Kol ∈ ${r.kolValues.join(', ')}`;
+}
+
+function RuleCreator({ tags, onCreated }: { tags: TagRow[]; onCreated: () => void }) {
+  const [tagId, setTagId] = useState('');
+  const [name, setName] = useState('');
+  const [type, setType] = useState<TagRuleRow['type']>('DPD_ABOVE');
+  const [threshold, setThreshold] = useState('30');
+  const [kolValues, setKolValues] = useState<string[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: () => createTagRule({
+      tagId, name: name.trim(), type,
+      ...(type === 'KOL_IN'
+        ? { kolValues }
+        : { threshold: Number(threshold) }),
+    }),
+    onSuccess: () => {
+      setName(''); setErr(null); onCreated();
+    },
+    onError: (e: any) => setErr(e?.response?.data?.error ?? 'Gagal menyimpan.'),
+  });
+  const KOL = ['K1', 'K2', 'K3', 'K4', 'K5'] as const;
+  return (
+    <div style={{ padding: 10, border: '1px dashed var(--line)', borderRadius: 8, display: 'grid', gap: 8 }}>
+      <div className="center gap-2" style={{ flexWrap: 'wrap' }}>
+        <select className="input" value={tagId} onChange={e => setTagId(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
+          <option value="">Pilih label…</option>
+          {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <input className="input" placeholder="Nama rule" value={name} onChange={e => setName(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
+        <select className="input" value={type} onChange={e => setType(e.target.value as any)} style={{ width: 200 }}>
+          <option value="DPD_ABOVE">DPD &gt;</option>
+          <option value="DAYS_SINCE_PAYMENT_ABOVE">Belum bayar &gt;</option>
+          <option value="KOL_IN">Kol dalam</option>
+        </select>
+        {type === 'KOL_IN' ? (
+          <div className="center gap-1">
+            {KOL.map(k => {
+              const on = kolValues.includes(k);
+              return (
+                <button key={k} className="btn btn-sm"
+                  style={{ background: on ? 'var(--accent)' : 'transparent', color: on ? '#fff' : 'var(--ink-2)' }}
+                  onClick={() => setKolValues(on ? kolValues.filter(v => v !== k) : [...kolValues, k])}>
+                  {k}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <input className="input" type="number" min={0} value={threshold}
+            onChange={e => setThreshold(e.target.value)} style={{ width: 80 }} />
+        )}
+        <button className="btn btn-primary"
+          disabled={!tagId || !name.trim() || save.isPending
+            || (type === 'KOL_IN' ? kolValues.length === 0 : !threshold)}
+          onClick={() => save.mutate()}>
+          <Ic.plus size={14} />Tambah rule
+        </button>
+      </div>
+      {err && <div style={{ color: 'var(--col-macet)', fontSize: 12, fontWeight: 600 }}>{err}</div>}
+    </div>
   );
 }
 

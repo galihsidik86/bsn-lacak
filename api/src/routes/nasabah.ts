@@ -123,8 +123,52 @@ router.delete('/:id/tags/:tagId', requireRole('SUPERVISOR', 'ADMIN'), async (req
   const tagId = String(req.params.tagId);
   const n = await prisma.nasabah.findFirst({ where: { id, ...scope(req) }, select: { id: true } });
   if (!n) return res.status(404).json({ error: 'not_found' });
+  // Manual removal nukes both human-applied and rule-applied rows, since
+  // a supervisor explicitly saying "remove this tag" should win.
   await prisma.nasabahTag.deleteMany({ where: { nasabahId: id, tagId } });
   await audit({ action: 'tag.remove', target: id, ...fromReq(req), meta: { tagId } });
+  res.json({ ok: true });
+});
+
+// DI — internal notes on a nasabah. Listing + create open to anyone in
+// scope; delete restricted to the author or any ADMIN.
+router.get('/:id/notes', async (req, res) => {
+  const id = String(req.params.id);
+  const n = await prisma.nasabah.findFirst({ where: { id, ...scope(req) }, select: { id: true } });
+  if (!n) return res.status(404).json({ error: 'not_found' });
+  const rows = await prisma.nasabahNote.findMany({
+    where: { nasabahId: id },
+    include: { author: { select: { id: true, username: true, nama: true, role: true } } },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  });
+  res.json(rows);
+});
+
+router.post('/:id/notes', async (req, res) => {
+  const id = String(req.params.id);
+  const body = String((req.body ?? {}).body ?? '').trim();
+  if (!body) return res.status(400).json({ error: 'bad_request' });
+  if (body.length > 2000) return res.status(400).json({ error: 'body_too_long' });
+  const n = await prisma.nasabah.findFirst({ where: { id, ...scope(req) }, select: { id: true } });
+  if (!n) return res.status(404).json({ error: 'not_found' });
+  const row = await prisma.nasabahNote.create({
+    data: { nasabahId: id, authorId: req.user!.sub, body },
+    include: { author: { select: { id: true, username: true, nama: true, role: true } } },
+  });
+  await audit({ action: 'nasabah.note_add', target: id, ...fromReq(req), meta: { noteId: row.id } });
+  res.status(201).json(row);
+});
+
+router.delete('/:id/notes/:noteId', async (req, res) => {
+  const noteId = String(req.params.noteId);
+  const note = await prisma.nasabahNote.findUnique({ where: { id: noteId } });
+  if (!note) return res.status(404).json({ error: 'not_found' });
+  if (req.user?.role !== 'ADMIN' && note.authorId !== req.user!.sub) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  await prisma.nasabahNote.delete({ where: { id: noteId } });
+  await audit({ action: 'nasabah.note_delete', target: note.nasabahId, ...fromReq(req), meta: { noteId } });
   res.json({ ok: true });
 });
 

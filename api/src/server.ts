@@ -57,6 +57,7 @@ import { startWeeklyDigestWorker, stopWeeklyDigestWorker } from './workers/weekl
 import { startInactivityWorker, stopInactivityWorker } from './workers/inactivityWorker.js';
 import { startLeaveAssignmentWorker, stopLeaveAssignmentWorker } from './workers/leaveAssignmentWorker.js';
 import { startStaleNasabahWorker, stopStaleNasabahWorker } from './workers/staleNasabahWorker.js';
+import { startTagRuleWorker, stopTagRuleWorker } from './workers/tagRuleWorker.js';
 import { startWebhookDispatcher } from './lib/webhookDispatcher.js';
 import { initSentry, sentryErrorHandler, setupSentryRequest } from './lib/sentry.js';
 import { apiKeyAuth } from './lib/apiKey.js';
@@ -217,6 +218,7 @@ startWeeklyDigestWorker();
 startInactivityWorker();
 startLeaveAssignmentWorker();
 startStaleNasabahWorker();
+startTagRuleWorker();
 if (env.NODE_ENV !== 'test') startWebhookDispatcher();
 const stopSamplers = startMetricsSamplers();
 const stopRetention = startAuditRetention();
@@ -236,6 +238,7 @@ const shutdown = (sig: string) => {
   stopInactivityWorker();
   stopLeaveAssignmentWorker();
   stopStaleNasabahWorker();
+  stopTagRuleWorker();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
 };

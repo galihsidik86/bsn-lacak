@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Ic } from '../components/Icons';
 import { Avatar, KolBadge, Modal } from '../components/UI';
@@ -243,6 +244,9 @@ export function ScreenNasabah360({ nasabahId, onClose }: { nasabahId: string; on
           )}
         </Section>
 
+        {/* DI — internal notes */}
+        <NotesSection nasabahId={nasabahId} />
+
         {/* Feedback */}
         <Section title={`Feedback Nasabah (${feedback.length})`}>
           {feedback.length === 0 ? <EmptyState title="Belum ada feedback" /> : (
@@ -415,4 +419,73 @@ function TimelineSummary({ type, data }: { type: string; data: any }) {
     );
   }
   return null;
+}
+
+interface NoteRow {
+  id: string; body: string; createdAt: string;
+  author: { id: string; username: string; nama: string; role: string };
+}
+
+function NotesSection({ nasabahId }: { nasabahId: string }) {
+  const qc = useQueryClient();
+  const me = useAuth(s => s.user);
+  const q = useQuery<NoteRow[]>({
+    queryKey: ['nasabah-notes', nasabahId],
+    queryFn: async () => (await axios.get(`${BASE}/nasabah/${nasabahId}/notes`,
+      { withCredentials: true, headers: headers() })).data,
+  });
+  const [body, setBody] = useState('');
+  const create = useMutation({
+    mutationFn: async () => axios.post(`${BASE}/nasabah/${nasabahId}/notes`,
+      { body: body.trim() }, { withCredentials: true, headers: headers() }),
+    onSuccess: () => { setBody(''); qc.invalidateQueries({ queryKey: ['nasabah-notes', nasabahId] }); },
+  });
+  const remove = useMutation({
+    mutationFn: async (id: string) => axios.delete(`${BASE}/nasabah/${nasabahId}/notes/${id}`,
+      { withCredentials: true, headers: headers() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['nasabah-notes', nasabahId] }),
+  });
+  const canDelete = (n: NoteRow) => me?.role === 'ADMIN' || n.author.id === me?.id;
+  const notes = q.data ?? [];
+  return (
+    <Section title={`Catatan Internal (${notes.length})`}>
+      <div style={{ display: 'grid', gap: 10 }}>
+        <div className="center gap-2" style={{ alignItems: 'flex-end' }}>
+          <textarea className="input" rows={2} maxLength={2000}
+            placeholder="Tambahkan catatan internal — tidak terlihat oleh nasabah."
+            value={body} onChange={e => setBody(e.target.value)}
+            style={{ resize: 'vertical', flex: 1 }} />
+          <button className="btn btn-primary"
+            disabled={!body.trim() || create.isPending}
+            onClick={() => create.mutate()}>
+            <Ic.plus size={14} />Tambah
+          </button>
+        </div>
+        {q.isLoading ? <Skeleton h={80} />
+          : notes.length === 0 ? <EmptyState title="Belum ada catatan" />
+          : notes.map(n => (
+            <div key={n.id} className="card card-pad" style={{ boxShadow: 'none', background: 'var(--surface-2)' }}>
+              <div className="between" style={{ marginBottom: 6 }}>
+                <div className="center gap-2">
+                  <span style={{ fontSize: 12, fontWeight: 700 }}>{n.author.nama || n.author.username}</span>
+                  <span className="chip" style={{ fontSize: 10 }}>{n.author.role}</span>
+                </div>
+                <div className="center gap-2">
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    {new Date(n.createdAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  {canDelete(n) && (
+                    <button className="btn btn-sm btn-ghost" disabled={remove.isPending}
+                      onClick={() => remove.mutate(n.id)}>
+                      <Ic.x size={12} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', color: 'var(--ink-2)' }}>{n.body}</div>
+            </div>
+          ))}
+      </div>
+    </Section>
+  );
 }

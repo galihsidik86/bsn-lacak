@@ -144,6 +144,8 @@ model User {
   leaveDecisions      PetugasLeave[]        @relation("LeaveApprover")
   transfersAuthored   PetugasTransfer[]     @relation("TransferMover")
   createdTags         Tag[]                 @relation("TagCreator")
+  createdTagRules     TagRule[]             @relation("TagRuleCreator")
+  authoredNasabahNotes NasabahNote[]        @relation("NasabahNoteAuthor")
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -406,6 +408,7 @@ model Nasabah {
   feedback       CustomerFeedback[]
   escalations    EscalationTicket[]
   tags           NasabahTag[]
+  notes          NasabahNote[]
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -723,6 +726,7 @@ model Tag {
   createdBy   User?        @relation("TagCreator", fields: [createdById], references: [id])
   createdById String?
   nasabah     NasabahTag[]
+  rules       TagRule[]    @relation("TagRuleTag")
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -735,8 +739,56 @@ model NasabahTag {
   nasabahId   String
   tag         Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
   tagId       String
+  // DH — when set, this NasabahTag was applied automatically by a rule
+  // sweep rather than a human assigner. Auto-applied rows can be removed
+  // by the sweep when the rule no longer matches; manual rows are kept.
+  ruleId      String?
   createdAt   DateTime @default(now())
 
   @@id([nasabahId, tagId])
   @@index([tagId])
+  @@index([ruleId])
+}
+
+// DH — auto-tagging rules. Each rule maps a condition over the nasabah
+// state to a single tag. The daily sweep applies the tag to matching
+// nasabah (idempotent) and removes auto-applied tags when the condition
+// no longer holds. Manual assignments (ruleId null) are never touched.
+enum TagRuleType {
+  DPD_ABOVE
+  DAYS_SINCE_PAYMENT_ABOVE
+  KOL_IN
+}
+
+model TagRule {
+  id            String       @id @default(cuid())
+  tag           Tag          @relation("TagRuleTag", fields: [tagId], references: [id], onDelete: Cascade)
+  tagId         String
+  name          String
+  type          TagRuleType
+  threshold     Int?         // for DPD_ABOVE + DAYS_SINCE_PAYMENT_ABOVE
+  kolValues     String[]     @default([])     // for KOL_IN — list of KolKey enum values
+  active        Boolean      @default(true)
+  createdBy     User?        @relation("TagRuleCreator", fields: [createdById], references: [id])
+  createdById   String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([tagId])
+  @@index([active])
+}
+
+// DI — internal notes timeline on a nasabah, separate from kunjungan +
+// feedback. SUPERVISOR/PETUGAS/ADMIN can read/create; author or ADMIN
+// can delete.
+model NasabahNote {
+  id        String   @id @default(cuid())
+  nasabah   Nasabah  @relation(fields: [nasabahId], references: [id], onDelete: Cascade)
+  nasabahId String
+  author    User     @relation("NasabahNoteAuthor", fields: [authorId], references: [id])
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([nasabahId, createdAt])
 }

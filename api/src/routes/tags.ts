@@ -82,4 +82,96 @@ router.delete('/:id', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
   res.json({ ok: true });
 });
 
+// DH — auto-tagging rules.
+const KOL_VALUES = ['K1', 'K2', 'K3', 'K4', 'K5'] as const;
+const ruleSchema = z.object({
+  tagId: z.string().min(1).max(64),
+  name: z.string().min(1).max(80),
+  type: z.enum(['DPD_ABOVE', 'DAYS_SINCE_PAYMENT_ABOVE', 'KOL_IN']),
+  threshold: z.number().int().min(0).max(3650).nullable().optional(),
+  kolValues: z.array(z.enum(KOL_VALUES)).optional(),
+  active: z.boolean().optional(),
+});
+
+async function tagInScopeForWrite(req: any, tagId: string) {
+  const tag = await prisma.tag.findUnique({ where: { id: tagId } });
+  if (!tag) return null;
+  if (req.user?.role === 'SUPERVISOR') {
+    const branchId = scopedBranchId(req);
+    if (tag.branchId !== branchId) return null;
+  }
+  return tag;
+}
+
+router.get('/rules', async (req, res) => {
+  const branchId = scopedBranchId(req);
+  const rows = await prisma.tagRule.findMany({
+    where: branchId
+      ? { tag: { OR: [{ branchId: null }, { branchId }] } }
+      : {},
+    include: { tag: { select: { id: true, name: true, color: true, branchId: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(rows);
+});
+
+router.post('/rules', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const parsed = ruleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request', details: parsed.error.flatten() });
+
+  const tag = await tagInScopeForWrite(req, parsed.data.tagId);
+  if (!tag) return res.status(404).json({ error: 'tag_not_found' });
+
+  if ((parsed.data.type === 'DPD_ABOVE' || parsed.data.type === 'DAYS_SINCE_PAYMENT_ABOVE')
+      && (parsed.data.threshold == null)) {
+    return res.status(400).json({ error: 'threshold_required' });
+  }
+  if (parsed.data.type === 'KOL_IN' && (!parsed.data.kolValues || parsed.data.kolValues.length === 0)) {
+    return res.status(400).json({ error: 'kol_values_required' });
+  }
+
+  const row = await prisma.tagRule.create({
+    data: {
+      tagId: parsed.data.tagId,
+      name: parsed.data.name.trim(),
+      type: parsed.data.type,
+      threshold: parsed.data.threshold ?? null,
+      kolValues: parsed.data.kolValues ?? [],
+      active: parsed.data.active ?? true,
+      createdById: req.user!.sub,
+    },
+  });
+  await audit({ action: 'tag_rule.create', target: row.id, ...fromReq(req), meta: { tagId: parsed.data.tagId, type: parsed.data.type } });
+  res.status(201).json(row);
+});
+
+router.patch('/rules/:id', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const existing = await prisma.tagRule.findUnique({ where: { id }, include: { tag: true } });
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  if (req.user?.role === 'SUPERVISOR') {
+    const branchId = scopedBranchId(req);
+    if (existing.tag.branchId !== branchId) return res.status(403).json({ error: 'forbidden' });
+  }
+  const patchSchema = z.object({ active: z.boolean().optional(), name: z.string().min(1).max(80).optional() });
+  const parsed = patchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'bad_request' });
+  const row = await prisma.tagRule.update({ where: { id }, data: parsed.data });
+  await audit({ action: 'tag_rule.update', target: id, ...fromReq(req), meta: parsed.data });
+  res.json(row);
+});
+
+router.delete('/rules/:id', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const existing = await prisma.tagRule.findUnique({ where: { id }, include: { tag: true } });
+  if (!existing) return res.status(404).json({ error: 'not_found' });
+  if (req.user?.role === 'SUPERVISOR') {
+    const branchId = scopedBranchId(req);
+    if (existing.tag.branchId !== branchId) return res.status(403).json({ error: 'forbidden' });
+  }
+  await prisma.tagRule.delete({ where: { id } });
+  await audit({ action: 'tag_rule.delete', target: id, ...fromReq(req) });
+  res.json({ ok: true });
+});
+
 export default router;
