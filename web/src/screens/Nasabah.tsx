@@ -34,6 +34,13 @@ interface NasabahRow {
   active: boolean;
   petugasId: string;
   branchId: string;
+  tags?: Array<{ id: string; name: string; color: string }>;
+}
+
+interface TagRow {
+  id: string; name: string; color: string;
+  branchId: string | null; branchKode: string | null;
+  usage: number;
 }
 
 function headers() {
@@ -45,11 +52,32 @@ function headers() {
   return h;
 }
 
-async function listNasabah(includeInactive: boolean): Promise<NasabahRow[]> {
+async function listNasabah(includeInactive: boolean, tagId?: string): Promise<NasabahRow[]> {
   return (await axios.get(`${BASE}/nasabah`, {
     withCredentials: true, headers: headers(),
-    params: { includeInactive: includeInactive ? '1' : '0' },
+    params: {
+      includeInactive: includeInactive ? '1' : '0',
+      ...(tagId ? { tagId } : {}),
+    },
   })).data;
+}
+async function listTags(): Promise<TagRow[]> {
+  return (await axios.get(`${BASE}/tags`, { withCredentials: true, headers: headers() })).data;
+}
+async function createTag(name: string, color: string, branchId?: string | null): Promise<TagRow> {
+  return (await axios.post(`${BASE}/tags`, { name, color, branchId: branchId ?? null },
+    { withCredentials: true, headers: headers() })).data;
+}
+async function deleteTag(id: string) {
+  return (await axios.delete(`${BASE}/tags/${id}`, { withCredentials: true, headers: headers() })).data;
+}
+async function assignTag(nasabahId: string, tagId: string) {
+  return (await axios.post(`${BASE}/nasabah/${nasabahId}/tags`, { tagId },
+    { withCredentials: true, headers: headers() })).data;
+}
+async function removeTag(nasabahId: string, tagId: string) {
+  return (await axios.delete(`${BASE}/nasabah/${nasabahId}/tags/${tagId}`,
+    { withCredentials: true, headers: headers() })).data;
 }
 async function listPetugas(): Promise<PetugasRow[]> {
   return (await axios.get(`${BASE}/petugas`, { withCredentials: true, headers: headers() })).data;
@@ -101,12 +129,19 @@ export function ScreenNasabah() {
   const qc = useQueryClient();
   const [includeInactive, setIncludeInactive] = useState(false);
   const [search, setSearch] = useState('');
-  const q = useQuery({ queryKey: ['nasabah', { includeInactive }], queryFn: () => listNasabah(includeInactive) });
+  const [tagFilter, setTagFilter] = useState<string>('');
+  const q = useQuery({
+    queryKey: ['nasabah', { includeInactive, tagFilter }],
+    queryFn: () => listNasabah(includeInactive, tagFilter || undefined),
+  });
   const petugasQ = useQuery({ queryKey: ['petugas'], queryFn: listPetugas });
+  const tagsQ = useQuery({ queryKey: ['tags'], queryFn: listTags });
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<NasabahRow | null>(null);
   const [view360, setView360] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [managingTags, setManagingTags] = useState<NasabahRow | null>(null);
+  const [showTagAdmin, setShowTagAdmin] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reassigning, setReassigning] = useState(false);
 
@@ -133,6 +168,16 @@ export function ScreenNasabah() {
               onChange={e => setIncludeInactive(e.target.checked)} />
             Tampilkan inactive
           </label>
+          <select className="input" style={{ width: 180 }}
+            value={tagFilter} onChange={e => setTagFilter(e.target.value)}>
+            <option value="">Semua label</option>
+            {(tagsQ.data ?? []).map(t => (
+              <option key={t.id} value={t.id}>{t.name}{t.usage > 0 ? ` (${t.usage})` : ''}</option>
+            ))}
+          </select>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowTagAdmin(true)}>
+            <Ic.plus size={12} />Kelola label
+          </button>
         </div>
         <div className="center gap-2">
           {selected.size > 0 && (
@@ -192,6 +237,17 @@ export function ScreenNasabah() {
                   <td>
                     <div style={{ fontWeight: 700 }}>{n.nama}</div>
                     <div className="muted mono" style={{ fontSize: 11 }}>{n.hp}</div>
+                    {n.tags && n.tags.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                        {n.tags.map(t => (
+                          <span key={t.id} style={{
+                            background: t.color, color: '#fff',
+                            fontSize: 10, fontWeight: 700,
+                            padding: '2px 6px', borderRadius: 4,
+                          }}>{t.name}</span>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td className="muted" style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.alamat}</td>
                   <td><KolBadge kol={KOL_KEY_MAP[n.kol]} /></td>
@@ -202,6 +258,9 @@ export function ScreenNasabah() {
                     <div className="center gap-2" style={{ justifyContent: 'flex-end' }}>
                       <button className="btn btn-sm btn-ghost" onClick={() => setView360(n.id)}>
                         <Ic.eye size={14} />360°
+                      </button>
+                      <button className="btn btn-sm btn-ghost" onClick={() => setManagingTags(n)}>
+                        <Ic.layers size={14} />Label
                       </button>
                       <button className="btn btn-sm btn-ghost" onClick={() => setEditing(n)}>
                         <Ic.settings size={14} />Edit
@@ -251,7 +310,140 @@ export function ScreenNasabah() {
             qc.invalidateQueries({ queryKey: ['nasabah'] });
           }} />
       )}
+      {managingTags && (
+        <TagAssignModal nasabah={managingTags} tags={tagsQ.data ?? []}
+          onClose={() => setManagingTags(null)}
+          onChanged={() => {
+            qc.invalidateQueries({ queryKey: ['nasabah'] });
+            qc.invalidateQueries({ queryKey: ['tags'] });
+          }} />
+      )}
+      {showTagAdmin && (
+        <TagAdminModal tags={tagsQ.data ?? []}
+          onClose={() => setShowTagAdmin(false)}
+          onChanged={() => {
+            qc.invalidateQueries({ queryKey: ['tags'] });
+            qc.invalidateQueries({ queryKey: ['nasabah'] });
+          }} />
+      )}
     </div>
+  );
+}
+
+function TagAssignModal({ nasabah, tags, onClose, onChanged }: {
+  nasabah: NasabahRow; tags: TagRow[];
+  onClose: () => void; onChanged: () => void;
+}) {
+  const applied = new Set((nasabah.tags ?? []).map(t => t.id));
+  const toggle = useMutation({
+    mutationFn: async (tag: TagRow) => {
+      if (applied.has(tag.id)) await removeTag(nasabah.id, tag.id);
+      else await assignTag(nasabah.id, tag.id);
+    },
+    onSuccess: () => onChanged(),
+  });
+  // Only branch-matching or global tags are assignable on this nasabah.
+  const assignable = tags.filter(t => t.branchId == null || t.branchId === nasabah.branchId);
+  return (
+    <Modal onClose={onClose} max={460}>
+      <div className="modal-head">
+        <div style={{ flex: 1 }}>
+          <div className="section-title">Label: {nasabah.kode} · {nasabah.nama}</div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+      </div>
+      <div className="modal-body" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {assignable.length === 0 ? (
+          <div className="muted">Belum ada label tersedia. Buat via "Kelola label".</div>
+        ) : assignable.map(t => {
+          const on = applied.has(t.id);
+          return (
+            <button key={t.id} className="btn btn-sm"
+              onClick={() => toggle.mutate(t)}
+              disabled={toggle.isPending}
+              style={{
+                background: on ? t.color : 'transparent',
+                color: on ? '#fff' : t.color,
+                border: `1.5px solid ${t.color}`,
+                fontWeight: 700,
+              }}>
+              {on && <Ic.check size={12} />}{t.name}
+            </button>
+          );
+        })}
+      </div>
+      <div className="modal-foot">
+        <button className="btn btn-primary" onClick={onClose}>Selesai</button>
+      </div>
+    </Modal>
+  );
+}
+
+function TagAdminModal({ tags, onClose, onChanged }: {
+  tags: TagRow[]; onClose: () => void; onChanged: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('#0ea5e9');
+  const [err, setErr] = useState<string | null>(null);
+  const create = useMutation({
+    mutationFn: () => createTag(name.trim(), color),
+    onSuccess: () => { setName(''); setErr(null); onChanged(); },
+    onError: (e: any) => setErr(e?.response?.data?.error === 'duplicate' ? 'Nama label sudah ada.' : 'Gagal menyimpan.'),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteTag(id),
+    onSuccess: () => onChanged(),
+  });
+  return (
+    <Modal onClose={onClose} max={520}>
+      <div className="modal-head">
+        <div style={{ flex: 1 }}>
+          <div className="section-title">Kelola Label Nasabah</div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+      </div>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div className="center gap-2" style={{ alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Nama label</div>
+            <input className="input" value={name} onChange={e => setName(e.target.value)}
+              placeholder="VIP, Bermasalah, Restruktur, …" />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Warna</div>
+            <input type="color" value={color} onChange={e => setColor(e.target.value)}
+              style={{ width: 48, height: 36, border: 'none', borderRadius: 8 }} />
+          </div>
+          <button className="btn btn-primary"
+            disabled={!name.trim() || create.isPending}
+            onClick={() => create.mutate()}>
+            <Ic.plus size={14} />Tambah
+          </button>
+        </div>
+        {err && <div style={{ color: 'var(--col-macet)', fontSize: 12, fontWeight: 600 }}>{err}</div>}
+        <div className="grid gap-2" style={{ gridTemplateColumns: '1fr' }}>
+          {tags.length === 0
+            ? <div className="muted">Belum ada label.</div>
+            : tags.map(t => (
+              <div key={t.id} className="center gap-2"
+                style={{ padding: '8px 10px', border: '1px solid var(--line)', borderRadius: 8 }}>
+                <span style={{ background: t.color, color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4 }}>{t.name}</span>
+                <span className="muted" style={{ fontSize: 11.5 }}>
+                  {t.branchKode ? `Cabang ${t.branchKode}` : 'Global'}
+                  {t.usage > 0 ? ` · dipakai ${t.usage} nasabah` : ''}
+                </span>
+                <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }}
+                  disabled={remove.isPending} onClick={() => remove.mutate(t.id)}>
+                  <Ic.x size={12} />Hapus
+                </button>
+              </div>
+            ))}
+        </div>
+      </div>
+      <div className="modal-foot">
+        <button className="btn" onClick={onClose}>Tutup</button>
+      </div>
+    </Modal>
   );
 }
 

@@ -51,6 +51,7 @@ model Branch {
   escalations  EscalationTicket[]
   transfersFrom PetugasTransfer[] @relation("TransferFrom")
   transfersTo   PetugasTransfer[] @relation("TransferTo")
+  tags         Tag[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 }
@@ -142,6 +143,7 @@ model User {
   escalationAssignments EscalationTicket[]  @relation("EscalationAssignee")
   leaveDecisions      PetugasLeave[]        @relation("LeaveApprover")
   transfersAuthored   PetugasTransfer[]     @relation("TransferMover")
+  createdTags         Tag[]                 @relation("TagCreator")
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -403,6 +405,7 @@ model Nasabah {
   blastRecipient BlastRecipient[]
   feedback       CustomerFeedback[]
   escalations    EscalationTicket[]
+  tags           NasabahTag[]
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -706,4 +709,34 @@ model PetugasTransfer {
   @@index([petugasId, createdAt])
   @@index([fromBranchId, createdAt])
   @@index([toBranchId, createdAt])
+}
+
+// CX — nasabah segmentation labels. Tags are branch-scoped (or HQ-global
+// when branchId is null) and many-to-many on Nasabah via NasabahTag.
+// SUPERVISOR creates within their branch; ADMIN may create global tags.
+model Tag {
+  id          String       @id @default(cuid())
+  name        String
+  color       String       @default("#64748b")   // tailwind slate-500 — neutral default
+  branch      Branch?      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branchId    String?
+  createdBy   User?        @relation("TagCreator", fields: [createdById], references: [id])
+  createdById String?
+  nasabah     NasabahTag[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([branchId, name])
+  @@index([branchId])
+}
+
+model NasabahTag {
+  nasabah     Nasabah  @relation(fields: [nasabahId], references: [id], onDelete: Cascade)
+  nasabahId   String
+  tag         Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  tagId       String
+  createdAt   DateTime @default(now())
+
+  @@id([nasabahId, tagId])
+  @@index([tagId])
 }

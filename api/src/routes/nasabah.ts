@@ -27,6 +27,7 @@ router.get('/', async (req, res) => {
   const kol = str(req.query.kol);
   const petugasId = str(req.query.petugasId);
   const akad = str(req.query.akad);
+  const tagId = str(req.query.tagId);
   const includeInactive = str(req.query.includeInactive) === '1';
 
   const list = await prisma.nasabah.findMany({
@@ -37,12 +38,19 @@ router.get('/', async (req, res) => {
       ...(kol ? { kol: kol as any } : {}),
       ...(petugasId ? { petugasId } : {}),
       ...(akad ? { akad: akad as any } : {}),
+      ...(tagId ? { tags: { some: { tagId } } } : {}),
     },
-    include: { petugas: true },
+    include: {
+      petugas: true,
+      tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
+    },
     orderBy: { kode: 'asc' },
     take: 500,
   });
-  res.json(list);
+  res.json(list.map(n => ({
+    ...n,
+    tags: n.tags.map(t => t.tag),
+  })));
 });
 
 // Mounted BEFORE the /:id catch-all so the segment isn't consumed as an ID.
@@ -78,10 +86,46 @@ router.get('/postur', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const n = await prisma.nasabah.findFirst({
     where: { id: String(req.params.id), ...scope(req) },
-    include: { petugas: true },
+    include: {
+      petugas: true,
+      tags: { include: { tag: { select: { id: true, name: true, color: true } } } },
+    },
   });
   if (!n) return res.status(404).json({ error: 'not_found' });
-  res.json(n);
+  res.json({ ...n, tags: n.tags.map(t => t.tag) });
+});
+
+// CX — apply / remove a tag on a nasabah. SUPERVISOR/ADMIN only.
+router.post('/:id/tags', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const tagId = String((req.body ?? {}).tagId ?? '');
+  if (!tagId) return res.status(400).json({ error: 'bad_request' });
+  const n = await prisma.nasabah.findFirst({ where: { id, ...scope(req) }, select: { id: true, branchId: true } });
+  if (!n) return res.status(404).json({ error: 'not_found' });
+  const tag = await prisma.tag.findUnique({ where: { id: tagId }, select: { id: true, branchId: true } });
+  if (!tag) return res.status(404).json({ error: 'tag_not_found' });
+  // Branch-scoped tags can only go on nasabah in that same branch. Global
+  // tags (branchId null) are usable everywhere.
+  if (tag.branchId && tag.branchId !== n.branchId) {
+    return res.status(403).json({ error: 'tag_branch_mismatch' });
+  }
+  try {
+    await prisma.nasabahTag.create({ data: { nasabahId: id, tagId } });
+  } catch (e: any) {
+    if (e?.code !== 'P2002') throw e;     // already applied → idempotent
+  }
+  await audit({ action: 'tag.apply', target: id, ...fromReq(req), meta: { tagId } });
+  res.status(201).json({ ok: true });
+});
+
+router.delete('/:id/tags/:tagId', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const tagId = String(req.params.tagId);
+  const n = await prisma.nasabah.findFirst({ where: { id, ...scope(req) }, select: { id: true } });
+  if (!n) return res.status(404).json({ error: 'not_found' });
+  await prisma.nasabahTag.deleteMany({ where: { nasabahId: id, tagId } });
+  await audit({ action: 'tag.remove', target: id, ...fromReq(req), meta: { tagId } });
+  res.json({ ok: true });
 });
 
 // Aggregated 360° payload — one endpoint to populate the supervisor's

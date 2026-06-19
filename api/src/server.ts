@@ -51,6 +51,7 @@ import certifications from './routes/certifications.js';
 import systemHealth from './routes/systemHealth.js';
 import escalation from './routes/escalation.js';
 import leaves from './routes/leaves.js';
+import tags from './routes/tags.js';
 import { startEscalationWorker, stopEscalationWorker } from './workers/escalationWorker.js';
 import { startWeeklyDigestWorker, stopWeeklyDigestWorker } from './workers/weeklyDigestWorker.js';
 import { startInactivityWorker, stopInactivityWorker } from './workers/inactivityWorker.js';
@@ -168,6 +169,7 @@ app.use('/api/certifications', certifications);
 app.use('/api/system-health', systemHealth);
 app.use('/api/escalation', escalation);
 app.use('/api/leaves', leaves);
+app.use('/api/tags', tags);
 
 // Static uploads — Cache-Control prevents stale photo IDs from sticking.
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {

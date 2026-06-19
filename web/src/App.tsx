@@ -46,6 +46,7 @@ const ScreenFeedback = lazy(() => import('./screens/Feedback').then(m => ({ defa
 const ScreenBackup = lazy(() => import('./screens/Backup').then(m => ({ default: m.ScreenBackup })));
 const ScreenApiKeys = lazy(() => import('./screens/ApiKeys').then(m => ({ default: m.ScreenApiKeys })));
 const ScreenWebhooks = lazy(() => import('./screens/Webhooks').then(m => ({ default: m.ScreenWebhooks })));
+const ScreenLeaveCalendar = lazy(() => import('./screens/LeaveCalendar').then(m => ({ default: m.ScreenLeaveCalendar })));
 
 function ScreenFallback() {
   return (
@@ -58,7 +59,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'churn' | 'activity' | 'leaderboard' | 'system-health' | 'commission' | 'escalation' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'churn' | 'activity' | 'leaderboard' | 'system-health' | 'commission' | 'escalation' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks' | 'leave-calendar';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -89,6 +90,7 @@ function useNav(): NavGroup[] {
       { k: 'performa', label: 'Performa Petugas', icon: 'chart' },
       { k: 'feedback', label: 'Feedback Nasabah', icon: 'wa' },
       { k: 'escalation', label: 'Escalation', icon: 'alert' },
+      { k: 'leave-calendar', label: 'Kalender Cuti', icon: 'clock' },
     ] },
     { group: 'Lapangan', items: [
       { k: 'wilayah', label: 'Wilayah Binaan', icon: 'map' },
@@ -148,6 +150,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   backup: ['Backup Database', 'Status backup pg_dump + verifikasi integritas file'],
   apikeys: ['API Keys', 'Token machine-to-machine untuk integrasi sistem lain'],
   webhooks: ['Webhooks', 'Daftarkan URL eksternal untuk menerima event sistem'],
+  'leave-calendar': ['Kalender Cuti', 'Visualisasi 30 hari semua cuti petugas lintas cabang + status substitute'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -420,6 +423,7 @@ export function App() {
             {page === 'backup' && <ScreenBackup />}
             {page === 'apikeys' && <ScreenApiKeys />}
             {page === 'webhooks' && <ScreenWebhooks />}
+            {page === 'leave-calendar' && <ScreenLeaveCalendar />}
           </Suspense>
         </main>
       </div>
