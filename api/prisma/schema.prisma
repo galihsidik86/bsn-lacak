@@ -129,6 +129,7 @@ model User {
   createdCertifications PetugasCertification[] @relation("CertCreator")
   kunjunganEdits      KunjunganEditLog[]    @relation("EditLogEditor")
   escalationAssignments EscalationTicket[]  @relation("EscalationAssignee")
+  leaveDecisions      PetugasLeave[]        @relation("LeaveApprover")
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -219,6 +220,7 @@ model Petugas {
   attendance  Attendance[]
   feedback    CustomerFeedback[]
   certifications PetugasCertification[]
+  leaves      PetugasLeave[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -638,4 +640,27 @@ model EscalationTicket {
 
   @@index([branchId, status, createdAt])
   @@index([nasabahId, status])
+}
+
+// CS — petugas leave/cuti record. SUPERVISOR creates and approves; the
+// morning-reminder + inactivity workers consult `approved` rows to skip a
+// petugas on the dates they're out. Soft delete via status='cancelled' so
+// withdrawn requests stay in the trail.
+model PetugasLeave {
+  id          String    @id @default(cuid())
+  petugas     Petugas   @relation(fields: [petugasId], references: [id], onDelete: Cascade)
+  petugasId   String
+  startDate   DateTime
+  endDate     DateTime
+  type        String    // 'cuti_tahunan' | 'sakit' | 'dinas_luar' | 'lain'
+  status      String    @default("pending")    // pending | approved | rejected | cancelled
+  reason      String?
+  approvedBy  User?     @relation("LeaveApprover", fields: [approvedById], references: [id])
+  approvedById String?
+  decisionAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([petugasId, status, startDate])
+  @@index([status, endDate])
 }

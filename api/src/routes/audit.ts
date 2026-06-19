@@ -8,6 +8,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { prisma } from '../db.js';
 import { requireAuth, requireRole, scopedBranchId } from '../auth.js';
+import { audit, fromReq } from '../lib/audit.js';
 import { env } from '../env.js';
 
 const router = Router();
@@ -141,5 +142,84 @@ router.get('/archive/:name', requireRole('ADMIN'), async (req, res) => {
   });
   res.json({ file: name, totalLines: lines.length, returned: items.length, items });
 });
+
+// CT — streaming CSV export. ADMIN-only. Supports ?since=&until=&action=&actor=
+// filters. Streams 100 rows at a time so a wide range doesn't materialize
+// in memory.
+router.get('/export.csv', requireRole('ADMIN'), async (req, res) => {
+  const str = (v: unknown): string | undefined => typeof v === 'string' && v ? v : undefined;
+  const sinceStr = str(req.query.since);
+  const untilStr = str(req.query.until);
+  const actionFilter = str(req.query.action);
+  const actorFilter = str(req.query.actor);
+  const since = sinceStr ? new Date(sinceStr) : undefined;
+  const until = untilStr ? new Date(untilStr) : undefined;
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Disposition', `attachment; filename="audit-${stamp}.csv"`);
+
+  // BOM so Excel detects UTF-8 + Indonesian characters render correctly.
+  res.write('\uFEFF');
+  res.write(['createdAt', 'action', 'actor', 'actorId', 'target', 'ip', 'userAgent', 'meta'].join(',') + '\n');
+
+  const where = {
+    ...(since || until
+      ? { createdAt: {
+          ...(since ? { gte: since } : {}),
+          ...(until ? { lte: until } : {}),
+        } }
+      : {}),
+    ...(actionFilter ? { action: { contains: actionFilter } } : {}),
+    ...(actorFilter ? { actor: { contains: actorFilter } } : {}),
+  };
+
+  // Stream in pages so the result set stays bounded.
+  const pageSize = 500;
+  let cursor: { id: string } | undefined;
+  let totalRows = 0;
+  // Hard cap so an "export everything" doesn't run for hours; the UI can
+  // re-fire with a narrower range when truncated.
+  const HARD_CAP = 100_000;
+  for (;;) {
+    const rows = await prisma.auditLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: pageSize,
+      ...(cursor ? { skip: 1, cursor } : {}),
+    });
+    if (rows.length === 0) break;
+    for (const r of rows) {
+      const cells = [
+        r.createdAt.toISOString(),
+        r.action,
+        r.actor ?? '',
+        r.actorId ?? '',
+        r.target ?? '',
+        r.ip ?? '',
+        r.userAgent ?? '',
+        r.meta ? JSON.stringify(r.meta) : '',
+      ].map(csvCell);
+      res.write(cells.join(',') + '\n');
+    }
+    totalRows += rows.length;
+    cursor = { id: rows[rows.length - 1].id };
+    if (totalRows >= HARD_CAP) break;
+  }
+  res.end();
+
+  await audit({
+    action: 'audit.csv_export', ...fromReq(req),
+    meta: {
+      rows: totalRows, since: sinceStr, until: untilStr,
+      action: actionFilter, actor: actorFilter,
+    },
+  });
+});
+
+function csvCell(v: string): string {
+  if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+  return v;
+}
 
 export default router;

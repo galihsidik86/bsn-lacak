@@ -4,6 +4,7 @@ import { logger } from '../lib/logger.js';
 import { audit } from '../lib/audit.js';
 import { enqueueNotification } from '../routes/notifications.js';
 import { pushToUsers } from '../lib/webPush.js';
+import { petugasOnLeaveOn } from '../lib/leaveCheck.js';
 
 // CO — petugas inactivity detector. Once a day at the configured hour,
 // find every active petugas whose latest Kunjungan tanggal is older than
@@ -47,7 +48,11 @@ export async function runInactivitySweep(opts?: { now?: Date; force?: boolean })
       },
     },
   });
+  // CS — petugas on approved leave today are not "inactive" in a way
+  // supervisors care about; skip them.
+  const onLeave = await petugasOnLeaveOn(now);
   const inactive = petugas.filter(p => {
+    if (onLeave.has(p.id)) return false;
     const latest = p.kunjungan[0]?.tanggal;
     return !latest || latest < cutoff;
   });

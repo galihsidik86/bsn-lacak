@@ -5,6 +5,7 @@ import { audit } from '../lib/audit.js';
 import { pushToUsers } from '../lib/webPush.js';
 import { enqueueNotification } from '../routes/notifications.js';
 import { isWorkingDay, getHolidayOn } from '../lib/holidays.js';
+import { petugasOnLeaveOn } from '../lib/leaveCheck.js';
 
 // Once per hour, check whether (today is a weekday) AND (now.getHours() ==
 // MORNING_REMINDER_HOUR) AND (we haven't already fired today). When all
@@ -50,9 +51,13 @@ export async function runMorningReminderSweep(opts?: {
 
   const petugas = await prisma.user.findMany({
     where: { role: 'PETUGAS', active: true },
-    select: { id: true },
+    select: { id: true, petugasId: true },
   });
-  const userIds = petugas.map(p => p.id);
+  // CS — skip petugas who are on approved leave today.
+  const onLeave = await petugasOnLeaveOn(now);
+  const userIds = petugas
+    .filter(p => !p.petugasId || !onLeave.has(p.petugasId))
+    .map(p => p.id);
   if (userIds.length === 0) return { ok: false, reason: 'no_recipients', day };
 
   const title = 'Selamat pagi 👋';

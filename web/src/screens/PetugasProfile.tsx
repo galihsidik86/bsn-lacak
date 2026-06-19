@@ -132,6 +132,7 @@ export function ScreenPetugasProfile({ petugasId, onClose }: { petugasId: string
       </div>
 
       <CertPanel petugasId={d.petugas.id} />
+      <LeavePanel petugasId={d.petugas.id} />
 
       <div className="card fade-up" style={{ overflow: 'hidden' }}>
         <div className="card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
@@ -418,5 +419,177 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', display: 'block', marginBottom: 5 }}>{label}</span>
       {children}
     </label>
+  );
+}
+
+// CS — leave/cuti panel mirroring the cert panel structure.
+interface LeaveRow {
+  id: string; startDate: string; endDate: string; type: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  reason: string | null; decisionAt: string | null;
+  approvedBy: { username: string; nama: string } | null;
+}
+function LeavePanel({ petugasId }: { petugasId: string }) {
+  const role = useAuth(s => s.user?.role);
+  const canEdit = role === 'SUPERVISOR' || role === 'ADMIN';
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ['leaves', petugasId],
+    queryFn: () => axios.get<LeaveRow[]>(`${import.meta.env.VITE_API_URL || '/api'}/leaves?petugasId=${petugasId}`,
+      { withCredentials: true, headers: certHeaders() }).then(r => r.data),
+  });
+  const [adding, setAdding] = useState(false);
+
+  const decide = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'approved' | 'rejected' }) =>
+      axios.patch(`${import.meta.env.VITE_API_URL || '/api'}/leaves/${id}`,
+        { status },
+        { withCredentials: true, headers: certHeaders() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['leaves', petugasId] }),
+  });
+
+  return (
+    <div className="card fade-up" style={{ overflow: 'hidden' }}>
+      <div className="between card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
+        <div>
+          <div className="section-title">Cuti / Izin</div>
+          <div className="page-sub">Reminder + inactivity detector skip petugas pada hari cuti.</div>
+        </div>
+        {canEdit && (
+          <button className="btn btn-sm btn-primary" onClick={() => setAdding(true)}>
+            <Ic.plus size={14} />Tambah
+          </button>
+        )}
+      </div>
+      {q.isPending ? <Skeleton h={120} />
+        : (q.data ?? []).length === 0 ? <EmptyState title="Belum ada catatan cuti" />
+        : (
+          <table className="table">
+            <thead>
+              <tr><th>Periode</th><th>Tipe</th><th>Status</th><th>Approver</th>
+                {canEdit && <th></th>}</tr>
+            </thead>
+            <tbody>
+              {q.data!.map(l => (
+                <tr key={l.id}>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {new Date(l.startDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+                    {' → '}
+                    {new Date(l.endDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </td>
+                  <td><span className="chip" style={{ background: 'var(--surface-2)', color: 'var(--ink-2)', fontSize: 11 }}>{l.type.replace('_', ' ')}</span></td>
+                  <td>
+                    <span className="chip" style={{
+                      background: l.status === 'approved' ? 'var(--accent-soft)'
+                        : l.status === 'pending' ? 'var(--gold-soft)'
+                        : l.status === 'cancelled' ? 'var(--surface-2)' : 'var(--col-macet-soft)',
+                      color: l.status === 'approved' ? 'var(--accent-ink)'
+                        : l.status === 'pending' ? 'var(--gold-ink)'
+                        : l.status === 'cancelled' ? 'var(--ink-3)' : 'var(--col-macet)',
+                      fontSize: 11,
+                    }}>{l.status}</span>
+                  </td>
+                  <td className="muted mono" style={{ fontSize: 11 }}>
+                    {l.approvedBy ? `${l.approvedBy.nama}` : '—'}
+                  </td>
+                  {canEdit && (
+                    <td style={{ textAlign: 'right' }}>
+                      {l.status === 'pending' && (
+                        <div className="center gap-2" style={{ justifyContent: 'flex-end' }}>
+                          <button className="btn btn-sm btn-ghost" onClick={() => decide.mutate({ id: l.id, status: 'approved' })}
+                            style={{ color: 'var(--accent)' }}>
+                            <Ic.check size={12} />Setujui
+                          </button>
+                          <button className="btn btn-sm btn-ghost" onClick={() => decide.mutate({ id: l.id, status: 'rejected' })}
+                            style={{ color: 'var(--col-macet)' }}>
+                            <Ic.x size={12} />Tolak
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      {adding && (
+        <LeaveForm petugasId={petugasId}
+          onClose={() => setAdding(false)}
+          onSaved={() => {
+            setAdding(false);
+            qc.invalidateQueries({ queryKey: ['leaves', petugasId] });
+          }} />
+      )}
+    </div>
+  );
+}
+
+function LeaveForm({ petugasId, onClose, onSaved }: {
+  petugasId: string; onClose: () => void; onSaved: () => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [start, setStart] = useState(today);
+  const [end, setEnd] = useState(today);
+  const [type, setType] = useState<'cuti_tahunan' | 'sakit' | 'dinas_luar' | 'lain'>('cuti_tahunan');
+  const [reason, setReason] = useState('');
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: () => axios.post(`${import.meta.env.VITE_API_URL || '/api'}/leaves`,
+      {
+        petugasId, startDate: start, endDate: end, type,
+        reason: reason || null,
+        status: autoApprove ? 'approved' : 'pending',
+      },
+      { withCredentials: true, headers: certHeaders() }),
+    onSuccess: () => onSaved(),
+    onError: (e: any) => {
+      const c = e?.response?.data?.error;
+      setErr(c === 'date_range_invalid' ? 'Tanggal akhir harus ≥ tanggal mulai.' : 'Gagal menyimpan.');
+    },
+  });
+  return (
+    <Modal onClose={onClose} max={520}>
+      <div className="modal-head">
+        <div style={{ flex: 1 }}>
+          <div className="section-title">Tambah Cuti</div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+      </div>
+      <div className="modal-body" style={{ display: 'grid', gap: 12 }}>
+        <div className="grid gap-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <Field label="Mulai"><input className="input" type="date" value={start} onChange={e => setStart(e.target.value)} /></Field>
+          <Field label="Sampai"><input className="input" type="date" value={end} onChange={e => setEnd(e.target.value)} /></Field>
+        </div>
+        <Field label="Tipe">
+          <select className="input" value={type} onChange={e => setType(e.target.value as any)}>
+            <option value="cuti_tahunan">Cuti tahunan</option>
+            <option value="sakit">Sakit</option>
+            <option value="dinas_luar">Dinas luar</option>
+            <option value="lain">Lain-lain</option>
+          </select>
+        </Field>
+        <Field label="Alasan / catatan">
+          <textarea className="input" rows={2} value={reason} onChange={e => setReason(e.target.value)} style={{ resize: 'none' }} />
+        </Field>
+        <label className="center gap-2" style={{ fontSize: 12.5, fontWeight: 600 }}>
+          <input type="checkbox" checked={autoApprove} onChange={e => setAutoApprove(e.target.checked)} />
+          Setujui sekarang
+        </label>
+        {err && (
+          <div className="center gap-2" style={{
+            background: 'var(--col-macet-soft)', color: 'var(--col-macet)',
+            borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 600,
+          }}><Ic.alert size={14} />{err}</div>
+        )}
+      </div>
+      <div className="modal-foot">
+        <button className="btn" onClick={onClose}>Batal</button>
+        <button className="btn btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>
+          {save.isPending ? 'Menyimpan…' : 'Tambah'}
+        </button>
+      </div>
+    </Modal>
   );
 }

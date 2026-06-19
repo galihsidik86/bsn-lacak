@@ -119,6 +119,9 @@ export function ScreenAudit() {
               <Ic.x size={14} />Reset
             </button>
           )}
+          {role === 'ADMIN' && (
+            <ExportCsvButton action={action} actor={actor} since={since} until={until} />
+          )}
         </div>
       </div>
 
@@ -270,5 +273,32 @@ function ArchiveBrowser() {
         )}
       </div>
     </div>
+  );
+}
+
+// CT — streaming CSV export. Carries the same filters as the live view.
+function ExportCsvButton({ action, actor, since, until }: {
+  action: string; actor: string; since: string; until: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const click = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { downloadAuthed } = await import('../lib/download');
+      const params = new URLSearchParams();
+      if (action) params.set('action', action);
+      if (actor) params.set('actor', actor);
+      if (since) params.set('since', new Date(since).toISOString());
+      if (until) params.set('until', new Date(until).toISOString());
+      const stamp = new Date().toISOString().slice(0, 10);
+      await downloadAuthed(`/audit/export.csv?${params.toString()}`, `audit-${stamp}.csv`);
+    } catch { /* swallow — server returns 4xx if scope blocks */ }
+    finally { setBusy(false); }
+  };
+  return (
+    <button className="btn btn-sm" onClick={click} disabled={busy}>
+      <Ic.download size={14} />{busy ? 'Menyiapkan…' : 'Ekspor CSV'}
+    </button>
   );
 }
