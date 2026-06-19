@@ -28,12 +28,14 @@ router.get('/', async (req, res) => {
   const petugasId = str(req.query.petugasId);
   const akad = str(req.query.akad);
   const tagId = str(req.query.tagId);
+  const blacklistOnly = str(req.query.blacklistOnly) === '1';
   const includeInactive = str(req.query.includeInactive) === '1';
 
   const list = await prisma.nasabah.findMany({
     where: {
       ...scope(req),
       ...(includeInactive ? {} : { active: true }),
+      ...(blacklistOnly ? { blacklisted: true } : {}),
       ...(q ? { OR: [{ nama: { contains: q, mode: 'insensitive' } }, { kode: { contains: q, mode: 'insensitive' } }] } : {}),
       ...(kol ? { kol: kol as any } : {}),
       ...(petugasId ? { petugasId } : {}),
@@ -660,6 +662,30 @@ router.patch('/:id/next-visit', requireRole('SUPERVISOR', 'ADMIN'), async (req, 
   await audit({
     action: 'nasabah.next_visit', target: id, ...fromReq(req),
     meta: { nextVisitAt: nextVisitAt?.toISOString() ?? null },
+  });
+  res.json(updated);
+});
+
+// DK — blacklist toggle. Setting blacklisted=true also requires a reason;
+// flipping back clears the reason + timestamp. SUPERVISOR/ADMIN only.
+router.patch('/:id/blacklist', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const target = await prisma.nasabah.findFirst({ where: { id, ...scope(req) }, select: { id: true, blacklisted: true } });
+  if (!target) return res.status(404).json({ error: 'not_found' });
+  const blacklisted = Boolean((req.body ?? {}).blacklisted);
+  const reason = String((req.body ?? {}).reason ?? '').trim().slice(0, 500);
+  if (blacklisted && !reason) return res.status(400).json({ error: 'reason_required' });
+
+  const updated = await prisma.nasabah.update({
+    where: { id },
+    data: blacklisted
+      ? { blacklisted: true, blacklistReason: reason, blacklistedAt: new Date() }
+      : { blacklisted: false, blacklistReason: null, blacklistedAt: null },
+  });
+  await audit({
+    action: blacklisted ? 'nasabah.blacklist' : 'nasabah.unblacklist',
+    target: id, ...fromReq(req),
+    meta: blacklisted ? { reason } : {},
   });
   res.json(updated);
 });

@@ -35,6 +35,8 @@ interface NasabahRow {
   petugasId: string;
   branchId: string;
   tags?: Array<{ id: string; name: string; color: string }>;
+  blacklisted?: boolean;
+  blacklistReason?: string | null;
 }
 
 interface TagRow {
@@ -52,12 +54,13 @@ function headers() {
   return h;
 }
 
-async function listNasabah(includeInactive: boolean, tagId?: string): Promise<NasabahRow[]> {
+async function listNasabah(includeInactive: boolean, tagId?: string, blacklistOnly?: boolean): Promise<NasabahRow[]> {
   return (await axios.get(`${BASE}/nasabah`, {
     withCredentials: true, headers: headers(),
     params: {
       includeInactive: includeInactive ? '1' : '0',
       ...(tagId ? { tagId } : {}),
+      ...(blacklistOnly ? { blacklistOnly: '1' } : {}),
     },
   })).data;
 }
@@ -150,9 +153,10 @@ export function ScreenNasabah() {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [search, setSearch] = useState('');
   const [tagFilter, setTagFilter] = useState<string>('');
+  const [blacklistOnly, setBlacklistOnly] = useState(false);
   const q = useQuery({
-    queryKey: ['nasabah', { includeInactive, tagFilter }],
-    queryFn: () => listNasabah(includeInactive, tagFilter || undefined),
+    queryKey: ['nasabah', { includeInactive, tagFilter, blacklistOnly }],
+    queryFn: () => listNasabah(includeInactive, tagFilter || undefined, blacklistOnly),
   });
   const petugasQ = useQuery({ queryKey: ['petugas'], queryFn: listPetugas });
   const tagsQ = useQuery({ queryKey: ['tags'], queryFn: listTags });
@@ -198,6 +202,10 @@ export function ScreenNasabah() {
           <button className="btn btn-ghost btn-sm" onClick={() => setShowTagAdmin(true)}>
             <Ic.plus size={12} />Kelola label
           </button>
+          <label className="center gap-2" style={{ fontSize: 13, fontWeight: 600, color: 'var(--col-macet)' }}>
+            <input type="checkbox" checked={blacklistOnly} onChange={e => setBlacklistOnly(e.target.checked)} />
+            Blacklist saja
+          </label>
         </div>
         <div className="center gap-2">
           {selected.size > 0 && (
@@ -255,7 +263,16 @@ export function ScreenNasabah() {
                   </td>
                   <td className="mono">{n.kode}</td>
                   <td>
-                    <div style={{ fontWeight: 700 }}>{n.nama}</div>
+                    <div className="center gap-2">
+                      <div style={{ fontWeight: 700 }}>{n.nama}</div>
+                      {n.blacklisted && (
+                        <span title={n.blacklistReason ?? undefined} style={{
+                          background: 'var(--col-macet)', color: '#fff',
+                          fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                          letterSpacing: 0.4, textTransform: 'uppercase',
+                        }}>Blacklist</span>
+                      )}
+                    </div>
                     <div className="muted mono" style={{ fontSize: 11 }}>{n.hp}</div>
                     {n.tags && n.tags.length > 0 && (
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>

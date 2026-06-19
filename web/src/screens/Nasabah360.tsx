@@ -50,6 +50,8 @@ interface NasabahDetail {
   plafon: string | number; tenor: number; angsuran: string | number; sisa: string | number;
   dpd: number; dueIn: number; lastBayar: string | null;
   active: boolean;
+  blacklisted?: boolean;
+  blacklistReason?: string | null;
   petugas: { kode: string; nama: string; hp: string; inisial: string; hue: number; wilayah: string; branch: { kode: string; nama: string } };
   branch: { kode: string; nama: string; alamat: string | null };
 }
@@ -122,12 +124,21 @@ export function ScreenNasabah360({ nasabahId, onClose }: { nasabahId: string; on
                 <Ic.x size={12} />Inactive
               </span>
             )}
+            {n.blacklisted && (
+              <span className="chip" title={n.blacklistReason ?? undefined}
+                style={{ background: 'var(--col-macet)', color: '#fff', fontWeight: 700, letterSpacing: 0.4 }}>
+                <Ic.alert size={12} />BLACKLIST
+              </span>
+            )}
           </div>
           <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
             {n.alamat} · {n.hp}
           </div>
         </div>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+        <div className="center gap-2">
+          <BlacklistToggle nasabah={n} />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+        </div>
       </div>
 
       <div className="modal-body">
@@ -419,6 +430,71 @@ function TimelineSummary({ type, data }: { type: string; data: any }) {
     );
   }
   return null;
+}
+
+function BlacklistToggle({ nasabah }: { nasabah: NasabahDetail }) {
+  const qc = useQueryClient();
+  const me = useAuth(s => s.user);
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const toggle = useMutation({
+    mutationFn: async (payload: { blacklisted: boolean; reason?: string }) =>
+      axios.patch(`${BASE}/nasabah/${nasabah.id}/blacklist`, payload,
+        { withCredentials: true, headers: headers() }),
+    onSuccess: () => {
+      setOpen(false); setReason(''); setErr(null);
+      qc.invalidateQueries({ queryKey: ['nasabah-360', nasabah.id] });
+      qc.invalidateQueries({ queryKey: ['nasabah'] });
+    },
+    onError: (e: any) => setErr(e?.response?.data?.error === 'reason_required'
+      ? 'Alasan wajib diisi.' : 'Gagal menyimpan.'),
+  });
+  if (!me || me.role === 'PETUGAS') return null;
+  if (nasabah.blacklisted) {
+    return (
+      <button className="btn btn-sm" disabled={toggle.isPending}
+        onClick={() => toggle.mutate({ blacklisted: false })}>
+        <Ic.check size={14} />Cabut blacklist
+      </button>
+    );
+  }
+  return (
+    <>
+      <button className="btn btn-sm"
+        style={{ color: 'var(--col-macet)' }}
+        onClick={() => setOpen(true)}>
+        <Ic.alert size={14} />Blacklist
+      </button>
+      {open && (
+        <Modal onClose={() => setOpen(false)} max={420}>
+          <div className="modal-head">
+            <div style={{ flex: 1 }}>
+              <div className="section-title">Blacklist Nasabah</div>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}><Ic.x size={16} /></button>
+          </div>
+          <div className="modal-body" style={{ display: 'grid', gap: 10 }}>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Nasabah akan ditandai sebagai blacklist dan muncul filter terpisah di daftar.
+            </div>
+            <textarea className="input" rows={3} maxLength={500} value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Alasan blacklist (wajib)" />
+            {err && <div style={{ color: 'var(--col-macet)', fontSize: 12, fontWeight: 600 }}>{err}</div>}
+          </div>
+          <div className="modal-foot">
+            <button className="btn" onClick={() => setOpen(false)}>Batal</button>
+            <button className="btn btn-primary"
+              disabled={!reason.trim() || toggle.isPending}
+              onClick={() => toggle.mutate({ blacklisted: true, reason: reason.trim() })}>
+              {toggle.isPending ? 'Menyimpan…' : 'Blacklist'}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
 }
 
 interface NoteRow {

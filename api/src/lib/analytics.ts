@@ -1246,3 +1246,98 @@ export function toClosingCsv(rows: ClosingRow[]): string {
   }
   return '\ufeff' + lines.join('\r\n') + '\r\n';
 }
+
+// DJ — JANJI tracker. For every kunjungan with hasil='JANJI' inside the
+// window, decide if it was kept, missed, or is still pending:
+//   kept    — a follow-up kunjungan on the same nasabah happened within
+//             FOLLOWUP_HOURS after the JANJI.
+//   missed  — FOLLOWUP_HOURS has elapsed since the JANJI but no follow-up
+//             kunjungan recorded.
+//   pending — FOLLOWUP_HOURS has not yet elapsed.
+const JANJI_FOLLOWUP_HOURS = 72;
+
+export interface JanjiTrackerRow {
+  kunjunganId: string;
+  tanggal: string;
+  status: 'kept' | 'missed' | 'pending';
+  deadline: string;
+  followupAt: string | null;
+  nasabah: { id: string; kode: string; nama: string };
+  petugas: { id: string; kode: string; nama: string; branchKode: string };
+}
+
+export async function janjiTracker(opts: {
+  branchId: string | null | undefined;
+  days: number;
+  now?: Date;
+}): Promise<{
+  windowDays: number;
+  followupHours: number;
+  rows: JanjiTrackerRow[];
+  totals: { kept: number; missed: number; pending: number };
+}> {
+  const now = opts.now ?? new Date();
+  const since = new Date(now.getTime() - opts.days * 86400_000);
+  const branchClause = opts.branchId ? { branchId: opts.branchId } : {};
+
+  const janjis = await prisma.kunjungan.findMany({
+    where: { ...branchClause, hasil: 'JANJI', tanggal: { gte: since } },
+    include: {
+      nasabah: { select: { id: true, kode: true, nama: true } },
+      petugas: { select: { id: true, kode: true, nama: true, branch: { select: { kode: true } } } },
+    },
+    orderBy: { tanggal: 'asc' },
+    take: 2000,
+  });
+
+  if (janjis.length === 0) {
+    return { windowDays: opts.days, followupHours: JANJI_FOLLOWUP_HOURS, rows: [], totals: { kept: 0, missed: 0, pending: 0 } };
+  }
+
+  // For each JANJI, find the earliest subsequent kunjungan on the same nasabah.
+  const nasabahIds = [...new Set(janjis.map(j => j.nasabahId))];
+  const followups = await prisma.kunjungan.findMany({
+    where: {
+      nasabahId: { in: nasabahIds },
+      tanggal: { gt: since },
+      hasil: { in: ['BAYAR', 'JANJI', 'TIDAKADA', 'TOLAK'] },
+    },
+    select: { id: true, nasabahId: true, tanggal: true },
+    orderBy: { tanggal: 'asc' },
+  });
+  const byNasabah = new Map<string, Array<{ id: string; tanggal: Date }>>();
+  for (const f of followups) {
+    const arr = byNasabah.get(f.nasabahId) ?? [];
+    arr.push({ id: f.id, tanggal: f.tanggal });
+    byNasabah.set(f.nasabahId, arr);
+  }
+
+  const rows: JanjiTrackerRow[] = [];
+  let kept = 0, missed = 0, pending = 0;
+  for (const j of janjis) {
+    const deadline = new Date(j.tanggal.getTime() + JANJI_FOLLOWUP_HOURS * 3600_000);
+    const candidates = byNasabah.get(j.nasabahId) ?? [];
+    const followup = candidates.find(c => c.id !== j.id && c.tanggal > j.tanggal && c.tanggal <= deadline);
+    let status: 'kept' | 'missed' | 'pending';
+    if (followup) { status = 'kept'; kept++; }
+    else if (now < deadline) { status = 'pending'; pending++; }
+    else { status = 'missed'; missed++; }
+    rows.push({
+      kunjunganId: j.id,
+      tanggal: j.tanggal.toISOString(),
+      status,
+      deadline: deadline.toISOString(),
+      followupAt: followup?.tanggal.toISOString() ?? null,
+      nasabah: j.nasabah,
+      petugas: {
+        id: j.petugas.id, kode: j.petugas.kode, nama: j.petugas.nama,
+        branchKode: j.petugas.branch.kode,
+      },
+    });
+  }
+
+  return {
+    windowDays: opts.days, followupHours: JANJI_FOLLOWUP_HOURS,
+    rows, totals: { kept, missed, pending },
+  };
+}

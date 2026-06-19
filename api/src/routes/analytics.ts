@@ -7,7 +7,7 @@ import {
   monthlyClosing, toClosingCsv, branchScorecard, portfolioHeatmap,
   pendingAgingReport, petugasRace, churnRiskList, branchRadar,
   monthlyLeaderboard, supervisorSlaStats, commissionForMonth, periodDelta,
-  branchBudgetForMonth, petugasScorecard,
+  branchBudgetForMonth, petugasScorecard, janjiTracker,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -215,6 +215,17 @@ router.get('/aging', async (req, res) => {
   if (!g.ok) return;
   const report = await pendingAgingReport(g.branchId);
   res.json(report);
+});
+
+// DJ — JANJI tracker. Returns kept/missed/pending status for every
+// JANJI kunjungan in the window. SUPERVISOR auto-scoped.
+router.get('/janji-tracker', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const days = Number.parseInt(String(req.query.days ?? '30'), 10);
+  const window = Number.isFinite(days) && days > 0 && days <= 180 ? days : 30;
+  const data = await janjiTracker({ branchId: g.branchId, days: window });
+  res.json(data);
 });
 
 // Risk-based portfolio heatmap (branch × kol). Same scope rules as the rest

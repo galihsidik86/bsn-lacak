@@ -402,6 +402,12 @@ model Nasabah {
   // kunjungan.create (based on kol + hasil), or overridden manually by
   // SUPERVISOR/ADMIN via PATCH /:id/next-visit. Null = no plan yet.
   nextVisitAt DateTime?
+  // DK — fraud / wanprestasi flag. blacklistedAt is set on toggle so we
+  // know when it happened; clearing the flag clears all three. Bulk
+  // import refuses to recreate a blacklisted kode.
+  blacklisted     Boolean   @default(false)
+  blacklistReason String?
+  blacklistedAt   DateTime?
   kunjungan      Kunjungan[]
   pembayaran     Pembayaran[]
   blastRecipient BlastRecipient[]
@@ -416,6 +422,7 @@ model Nasabah {
   @@index([kol])
   @@index([branchId])
   @@index([active])
+  @@index([blacklisted])
 }
 
 model Kunjungan {
