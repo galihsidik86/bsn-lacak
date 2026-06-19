@@ -131,8 +131,10 @@ export function ScreenPetugasProfile({ petugasId, onClose }: { petugasId: string
         </div>
       </div>
 
+      <KpiScorecardCard petugasId={d.petugas.id} />
       <CertPanel petugasId={d.petugas.id} />
       <LeavePanel petugasId={d.petugas.id} />
+      <TransferHistory petugasId={d.petugas.id} />
 
       <div className="card fade-up" style={{ overflow: 'hidden' }}>
         <div className="card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
@@ -615,5 +617,142 @@ function LeaveForm({ petugasId, onClose, onSaved }: {
         </button>
       </div>
     </Modal>
+  );
+}
+
+interface Scorecard {
+  petugasId: string; petugasKode: string; petugasNama: string;
+  metrics: {
+    collectionRate: number; visitConsistency: number;
+    approvalRate: number; nasabahHealth: number; followupSpeed: number;
+  };
+  raw: {
+    collected: number; target: number;
+    visitDays: number; approved: number; rejected: number;
+    avgDpd: number; janjiTotal: number; janjiFollowed: number;
+  };
+}
+
+const SCORECARD_AXES: Array<{ key: keyof Scorecard['metrics']; label: string }> = [
+  { key: 'collectionRate', label: 'Tertagih' },
+  { key: 'visitConsistency', label: 'Konsistensi' },
+  { key: 'approvalRate', label: 'Approval' },
+  { key: 'nasabahHealth', label: 'Sehat' },
+  { key: 'followupSpeed', label: 'Follow-up' },
+];
+
+function KpiScorecardCard({ petugasId }: { petugasId: string }) {
+  const { user } = useAuth();
+  const enabled = user?.role !== 'PETUGAS';
+  const q = useQuery<Scorecard>({
+    queryKey: ['petugas-scorecard', petugasId],
+    enabled,
+    queryFn: async () => (await axios.get(`${BASE}/analytics/petugas-scorecard/${petugasId}`,
+      { withCredentials: true, headers: headers() })).data,
+  });
+  if (!enabled) return null;
+  return (
+    <div className="card fade-up" style={{ overflow: 'hidden' }}>
+      <div className="card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
+        <div className="section-title">KPI Scorecard (30 Hari)</div>
+      </div>
+      <div className="card-pad">
+        {q.isLoading ? <Skeleton h={200} /> :
+         q.isError ? <ErrorState onRetry={() => q.refetch()} /> :
+         q.data ? <RadarPanel data={q.data} /> : null}
+      </div>
+    </div>
+  );
+}
+
+function RadarPanel({ data }: { data: Scorecard }) {
+  const size = 220;
+  const cx = size / 2, cy = size / 2;
+  const r = size / 2 - 24;
+  const axes = SCORECARD_AXES;
+  const n = axes.length;
+  const angle = (i: number) => -Math.PI / 2 + (i * 2 * Math.PI) / n;
+  const pt = (i: number, frac: number) => {
+    const a = angle(i);
+    return [cx + Math.cos(a) * r * frac, cy + Math.sin(a) * r * frac] as const;
+  };
+  const polygon = axes.map((ax, i) => {
+    const v = data.metrics[ax.key] / 100;
+    const [x, y] = pt(i, v);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const grid = [0.25, 0.5, 0.75, 1].map(frac => {
+    const pts = axes.map((_, i) => {
+      const [x, y] = pt(i, frac);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    return <polygon key={frac} points={pts} fill="none" stroke="var(--line)" strokeWidth={1} />;
+  });
+  return (
+    <div className="grid gap-3" style={{ gridTemplateColumns: '220px 1fr', alignItems: 'center' }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {grid}
+        {axes.map((_, i) => {
+          const [x, y] = pt(i, 1);
+          return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="var(--line)" strokeWidth={1} />;
+        })}
+        <polygon points={polygon} fill="var(--col-brand-soft)" stroke="var(--col-brand)" strokeWidth={2} />
+        {axes.map((ax, i) => {
+          const [x, y] = pt(i, 1.15);
+          return (
+            <text key={ax.key} x={x} y={y} textAnchor="middle" dominantBaseline="middle"
+              style={{ fontSize: 10, fontWeight: 700, fill: 'var(--text-muted)' }}>
+              {ax.label}
+            </text>
+          );
+        })}
+      </svg>
+      <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(2, 1fr)', fontSize: 12 }}>
+        <Kv label="Tertagih" value={`${data.metrics.collectionRate}%`} />
+        <Kv label="Hari kunjungan" value={`${data.raw.visitDays} / 22`} />
+        <Kv label="Approval" value={`${data.metrics.approvalRate}% (${data.raw.approved}/${data.raw.approved + data.raw.rejected})`} />
+        <Kv label="Avg DPD" value={`${data.raw.avgDpd} hari`} />
+        <Kv label="Follow-up JANJI" value={`${data.raw.janjiFollowed}/${data.raw.janjiTotal}`} />
+        <Kv label="Konsistensi" value={`${data.metrics.visitConsistency}%`} />
+      </div>
+    </div>
+  );
+}
+
+interface Transfer {
+  id: string; createdAt: string; reason: string | null;
+  fromBranch: { kode: string; nama: string } | null;
+  toBranch: { kode: string; nama: string };
+  movedBy: { username: string; nama: string | null } | null;
+}
+
+function TransferHistory({ petugasId }: { petugasId: string }) {
+  const q = useQuery<Transfer[]>({
+    queryKey: ['petugas-transfers', petugasId],
+    queryFn: async () => (await axios.get(`${BASE}/petugas/${petugasId}/transfers`,
+      { withCredentials: true, headers: headers() })).data,
+  });
+  if (q.isLoading) return null;
+  if (q.isError || !q.data || q.data.length === 0) return null;
+  return (
+    <div className="card fade-up" style={{ overflow: 'hidden' }}>
+      <div className="card-pad" style={{ paddingBottom: 14, borderBottom: '1px solid var(--line)' }}>
+        <div className="section-title">Riwayat Pindah Cabang</div>
+      </div>
+      <table className="table">
+        <thead><tr><th>Tanggal</th><th>Dari</th><th>Ke</th><th>Oleh</th><th>Alasan</th></tr></thead>
+        <tbody>
+          {q.data.map(t => (
+            <tr key={t.id}>
+              <td>{new Date(t.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+              <td>{t.fromBranch ? `${t.fromBranch.kode} · ${t.fromBranch.nama}` : '—'}</td>
+              <td>{t.toBranch.kode} · {t.toBranch.nama}</td>
+              <td>{t.movedBy?.nama ?? t.movedBy?.username ?? '—'}</td>
+              <td className="muted">{t.reason ?? '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

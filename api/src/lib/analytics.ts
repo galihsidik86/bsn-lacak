@@ -423,6 +423,123 @@ export async function periodDelta(opts: { branchId?: string | null }): Promise<P
   };
 }
 
+// CY — per-petugas KPI scorecard. Like the branch radar (BP) but for one
+// individual: 5 axes normalized 0..100 over the last 30 days.
+//   collectionRate     — tertagih / target_monthly (capped 100)
+//   visitConsistency   — distinct days with kunjungan / 22 (working days)
+//   approvalRate       — APPROVED / (APPROVED + REJECTED)
+//   nasabahHealth      — 100 - avg(DPD / 90 × 100)
+//   followupSpeed      — % JANJI followed up within 48h
+//
+// Raw values also returned for tooltips.
+export interface PetugasScorecard {
+  petugasId: string; petugasKode: string; petugasNama: string;
+  metrics: {
+    collectionRate: number;
+    visitConsistency: number;
+    approvalRate: number;
+    nasabahHealth: number;
+    followupSpeed: number;
+  };
+  raw: {
+    collected: number; target: number;
+    visitDays: number;
+    approved: number; rejected: number;
+    avgDpd: number;
+    janjiTotal: number; janjiFollowed: number;
+  };
+}
+
+export async function petugasScorecard(petugasId: string): Promise<PetugasScorecard | null> {
+  const petugas = await prisma.petugas.findUnique({
+    where: { id: petugasId },
+    select: { id: true, kode: true, nama: true, target: true },
+  });
+  if (!petugas) return null;
+
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60_000);
+
+  // Collected this month (vs target).
+  const collected = await prisma.pembayaran.aggregate({
+    where: {
+      status: 'berhasil', tanggal: { gte: since },
+      nasabah: { petugasId },
+    },
+    _sum: { nominal: true },
+  });
+
+  // Distinct visit-day count for "consistency".
+  const visitRows = await prisma.kunjungan.findMany({
+    where: { petugasId, tanggal: { gte: since } },
+    select: { tanggal: true, hasil: true, reviewStatus: true, id: true },
+  });
+  const dayKeys = new Set<string>();
+  let approved = 0, rejected = 0;
+  let janjiTotal = 0;
+  const janjiIds: string[] = [];
+  for (const v of visitRows) {
+    dayKeys.add(v.tanggal.toISOString().slice(0, 10));
+    if (v.reviewStatus === 'APPROVED') approved++;
+    else if (v.reviewStatus === 'REJECTED') rejected++;
+    if (v.hasil === 'JANJI') {
+      janjiTotal++;
+      janjiIds.push(v.id);
+    }
+  }
+
+  // Average DPD across the petugas's active nasabah.
+  const dpdAgg = await prisma.nasabah.aggregate({
+    where: { petugasId, active: true },
+    _avg: { dpd: true },
+  });
+
+  // Janji followed up within 48h — a follow-up = any subsequent kunjungan
+  // for the same nasabah within 48h after the JANJI tanggal.
+  let janjiFollowed = 0;
+  if (janjiTotal > 0) {
+    const janjis = await prisma.kunjungan.findMany({
+      where: { id: { in: janjiIds } },
+      select: { id: true, nasabahId: true, tanggal: true },
+    });
+    for (const j of janjis) {
+      const after = await prisma.kunjungan.findFirst({
+        where: {
+          nasabahId: j.nasabahId,
+          tanggal: { gt: j.tanggal, lte: new Date(j.tanggal.getTime() + 48 * 60 * 60_000) },
+          NOT: { id: j.id },
+        },
+        select: { id: true },
+      });
+      if (after) janjiFollowed++;
+    }
+  }
+
+  const target = Number(petugas.target);
+  const collectedNum = Number(collected._sum.nominal ?? 0n);
+  const avgDpd = Number(dpdAgg._avg.dpd ?? 0);
+  const decided = approved + rejected;
+  // 22 working days per 30-calendar-day window = ~1 visit-day per workday.
+  const WORKING_DAYS = 22;
+
+  return {
+    petugasId: petugas.id, petugasKode: petugas.kode, petugasNama: petugas.nama,
+    metrics: {
+      collectionRate: target === 0 ? 0 : Math.min(100, Math.round((collectedNum / target) * 100)),
+      visitConsistency: Math.min(100, Math.round((dayKeys.size / WORKING_DAYS) * 100)),
+      approvalRate: decided === 0 ? 100 : Math.round((approved / decided) * 100),
+      nasabahHealth: Math.max(0, Math.round(100 - Math.min(100, (avgDpd / 90) * 100))),
+      followupSpeed: janjiTotal === 0 ? 100 : Math.round((janjiFollowed / janjiTotal) * 100),
+    },
+    raw: {
+      collected: collectedNum, target,
+      visitDays: dayKeys.size,
+      approved, rejected,
+      avgDpd: Math.round(avgDpd),
+      janjiTotal, janjiFollowed,
+    },
+  };
+}
+
 // CV — branch budget tracker. Returns per-branch (budget vs actual) for
 // commission this month. Operational spend isn't tracked anywhere yet so
 // the UI shows the budget pot only for transparency.

@@ -7,7 +7,7 @@ import {
   monthlyClosing, toClosingCsv, branchScorecard, portfolioHeatmap,
   pendingAgingReport, petugasRace, churnRiskList, branchRadar,
   monthlyLeaderboard, supervisorSlaStats, commissionForMonth, periodDelta,
-  branchBudgetForMonth,
+  branchBudgetForMonth, petugasScorecard,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -99,6 +99,15 @@ router.get('/scorecard', async (req, res) => {
     branchId: g.branchId, year: parsed.data.year, month: parsed.data.month,
   });
   res.json({ year: parsed.data.year, month: parsed.data.month, rows });
+});
+
+// Per-petugas KPI scorecard (CY). SUPERVISOR/ADMIN only — the petugas
+// shouldn't be the one reviewing their own approval rate.
+router.get('/petugas-scorecard/:id', async (req, res) => {
+  if (req.user?.role === 'PETUGAS') return res.status(403).json({ error: 'forbidden' });
+  const data = await petugasScorecard(String(req.params.id));
+  if (!data) return res.status(404).json({ error: 'not_found' });
+  res.json(data);
 });
 
 // Branch budget tracker (CV). Defaults to current month.

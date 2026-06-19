@@ -49,6 +49,8 @@ model Branch {
   webhooks     WebhookSubscription[]
   blast        Blast[]
   escalations  EscalationTicket[]
+  transfersFrom PetugasTransfer[] @relation("TransferFrom")
+  transfersTo   PetugasTransfer[] @relation("TransferTo")
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 }
@@ -139,6 +141,7 @@ model User {
   kunjunganEdits      KunjunganEditLog[]    @relation("EditLogEditor")
   escalationAssignments EscalationTicket[]  @relation("EscalationAssignee")
   leaveDecisions      PetugasLeave[]        @relation("LeaveApprover")
+  transfersAuthored   PetugasTransfer[]     @relation("TransferMover")
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -231,6 +234,7 @@ model Petugas {
   certifications PetugasCertification[]
   leaves      PetugasLeave[]
   substituteFor PetugasLeave[] @relation("LeaveSubstitute")
+  transfers   PetugasTransfer[]
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -681,4 +685,25 @@ model PetugasLeave {
 
   @@index([petugasId, status, startDate])
   @@index([status, endDate])
+}
+
+// CC — petugas branch-transfer history. One row per move; the worker
+// inside routes/petugas.PATCH writes it when branchId changes. Closed
+// transfers stay in the table as audit context.
+model PetugasTransfer {
+  id          String   @id @default(cuid())
+  petugas     Petugas  @relation(fields: [petugasId], references: [id], onDelete: Cascade)
+  petugasId   String
+  fromBranch  Branch   @relation("TransferFrom", fields: [fromBranchId], references: [id])
+  fromBranchId String
+  toBranch    Branch   @relation("TransferTo", fields: [toBranchId], references: [id])
+  toBranchId  String
+  reason      String?
+  movedBy     User?    @relation("TransferMover", fields: [movedById], references: [id])
+  movedById   String?
+  createdAt   DateTime @default(now())
+
+  @@index([petugasId, createdAt])
+  @@index([fromBranchId, createdAt])
+  @@index([toBranchId, createdAt])
 }

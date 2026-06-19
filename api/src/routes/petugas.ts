@@ -251,11 +251,50 @@ router.patch('/:id', async (req, res) => {
   }
 
   const updated = await prisma.petugas.update({ where: { id }, data: parsed.data });
+  // CC — log a transfer row whenever the branch actually changes.
+  if (parsed.data.branchId && parsed.data.branchId !== before.branchId) {
+    await prisma.petugasTransfer.create({
+      data: {
+        petugasId: id,
+        fromBranchId: before.branchId,
+        toBranchId: parsed.data.branchId,
+        movedById: req.user!.sub,
+        reason: typeof req.body?.transferReason === 'string' && req.body.transferReason.length <= 2000
+          ? req.body.transferReason
+          : null,
+      },
+    });
+  }
   await audit({
     action: 'petugas.update', target: id, ...fromReq(req),
     meta: parsed.data,
   });
   res.json(updated);
+});
+
+// CC — list a petugas's branch-transfer history. Same scope as the read
+// endpoint (PETUGAS can fetch their own; supervisor sees in scope).
+router.get('/:id/transfers', async (req, res) => {
+  const branchId = scopedBranchId(req);
+  const id = String(req.params.id);
+  if (req.user?.role === 'PETUGAS' && req.user.petugasId !== id) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const p = await prisma.petugas.findFirst({
+    where: { id, ...(branchId ? { branchId } : {}) },
+    select: { id: true },
+  });
+  if (!p) return res.status(404).json({ error: 'not_found' });
+  const rows = await prisma.petugasTransfer.findMany({
+    where: { petugasId: id },
+    include: {
+      fromBranch: { select: { kode: true, nama: true } },
+      toBranch: { select: { kode: true, nama: true } },
+      movedBy: { select: { username: true, nama: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(rows);
 });
 
 router.get('/:id/route', async (req, res) => {
