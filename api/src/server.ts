@@ -62,6 +62,7 @@ import { startLeaveAssignmentWorker, stopLeaveAssignmentWorker } from './workers
 import { startStaleNasabahWorker, stopStaleNasabahWorker } from './workers/staleNasabahWorker.js';
 import { startTagRuleWorker, stopTagRuleWorker } from './workers/tagRuleWorker.js';
 import { startJanjiReminderWorker, stopJanjiReminderWorker } from './workers/janjiReminderWorker.js';
+import { startIdleDetectorWorker, stopIdleDetectorWorker } from './workers/idleDetectorWorker.js';
 import { startWebhookDispatcher } from './lib/webhookDispatcher.js';
 import { initSentry, sentryErrorHandler, setupSentryRequest } from './lib/sentry.js';
 import { apiKeyAuth } from './lib/apiKey.js';
@@ -227,6 +228,7 @@ startLeaveAssignmentWorker();
 startStaleNasabahWorker();
 startTagRuleWorker();
 startJanjiReminderWorker();
+startIdleDetectorWorker();
 if (env.NODE_ENV !== 'test') startWebhookDispatcher();
 const stopSamplers = startMetricsSamplers();
 const stopRetention = startAuditRetention();
@@ -248,6 +250,7 @@ const shutdown = (sig: string) => {
   stopStaleNasabahWorker();
   stopTagRuleWorker();
   stopJanjiReminderWorker();
+  stopIdleDetectorWorker();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
 };

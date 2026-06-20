@@ -208,6 +208,9 @@ const createSchema = z.object({
   // Commission rate as basis points (0..10_000 = 0..100%). Optional —
   // when omitted, branch's defaultCommissionBps is used.
   commissionBps: z.coerce.number().int().min(0).max(10_000).optional(),
+  // DR — kendaraan dinas; opsional, plat hanya divalidasi panjang.
+  kendaraanPlat:  z.string().min(1).max(20).nullable().optional(),
+  kendaraanModel: z.string().min(1).max(80).nullable().optional(),
 });
 
 function canManagePetugas(req: any, branchId: string): boolean {

@@ -24,6 +24,8 @@ interface PetugasRow {
   target: number;
   hue: number;
   commissionBps?: number;
+  kendaraanPlat?: string | null;
+  kendaraanModel?: string | null;
   active?: boolean;
   kunjungan?: number;
   rencana?: number;
@@ -57,6 +59,8 @@ interface CreatePayload {
   status: 'LAPANGAN' | 'ISTIRAHAT' | 'KANTOR';
   hue: number;
   commissionBps?: number;
+  kendaraanPlat?: string | null;
+  kendaraanModel?: string | null;
 }
 
 async function createPetugas(p: CreatePayload) {
@@ -217,6 +221,8 @@ function PetugasForm({ mode, initial, isAdmin, myBranchId, branches, onClose, on
   );
   const [hue, setHue] = useState(initial?.hue ?? 156);
   const [commissionPct, setCommissionPct] = useState(((initial?.commissionBps ?? 150) / 100).toFixed(2));
+  const [kendaraanPlat, setKendaraanPlat] = useState(initial?.kendaraanPlat ?? '');
+  const [kendaraanModel, setKendaraanModel] = useState(initial?.kendaraanModel ?? '');
   const [active, setActive] = useState(initial?.active ?? true);
   const [err, setErr] = useState<string | null>(null);
   const qc = useQueryClient();
@@ -229,6 +235,8 @@ function PetugasForm({ mode, initial, isAdmin, myBranchId, branches, onClose, on
         target: Number(target.replace(/\D/g, '')) || 0,
         status, hue,
         commissionBps: Math.max(0, Math.min(10_000, Math.round(parseFloat(commissionPct) * 100) || 0)),
+        kendaraanPlat:  kendaraanPlat.trim()  || null,
+        kendaraanModel: kendaraanModel.trim() || null,
       };
       return mode === 'create'
         ? createPetugas(payload)
@@ -308,6 +316,16 @@ function PetugasForm({ mode, initial, isAdmin, myBranchId, branches, onClose, on
           </Field>
           <Field label="Warna avatar (hue 0–360)">
             <input className="input" type="number" min={0} max={360} value={hue} onChange={e => setHue(Number(e.target.value))} />
+          </Field>
+          <Field label="Plat Kendaraan Dinas">
+            <input className="input" type="text" maxLength={20}
+              value={kendaraanPlat} onChange={e => setKendaraanPlat(e.target.value.toUpperCase())}
+              placeholder="B 1234 ABC (opsional)" />
+          </Field>
+          <Field label="Model Kendaraan">
+            <input className="input" type="text" maxLength={80}
+              value={kendaraanModel} onChange={e => setKendaraanModel(e.target.value)}
+              placeholder="Honda Beat 2022 (opsional)" />
           </Field>
           {mode === 'edit' && (
             <div style={{ gridColumn: '1 / -1' }}>

@@ -8,6 +8,7 @@ import {
   pendingAgingReport, petugasRace, churnRiskList, branchRadar,
   monthlyLeaderboard, supervisorSlaStats, commissionForMonth, periodDelta,
   branchBudgetForMonth, petugasScorecard, janjiTracker,
+  kmReportForMonth,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -215,6 +216,20 @@ router.get('/aging', async (req, res) => {
   if (!g.ok) return;
   const report = await pendingAgingReport(g.branchId);
   res.json(report);
+});
+
+// DR — KM report per bulan. SUPERVISOR auto-scoped.
+router.get('/km-report', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const now = new Date();
+  const year = Number.parseInt(String(req.query.year ?? now.getFullYear()), 10);
+  const month = Number.parseInt(String(req.query.month ?? (now.getMonth() + 1)), 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return res.status(400).json({ error: 'bad_request' });
+  }
+  const data = await kmReportForMonth({ branchId: g.branchId, year, month });
+  res.json(data);
 });
 
 // DJ — JANJI tracker. Returns kept/missed/pending status for every

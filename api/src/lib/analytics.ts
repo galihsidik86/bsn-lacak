@@ -1341,3 +1341,64 @@ export async function janjiTracker(opts: {
     rows, totals: { kept, missed, pending },
   };
 }
+
+// DR — per-petugas KM ditempuh untuk bulan tertentu. Hanya kunjungan
+// dengan kmStart DAN kmEnd di-include; baris yang kmEnd null (belum
+// clock-out) atau salah satu null di-skip biar tidak menggembungkan
+// klaim BBM. SUPERVISOR auto-scoped via branchId.
+export interface KmReportRow {
+  petugasId: string; petugasKode: string; petugasNama: string;
+  branchKode: string;
+  kendaraanPlat: string | null;
+  kendaraanModel: string | null;
+  sessions: number;
+  totalKm: number;
+}
+
+export async function kmReportForMonth(opts: {
+  branchId: string | null | undefined;
+  year: number;
+  month: number;
+}): Promise<{ year: number; month: number; rows: KmReportRow[] }> {
+  const start = new Date(Date.UTC(opts.year, opts.month - 1, 1));
+  const end = new Date(Date.UTC(opts.year, opts.month, 1));
+  const branchClause = opts.branchId ? { branchId: opts.branchId } : {};
+
+  const rows = await prisma.attendance.findMany({
+    where: {
+      ...branchClause,
+      clockInAt: { gte: start, lt: end },
+      kmStart: { not: null }, kmEnd: { not: null },
+    },
+    include: {
+      petugas: { select: { id: true, kode: true, nama: true, kendaraanPlat: true, kendaraanModel: true, branch: { select: { kode: true } } } },
+    },
+  });
+
+  const byPetugas = new Map<string, KmReportRow>();
+  for (const a of rows) {
+    if (a.kmStart == null || a.kmEnd == null) continue;
+    const delta = a.kmEnd - a.kmStart;
+    if (delta <= 0) continue;
+    const existing = byPetugas.get(a.petugasId);
+    if (existing) {
+      existing.sessions++;
+      existing.totalKm += delta;
+    } else {
+      byPetugas.set(a.petugasId, {
+        petugasId: a.petugas.id,
+        petugasKode: a.petugas.kode,
+        petugasNama: a.petugas.nama,
+        branchKode: a.petugas.branch.kode,
+        kendaraanPlat: a.petugas.kendaraanPlat,
+        kendaraanModel: a.petugas.kendaraanModel,
+        sessions: 1,
+        totalKm: delta,
+      });
+    }
+  }
+  return {
+    year: opts.year, month: opts.month,
+    rows: [...byPetugas.values()].sort((a, b) => b.totalKm - a.totalKm),
+  };
+}

@@ -13,6 +13,8 @@ export interface Attendance {
   clockOutAt: string | null;
   clockOutLat: number | null;
   clockOutLng: number | null;
+  kmStart: number | null;
+  kmEnd: number | null;
 }
 
 export interface MyAttendance {
@@ -31,14 +33,14 @@ export async function getMyAttendance(): Promise<MyAttendance> {
   })).data;
 }
 
-export async function clockIn(coords: { lat?: number; lng?: number }): Promise<Attendance> {
-  return (await axios.post(`${BASE}/attendance/clock-in`, coords, {
+export async function clockIn(payload: { lat?: number; lng?: number; km?: number }): Promise<Attendance> {
+  return (await axios.post(`${BASE}/attendance/clock-in`, payload, {
     withCredentials: true, headers: authHeaders(),
   })).data;
 }
 
-export async function clockOut(coords: { lat?: number; lng?: number }): Promise<Attendance> {
-  return (await axios.post(`${BASE}/attendance/clock-out`, coords, {
+export async function clockOut(payload: { lat?: number; lng?: number; km?: number }): Promise<Attendance> {
+  return (await axios.post(`${BASE}/attendance/clock-out`, payload, {
     withCredentials: true, headers: authHeaders(),
   })).data;
 }

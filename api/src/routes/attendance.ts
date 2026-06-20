@@ -10,6 +10,9 @@ router.use(requireAuth);
 const coordsSchema = z.object({
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
+  // DR — optional odometer reading. Range guard 0..999_999 km is enough
+  // for any operating life of a motor dinas.
+  km: z.coerce.number().int().min(0).max(999_999).optional(),
 });
 
 // PETUGAS clocks themselves in. Reject if there's already an open session
@@ -36,6 +39,7 @@ router.post('/clock-in', async (req, res) => {
       petugasId, branchId: petugas.branchId,
       clockInLat: parsed.data.lat ?? null,
       clockInLng: parsed.data.lng ?? null,
+      kmStart: parsed.data.km ?? null,
     },
   });
   await audit({ action: 'attendance.clock_in', target: att.id, ...fromReq(req) });
@@ -55,17 +59,26 @@ router.post('/clock-out', async (req, res) => {
   });
   if (!open) return res.status(404).json({ error: 'not_clocked_in' });
 
+  // Refuse if kmEnd < kmStart — protect the report from typos.
+  if (parsed.data.km != null && open.kmStart != null && parsed.data.km < open.kmStart) {
+    return res.status(400).json({ error: 'km_end_below_start' });
+  }
+
   const updated = await prisma.attendance.update({
     where: { id: open.id },
     data: {
       clockOutAt: new Date(),
       clockOutLat: parsed.data.lat ?? null,
       clockOutLng: parsed.data.lng ?? null,
+      kmEnd: parsed.data.km ?? null,
     },
   });
   await audit({
     action: 'attendance.clock_out', target: open.id, ...fromReq(req),
-    meta: { durationMs: updated.clockOutAt!.getTime() - updated.clockInAt.getTime() },
+    meta: {
+      durationMs: updated.clockOutAt!.getTime() - updated.clockInAt.getTime(),
+      kmDelta: updated.kmStart != null && updated.kmEnd != null ? updated.kmEnd - updated.kmStart : null,
+    },
   });
   res.json(updated);
 });

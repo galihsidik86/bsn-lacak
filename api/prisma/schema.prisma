@@ -232,6 +232,11 @@ model Petugas {
   active    Boolean       @default(true)
   branch    Branch        @relation(fields: [branchId], references: [id])
   branchId  String
+  // DR — kendaraan dinas. Plat null = belum dialokasikan; klaim BBM
+  // tetap bisa berjalan tapi laporan KM tidak akan muncul untuk petugas
+  // tanpa kendaraan.
+  kendaraanPlat  String?
+  kendaraanModel String?
   // Optional geofence — set when a wilayah polygon has been drawn for the
   // petugas. Anti-fraud uses it to flag laporan submitted outside the zone.
   wilayahZone   Wilayah? @relation(fields: [wilayahZoneId], references: [id])
@@ -363,6 +368,10 @@ model Attendance {
   clockOutAt   DateTime?
   clockOutLat  Float?
   clockOutLng  Float?
+  // DR — odometer reading. kmStart set at clock-in, kmEnd at clock-out.
+  // Difference drives the monthly BBM claim report.
+  kmStart      Int?
+  kmEnd        Int?
   disputes     AttendanceDispute[]
   createdAt    DateTime @default(now())
 

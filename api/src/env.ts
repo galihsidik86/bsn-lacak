@@ -90,6 +90,13 @@ const schema = z.object({
   TAG_RULE_HOUR: z.coerce.number().int().min(0).max(23).default(8),
   // DM — JANJI deadline reminder push to petugas. Fires once a day.
   JANJI_REMINDER_HOUR: z.coerce.number().int().min(0).max(23).default(8),
+  // DS — idle detector. IDLE_KANTOR_DAYS: petugas yang tidak buat
+  // kunjungan selama N hari dianggap idle. IDLE_TIDAKADA_RATIO_PCT:
+  // ambang persen TIDAKADA dari total kunjungan dalam 14 hari. Hour =
+  // jam-of-day pelaporan ke supervisor.
+  IDLE_KANTOR_DAYS: z.coerce.number().int().min(1).max(30).default(2),
+  IDLE_TIDAKADA_RATIO_PCT: z.coerce.number().int().min(1).max(100).default(50),
+  IDLE_DETECTOR_HOUR: z.coerce.number().int().min(0).max(23).default(9),
   // Public-facing base URL used to compose share links (receipt PDF, feedback).
   // Defaults to WEB_ORIGIN; override in prod when behind a separate ingress.
   PUBLIC_BASE_URL: z.string().url().optional(),

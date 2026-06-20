@@ -1037,15 +1037,20 @@ function MProfil({ me: ME, here, pendingOffline }: { me: Petugas; here: { lat: n
       const coords = here ? { lat: here.lat, lng: here.lng } : {};
       if (att?.current) {
         if (!window.confirm('Akhiri sesi lapangan?')) { setAttBusy(false); return; }
-        await clockOut(coords);
+        const raw = window.prompt('KM odometer saat ini (kosongkan jika tidak pakai kendaraan dinas)') ?? '';
+        const km = raw.trim() === '' ? undefined : Number(raw.replace(/[^\d]/g, ''));
+        await clockOut({ ...coords, ...(Number.isFinite(km) ? { km } : {}) });
       } else {
-        await clockIn(coords);
+        const raw = window.prompt('KM odometer saat ini (kosongkan jika tidak pakai kendaraan dinas)') ?? '';
+        const km = raw.trim() === '' ? undefined : Number(raw.replace(/[^\d]/g, ''));
+        await clockIn({ ...coords, ...(Number.isFinite(km) ? { km } : {}) });
       }
       await refreshAtt();
     } catch (e: any) {
       const code = e?.response?.data?.error;
       if (code === 'already_clocked_in') alert('Anda sudah clock-in.');
       else if (code === 'not_clocked_in') alert('Belum clock-in.');
+      else if (code === 'km_end_below_start') alert('KM akhir tidak boleh lebih kecil dari KM awal.');
       else alert('Gagal. Coba lagi.');
     } finally {
       setAttBusy(false);
