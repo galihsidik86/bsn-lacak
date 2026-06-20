@@ -199,4 +199,50 @@ router.delete('/:id', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
   res.json({ ok: true });
 });
 
+// DX — long-leave bulk reassign. For an approved leave with a substitute
+// set, move ALL of the petugas's nasabah to the substitute in one shot.
+// Useful for resign / cuti panjang where the per-leave DG sweep is too
+// granular. Idempotent: nasabah already owned by the substitute are
+// skipped. Requires the leave to be APPROVED + have substitutePetugasId.
+router.post('/:id/bulk-reassign', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const leave = await prisma.petugasLeave.findUnique({
+    where: { id },
+    include: { petugas: { select: { id: true, branchId: true } } },
+  });
+  if (!leave) return res.status(404).json({ error: 'not_found' });
+  if (leave.status !== 'approved') return res.status(409).json({ error: 'not_approved' });
+  if (!leave.substitutePetugasId) return res.status(400).json({ error: 'no_substitute' });
+
+  const p = await petugasInScope(req, leave.petugasId);
+  if (!p) return res.status(403).json({ error: 'forbidden' });
+
+  // Substitute must be in the same branch and active.
+  const sub = await prisma.petugas.findUnique({
+    where: { id: leave.substitutePetugasId },
+    select: { id: true, branchId: true, active: true },
+  });
+  if (!sub || !sub.active || sub.branchId !== leave.petugas.branchId) {
+    return res.status(400).json({ error: 'substitute_invalid' });
+  }
+
+  // Move every nasabah whose petugasId is the leaving petugas.
+  const result = await prisma.nasabah.updateMany({
+    where: { petugasId: leave.petugasId, active: true },
+    data: { petugasId: leave.substitutePetugasId },
+  });
+
+  await audit({
+    action: 'leave.bulk_reassign', target: id, ...fromReq(req),
+    meta: {
+      leaveId: id,
+      from: leave.petugasId,
+      to: leave.substitutePetugasId,
+      moved: result.count,
+    },
+  });
+
+  res.json({ ok: true, moved: result.count });
+});
+
 export default router;

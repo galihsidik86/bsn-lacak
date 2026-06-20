@@ -21,6 +21,7 @@ interface Branch {
   budgetOperational: string | number;
   budgetCommission: string | number;
   defaultCommissionBps: number | null;
+  csatEnabled: boolean;
   _count: { petugas: number; nasabah: number; users: number };
   createdAt: string;
   updatedAt: string;
@@ -48,6 +49,7 @@ interface UpsertPayload {
   budgetOperational?: string | number;
   budgetCommission?: string | number;
   defaultCommissionBps?: number | null;
+  csatEnabled?: boolean;
 }
 
 async function createBranch(p: UpsertPayload) {
@@ -154,6 +156,7 @@ function BranchForm({ initial, onClose, onSaved }: {
   const [budgetCommission, setBudgetCommission] = useState(String(initial?.budgetCommission ?? '0'));
   const [defaultCommissionPct, setDefaultCommissionPct] = useState(
     initial?.defaultCommissionBps == null ? '' : String(initial.defaultCommissionBps / 100));
+  const [csatEnabled, setCsatEnabled] = useState(initial?.csatEnabled ?? false);
   const [err, setErr] = useState<string | null>(null);
 
   const targetPayload = () => {
@@ -166,6 +169,7 @@ function BranchForm({ initial, onClose, onSaved }: {
       budgetOperational: budgetOperational.replace(/[^\d]/g, '') || '0',
       budgetCommission: budgetCommission.replace(/[^\d]/g, '') || '0',
       defaultCommissionBps,
+      csatEnabled,
     };
   };
 
@@ -264,6 +268,10 @@ function BranchForm({ initial, onClose, onSaved }: {
                   value={defaultCommissionPct} onChange={e => setDefaultCommissionPct(e.target.value)}
                   placeholder="Kosongkan = 1.5%" />
               </Field>
+              <label className="center gap-2" style={{ fontSize: 13, fontWeight: 600, cursor: 'pointer', alignSelf: 'end' }}>
+                <input type="checkbox" checked={csatEnabled} onChange={e => setCsatEnabled(e.target.checked)} />
+                Kirim survei kepuasan setelah BAYAR
+              </label>
             </div>
           </div>
           {isEdit && (

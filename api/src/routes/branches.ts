@@ -103,6 +103,8 @@ const upsert = z.object({
   // branch when their create call omits commissionBps. Null = use the
   // hard-coded 150 system floor.
   defaultCommissionBps: z.coerce.number().int().min(0).max(10_000).nullable().optional(),
+  // DY — branch opt-in for auto-CSAT after BAYAR kunjungan.
+  csatEnabled: z.coerce.boolean().optional(),
 });
 
 router.post('/', requireRole('ADMIN'), async (req, res) => {

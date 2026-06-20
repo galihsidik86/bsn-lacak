@@ -101,6 +101,9 @@ const schema = z.object({
   // fires once a day at this hour and dedups per nasabah per day.
   CONTRACT_EXPIRY_DAYS: z.coerce.number().int().min(1).max(180).default(30),
   CONTRACT_EXPIRY_HOUR: z.coerce.number().int().min(0).max(23).default(8),
+  // DY — minimum days between two CSAT requests to the same nasabah.
+  // Survey fatigue mitigation; only applies when Branch.csatEnabled = true.
+  CSAT_COOLDOWN_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   // Public-facing base URL used to compose share links (receipt PDF, feedback).
   // Defaults to WEB_ORIGIN; override in prod when behind a separate ingress.
   PUBLIC_BASE_URL: z.string().url().optional(),

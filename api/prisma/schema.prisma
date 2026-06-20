@@ -20,43 +20,48 @@ enum Role {
 // carries `branchId`. ADMIN role bypasses the scope; SUPERVISOR sees their
 // own branch; PETUGAS sees only their own assignments inside that branch.
 model Branch {
-  id           String     @id @default(cuid())
-  kode         String     @unique         // BSN001, BSN002, ...
-  nama         String                     // "BSN Pusat", "BSN Cabang Depok", ...
-  alamat       String?
-  kepalaCabang String?
-  active       Boolean    @default(true)
+  id                   String                @id @default(cuid())
+  kode                 String                @unique // BSN001, BSN002, ...
+  nama                 String // "BSN Pusat", "BSN Cabang Depok", ...
+  alamat               String?
+  kepalaCabang         String?
+  active               Boolean               @default(true)
   // Branch-level monthly KPI targets — drive the Scorecard screen. Default
   // zero so a fresh cabang starts as "no target" rather than achieving 100%
   // by accident on a divide-by-zero.
-  targetCollection   BigInt  @default(0)   // total tertagih (Rp) per bulan
-  targetVisits       Int     @default(0)   // jumlah kunjungan per bulan
-  targetApprovalRate Int     @default(85)  // approval rate % (0-100)
+  targetCollection     BigInt                @default(0) // total tertagih (Rp) per bulan
+  targetVisits         Int                   @default(0) // jumlah kunjungan per bulan
+  targetApprovalRate   Int                   @default(85) // approval rate % (0-100)
   // CV — monthly budget (Rp) per branch. Operational covers transport,
   // pulsa, etc; commission is the pot from which petugas komisi is paid.
   // Both default zero so untouched branches don't show fake utilization.
-  budgetOperational  BigInt  @default(0)
-  budgetCommission   BigInt  @default(0)
+  budgetOperational    BigInt                @default(0)
+  budgetCommission     BigInt                @default(0)
   // DP — default commission rate (bps) applied to new petugas when the
   // create call omits commissionBps. Null = use the system-wide 150.
   defaultCommissionBps Int?
-  users        User[]
-  petugas      Petugas[]
-  nasabah      Nasabah[]
-  kunjungan    Kunjungan[]
-  pembayaran   Pembayaran[]
-  attendance   Attendance[]
-  wilayah      Wilayah[]
-  feedback     CustomerFeedback[]
-  apiKeys      ApiKey[]
-  webhooks     WebhookSubscription[]
-  blast        Blast[]
-  escalations  EscalationTicket[]
-  transfersFrom PetugasTransfer[] @relation("TransferFrom")
-  transfersTo   PetugasTransfer[] @relation("TransferTo")
-  tags         Tag[]
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  // DY — auto-CSAT survey toggle. When true, kunjungan with hasil=BAYAR
+  // automatically trigger a feedback SMS, gated by a per-nasabah
+  // cooldown (CSAT_COOLDOWN_DAYS). Defaults to false so existing branches
+  // keep their current behavior; opt-in per cabang.
+  csatEnabled          Boolean               @default(false)
+  users                User[]
+  petugas              Petugas[]
+  nasabah              Nasabah[]
+  kunjungan            Kunjungan[]
+  pembayaran           Pembayaran[]
+  attendance           Attendance[]
+  wilayah              Wilayah[]
+  feedback             CustomerFeedback[]
+  apiKeys              ApiKey[]
+  webhooks             WebhookSubscription[]
+  blast                Blast[]
+  escalations          EscalationTicket[]
+  transfersFrom        PetugasTransfer[]     @relation("TransferFrom")
+  transfersTo          PetugasTransfer[]     @relation("TransferTo")
+  tags                 Tag[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 }
 
 enum PetugasStatus {
@@ -102,78 +107,78 @@ enum BlastStatus {
 }
 
 model User {
-  id                  String         @id @default(cuid())
-  username            String         @unique
-  passwordHash        String
-  nama                String
-  role                Role
-  branch              Branch?        @relation(fields: [branchId], references: [id])
-  branchId            String?        // null = HQ user (ADMIN scope); set for SUPERVISOR/PETUGAS
-  petugas             Petugas?       @relation(fields: [petugasId], references: [id])
-  petugasId           String?        @unique
-  failedAttempts      Int            @default(0)
-  lockedUntil         DateTime?
-  lastLoginAt         DateTime?
+  id                        String                 @id @default(cuid())
+  username                  String                 @unique
+  passwordHash              String
+  nama                      String
+  role                      Role
+  branch                    Branch?                @relation(fields: [branchId], references: [id])
+  branchId                  String? // null = HQ user (ADMIN scope); set for SUPERVISOR/PETUGAS
+  petugas                   Petugas?               @relation(fields: [petugasId], references: [id])
+  petugasId                 String?                @unique
+  failedAttempts            Int                    @default(0)
+  lockedUntil               DateTime?
+  lastLoginAt               DateTime?
   // CU — presence: stamped each time the user hits /api/users/heartbeat
   // (the SPA fires one every 60s while focused). "Online now" lists pull
   // users whose lastSeenAt is within the last few minutes.
-  lastSeenAt          DateTime?
-  passwordChangedAt   DateTime       @default(now())
-  mustChangePassword  Boolean        @default(false)
-  active              Boolean        @default(true)
+  lastSeenAt                DateTime?
+  passwordChangedAt         DateTime               @default(now())
+  mustChangePassword        Boolean                @default(false)
+  active                    Boolean                @default(true)
   // Optional email — populated for ADMIN users who receive the monthly
   // closing CSV. Other roles can leave it null.
-  email               String?
+  email                     String?
   // TOTP 2FA. `totpSecret` stores AES-GCM ciphertext (IV + tag + ct hex-
   // concatenated) of the shared secret. `totpEnabledAt` is null while
   // setup is in flight; flipped to a timestamp on first successful
   // verification. ADMIN/SUPERVISOR strongly encouraged; PETUGAS optional.
-  totpSecret          String?
-  totpEnabledAt       DateTime?
+  totpSecret                String?
+  totpEnabledAt             DateTime?
   // Per-user notification preferences. Map of notification type → boolean.
   // Default (when null or key absent) is true so legacy users stay opted
   // in; new types added later default-on unless we override.
-  notifPrefs          Json?
-  refreshTokens       RefreshToken[]
-  notifications       Notification[]
-  reviewedKunjungan   Kunjungan[]
-  pushSubscriptions   PushSubscription[]
-  createdApiKeys      ApiKey[]       @relation("ApiKeyCreator")
-  savedFilters        SavedFilter[]
-  createdWebhooks     WebhookSubscription[] @relation("WebhookCreator")
-  createdCertifications PetugasCertification[] @relation("CertCreator")
-  kunjunganEdits      KunjunganEditLog[]    @relation("EditLogEditor")
-  escalationAssignments EscalationTicket[]  @relation("EscalationAssignee")
-  leaveDecisions      PetugasLeave[]        @relation("LeaveApprover")
-  transfersAuthored   PetugasTransfer[]     @relation("TransferMover")
-  createdTags         Tag[]                 @relation("TagCreator")
-  createdTagRules     TagRule[]             @relation("TagRuleCreator")
-  authoredNasabahNotes NasabahNote[]        @relation("NasabahNoteAuthor")
-  proposedRestructures NasabahRestructure[] @relation("RestructureProposer")
-  decidedRestructures  NasabahRestructure[] @relation("RestructureDecider")
-  uploadedNasabahDocuments NasabahDocument[] @relation("NasabahDocumentUploader")
-  decidedAttendanceDisputes AttendanceDispute[] @relation("AttendanceDisputeDecider")
-  decidedPetugasSwaps  PetugasSwapRequest[] @relation("SwapDecider")
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
+  notifPrefs                Json?
+  refreshTokens             RefreshToken[]
+  notifications             Notification[]
+  reviewedKunjungan         Kunjungan[]
+  pushSubscriptions         PushSubscription[]
+  createdApiKeys            ApiKey[]               @relation("ApiKeyCreator")
+  savedFilters              SavedFilter[]
+  createdWebhooks           WebhookSubscription[]  @relation("WebhookCreator")
+  createdCertifications     PetugasCertification[] @relation("CertCreator")
+  kunjunganEdits            KunjunganEditLog[]     @relation("EditLogEditor")
+  escalationAssignments     EscalationTicket[]     @relation("EscalationAssignee")
+  leaveDecisions            PetugasLeave[]         @relation("LeaveApprover")
+  transfersAuthored         PetugasTransfer[]      @relation("TransferMover")
+  createdTags               Tag[]                  @relation("TagCreator")
+  createdTagRules           TagRule[]              @relation("TagRuleCreator")
+  authoredNasabahNotes      NasabahNote[]          @relation("NasabahNoteAuthor")
+  proposedRestructures      NasabahRestructure[]   @relation("RestructureProposer")
+  decidedRestructures       NasabahRestructure[]   @relation("RestructureDecider")
+  uploadedNasabahDocuments  NasabahDocument[]      @relation("NasabahDocumentUploader")
+  decidedAttendanceDisputes AttendanceDispute[]    @relation("AttendanceDisputeDecider")
+  decidedPetugasSwaps       PetugasSwapRequest[]   @relation("SwapDecider")
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
 
   @@index([branchId])
 }
 
 model RefreshToken {
-  id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String    @id @default(cuid())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
   // SHA-256 of the opaque token value — never store the plaintext.
-  tokenHash String   @unique
+  tokenHash String    @unique
   // Track rotation chain so reuse-detection can blow up a session lineage.
   parentId  String?
-  family    String   // groups all tokens descended from one login
+  family    String // groups all tokens descended from one login
   ip        String?
   userAgent String?
   expiresAt DateTime
   revokedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId, expiresAt])
   @@index([family])
@@ -189,11 +194,11 @@ model Notification {
   id        String        @id @default(cuid())
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
-  type      String        // "kunjungan.created", "blast.completed", ...
+  type      String // "kunjungan.created", "blast.completed", ...
   title     String
   body      String?
   severity  NotifSeverity @default(INFO)
-  link      String?       // optional in-app target (e.g. "tracking?petugas=P1")
+  link      String? // optional in-app target (e.g. "tracking?petugas=P1")
   readAt    DateTime?
   createdAt DateTime      @default(now())
 
@@ -202,13 +207,13 @@ model Notification {
 
 model AuditLog {
   id        String   @id @default(cuid())
-  actorId   String?           // User.id (null untuk anonim: gagal login)
-  actor     String?           // username snapshot
-  action    String            // "auth.login.ok", "auth.login.fail", "nasabah.reassign", ...
-  target    String?           // ID resource yang diaksi (nasabah ID, blast ID, dll)
+  actorId   String? // User.id (null untuk anonim: gagal login)
+  actor     String? // username snapshot
+  action    String // "auth.login.ok", "auth.login.fail", "nasabah.reassign", ...
+  target    String? // ID resource yang diaksi (nasabah ID, blast ID, dll)
   ip        String?
   userAgent String?
-  meta      Json?             // payload tambahan (small)
+  meta      Json? // payload tambahan (small)
   createdAt DateTime @default(now())
 
   @@index([actorId, createdAt])
@@ -216,47 +221,47 @@ model AuditLog {
 }
 
 model Petugas {
-  id        String        @id @default(cuid())
-  kode      String        @unique          // P1, P2, ...
-  nama      String
-  inisial   String
-  wilayah   String
-  hp        String
-  status    PetugasStatus @default(LAPANGAN)
-  target    BigInt        @default(0)
-  hue       Int           @default(156)
+  id                 String                 @id @default(cuid())
+  kode               String                 @unique // P1, P2, ...
+  nama               String
+  inisial            String
+  wilayah            String
+  hp                 String
+  status             PetugasStatus          @default(LAPANGAN)
+  target             BigInt                 @default(0)
+  hue                Int                    @default(156)
   // CD — commission rate as basis points (1 bps = 0.01%). Default 150 bps
   // = 1.5%. Stored as int to avoid float drift; UI renders as a decimal %.
-  commissionBps Int       @default(150)
+  commissionBps      Int                    @default(150)
   // Soft delete — resigned petugas stay in the DB so their historical
   // kunjungan keep their FK. UI filters by default to active=true.
-  active    Boolean       @default(true)
-  branch    Branch        @relation(fields: [branchId], references: [id])
-  branchId  String
+  active             Boolean                @default(true)
+  branch             Branch                 @relation(fields: [branchId], references: [id])
+  branchId           String
   // DR — kendaraan dinas. Plat null = belum dialokasikan; klaim BBM
   // tetap bisa berjalan tapi laporan KM tidak akan muncul untuk petugas
   // tanpa kendaraan.
-  kendaraanPlat  String?
-  kendaraanModel String?
+  kendaraanPlat      String?
+  kendaraanModel     String?
   // Optional geofence — set when a wilayah polygon has been drawn for the
   // petugas. Anti-fraud uses it to flag laporan submitted outside the zone.
-  wilayahZone   Wilayah? @relation(fields: [wilayahZoneId], references: [id])
-  wilayahZoneId String?
-  user      User?
-  nasabah     Nasabah[]
-  kunjungan   Kunjungan[]
-  positions   PetugasPosition[]
-  attendance  Attendance[]
-  feedback    CustomerFeedback[]
-  certifications PetugasCertification[]
-  leaves      PetugasLeave[]
-  substituteFor PetugasLeave[] @relation("LeaveSubstitute")
-  transfers   PetugasTransfer[]
-  attendanceDisputes AttendanceDispute[] @relation("AttendanceDisputePetugas")
-  swapsProposed   PetugasSwapRequest[] @relation("SwapProposer")
-  swapsAsCounterpart PetugasSwapRequest[] @relation("SwapCounterpart")
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  wilayahZone        Wilayah?               @relation(fields: [wilayahZoneId], references: [id])
+  wilayahZoneId      String?
+  user               User?
+  nasabah            Nasabah[]
+  kunjungan          Kunjungan[]
+  positions          PetugasPosition[]
+  attendance         Attendance[]
+  feedback           CustomerFeedback[]
+  certifications     PetugasCertification[]
+  leaves             PetugasLeave[]
+  substituteFor      PetugasLeave[]         @relation("LeaveSubstitute")
+  transfers          PetugasTransfer[]
+  attendanceDisputes AttendanceDispute[]    @relation("AttendanceDisputePetugas")
+  swapsProposed      PetugasSwapRequest[]   @relation("SwapProposer")
+  swapsAsCounterpart PetugasSwapRequest[]   @relation("SwapCounterpart")
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
 
   @@index([branchId])
   @@index([wilayahZoneId])
@@ -326,7 +331,7 @@ model CustomerFeedback {
   branch      Branch    @relation(fields: [branchId], references: [id])
   branchId    String
   sentAt      DateTime  @default(now())
-  rating      Int?      // 1..5; null sampai nasabah submit
+  rating      Int? // 1..5; null sampai nasabah submit
   comment     String?
   repliedAt   DateTime?
 
@@ -339,18 +344,18 @@ model CustomerFeedback {
 // multiple petugas (e.g. shared coverage area). Soft delete preserves
 // historical kunjungan that referenced the zone.
 model Wilayah {
-  id        String   @id @default(cuid())
-  branch    Branch   @relation(fields: [branchId], references: [id])
+  id        String    @id @default(cuid())
+  branch    Branch    @relation(fields: [branchId], references: [id])
   branchId  String
   nama      String
   // GeoJSON Polygon: { type: "Polygon", coordinates: [[[lng, lat], ...]] }
   // Stored as Json so Postgres jsonb gives us fast equality on the shape;
   // point-in-polygon happens in app code via turf.
   polygon   Json
-  active    Boolean  @default(true)
+  active    Boolean   @default(true)
   petugas   Petugas[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([branchId])
   @@index([active])
@@ -360,23 +365,23 @@ model Wilayah {
 // terbuka (clockOutAt = null) pada waktu yang sama — enforced di route.
 // Histori session lengkap diarsip untuk laporan absensi.
 model Attendance {
-  id           String   @id @default(cuid())
-  petugas      Petugas  @relation(fields: [petugasId], references: [id])
-  petugasId    String
-  branch       Branch   @relation(fields: [branchId], references: [id])
-  branchId     String
-  clockInAt    DateTime @default(now())
-  clockInLat   Float?
-  clockInLng   Float?
-  clockOutAt   DateTime?
-  clockOutLat  Float?
-  clockOutLng  Float?
+  id          String              @id @default(cuid())
+  petugas     Petugas             @relation(fields: [petugasId], references: [id])
+  petugasId   String
+  branch      Branch              @relation(fields: [branchId], references: [id])
+  branchId    String
+  clockInAt   DateTime            @default(now())
+  clockInLat  Float?
+  clockInLng  Float?
+  clockOutAt  DateTime?
+  clockOutLat Float?
+  clockOutLng Float?
   // DR — odometer reading. kmStart set at clock-in, kmEnd at clock-out.
   // Difference drives the monthly BBM claim report.
-  kmStart      Int?
-  kmEnd        Int?
-  disputes     AttendanceDispute[]
-  createdAt    DateTime @default(now())
+  kmStart     Int?
+  kmEnd       Int?
+  disputes    AttendanceDispute[]
+  createdAt   DateTime            @default(now())
 
   @@index([petugasId, clockInAt])
   @@index([branchId, clockInAt])
@@ -396,61 +401,61 @@ model PetugasPosition {
 }
 
 model Nasabah {
-  id         String      @id @default(cuid())
-  kode       String      @unique           // N1000, N1001, ...
-  nama       String
-  alamat     String
-  hp         String
-  lat        Float?
-  lng        Float?
-  kol        KolKey      @default(K1)
-  akad       Akad        @default(MURABAHAH)
-  plafon     BigInt
-  tenor      Int
+  id                        String               @id @default(cuid())
+  kode                      String               @unique // N1000, N1001, ...
+  nama                      String
+  alamat                    String
+  hp                        String
+  lat                       Float?
+  lng                       Float?
+  kol                       KolKey               @default(K1)
+  akad                      Akad                 @default(MURABAHAH)
+  plafon                    BigInt
+  tenor                     Int
   // DW — start date of the akad. Kontrak end = kontrakMulai + tenor (bln).
   // Optional because legacy data may not have the date filled; without it,
   // the expiry alert simply skips the row.
-  kontrakMulai DateTime?
-  angsuran   BigInt
-  sisa       BigInt
-  dpd        Int         @default(0)
-  dueIn      Int         @default(0)
-  lastBayar  String?
-  petugas    Petugas     @relation(fields: [petugasId], references: [id])
-  petugasId  String
-  branch     Branch      @relation(fields: [branchId], references: [id])
-  branchId   String
+  kontrakMulai              DateTime?
+  angsuran                  BigInt
+  sisa                      BigInt
+  dpd                       Int                  @default(0)
+  dueIn                     Int                  @default(0)
+  lastBayar                 String?
+  petugas                   Petugas              @relation(fields: [petugasId], references: [id])
+  petugasId                 String
+  branch                    Branch               @relation(fields: [branchId], references: [id])
+  branchId                  String
   // Soft delete — pensiun / lunas / wanprestasi-final masuk inactive
   // tapi histori kunjungan + pembayaran tetap terjaga.
-  active     Boolean     @default(true)
+  active                    Boolean              @default(true)
   // Next-visit scheduler. Set automatically by the cadence rule on every
   // kunjungan.create (based on kol + hasil), or overridden manually by
   // SUPERVISOR/ADMIN via PATCH /:id/next-visit. Null = no plan yet.
-  nextVisitAt DateTime?
+  nextVisitAt               DateTime?
   // DK — fraud / wanprestasi flag. blacklistedAt is set on toggle so we
   // know when it happened; clearing the flag clears all three. Bulk
   // import refuses to recreate a blacklisted kode.
-  blacklisted     Boolean   @default(false)
-  blacklistReason String?
-  blacklistedAt   DateTime?
+  blacklisted               Boolean              @default(false)
+  blacklistReason           String?
+  blacklistedAt             DateTime?
   // DQ — temporary deactivation: while snoozedUntil is in the future,
   // morning reminder / due-soon / stale-nasabah skip this row. Cleared
   // by setting snoozedUntil = null. Reason is free text.
-  snoozedUntil    DateTime?
-  snoozeReason    String?
-  kunjungan      Kunjungan[]
-  pembayaran     Pembayaran[]
-  blastRecipient BlastRecipient[]
-  feedback       CustomerFeedback[]
-  escalations    EscalationTicket[]
-  tags           NasabahTag[]
-  notes          NasabahNote[]
-  restructures   NasabahRestructure[]
-  documents      NasabahDocument[]
+  snoozedUntil              DateTime?
+  snoozeReason              String?
+  kunjungan                 Kunjungan[]
+  pembayaran                Pembayaran[]
+  blastRecipient            BlastRecipient[]
+  feedback                  CustomerFeedback[]
+  escalations               EscalationTicket[]
+  tags                      NasabahTag[]
+  notes                     NasabahNote[]
+  restructures              NasabahRestructure[]
+  documents                 NasabahDocument[]
   swapsAsProposerNasabah    PetugasSwapRequest[] @relation("SwapProposerNasabah")
   swapsAsCounterpartNasabah PetugasSwapRequest[] @relation("SwapCounterpartNasabah")
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
 
   @@index([petugasId])
   @@index([kol])
@@ -461,47 +466,47 @@ model Nasabah {
 }
 
 model Kunjungan {
-  id         String         @id @default(cuid())
-  petugas    Petugas        @relation(fields: [petugasId], references: [id])
-  petugasId  String
-  nasabah    Nasabah        @relation(fields: [nasabahId], references: [id])
-  nasabahId  String
-  branch     Branch         @relation(fields: [branchId], references: [id])
-  branchId   String
-  hasil      HasilKunjungan
-  nominal    BigInt         @default(0)
-  catatan    String
-  lokasi     String
-  lat        Float?
-  lng        Float?
-  valid      Boolean        @default(true)
+  id           String             @id @default(cuid())
+  petugas      Petugas            @relation(fields: [petugasId], references: [id])
+  petugasId    String
+  nasabah      Nasabah            @relation(fields: [nasabahId], references: [id])
+  nasabahId    String
+  branch       Branch             @relation(fields: [branchId], references: [id])
+  branchId     String
+  hasil        HasilKunjungan
+  nominal      BigInt             @default(0)
+  catatan      String
+  lokasi       String
+  lat          Float?
+  lng          Float?
+  valid        Boolean            @default(true)
   // Anti-fraud surface. riskFlags lists detected anomalies (e.g. "gps_far",
   // "photo_stale", "no_exif_date"); riskScore is the summed severity. A
   // non-zero score flips `valid` to false at write time and surfaces a
   // "perlu review" badge on the supervisor's report list.
-  riskScore  Int            @default(0)
-  riskFlags  String[]       @default([])
+  riskScore    Int                @default(0)
+  riskFlags    String[]           @default([])
   // Review pipeline. Laporan dengan riskScore > 0 mulai dari PENDING; yang
   // bersih auto-APPROVED. Supervisor bisa Setujui / Tolak dengan catatan.
-  reviewStatus ReviewStatus @default(APPROVED)
+  reviewStatus ReviewStatus       @default(APPROVED)
   reviewerId   String?
-  reviewer     User?        @relation(fields: [reviewerId], references: [id])
+  reviewer     User?              @relation(fields: [reviewerId], references: [id])
   reviewedAt   DateTime?
   reviewNote   String?
   // SLA monitor — set the first time the alert worker has notified the
   // branch supervisors that this PENDING row has gone past the SLA
   // threshold, so we don't double-page them every poll cycle.
   slaAlertedAt DateTime?
-  fotos      Foto[]
+  fotos        Foto[]
   feedback     CustomerFeedback?
-  editLogs   KunjunganEditLog[]
-  jam        String
-  tanggal    DateTime       @default(now())   // the visit time (can be backdated)
-  createdAt  DateTime       @default(now())   // the insertion time; gates edit/delete window
+  editLogs     KunjunganEditLog[]
+  jam          String
+  tanggal      DateTime           @default(now()) // the visit time (can be backdated)
+  createdAt    DateTime           @default(now()) // the insertion time; gates edit/delete window
   // BY — archive worker stamps this when an APPROVED/REJECTED kunjungan is
   // older than ARCHIVE_AFTER_DAYS. Archived rows still exist (analytics +
   // GDPR exports keep working) but the default list filters them out.
-  archivedAt DateTime?
+  archivedAt   DateTime?
 
   @@index([petugasId, tanggal])
   @@index([nasabahId, tanggal])
@@ -550,43 +555,43 @@ model Foto {
 // logged separately (WebhookDelivery) with retry status so operators can
 // audit failures.
 model WebhookSubscription {
-  id           String   @id @default(cuid())
-  name         String
-  url          String
+  id             String            @id @default(cuid())
+  name           String
+  url            String
   // HMAC-SHA256 secret; presented once at create then masked in lists.
-  secret       String
+  secret         String
   // Array of event topics this subscription wants — "kunjungan.created",
   // "kunjungan.reviewed", etc. Empty array = subscribe to all topics.
-  events       String[]
-  branch       Branch?  @relation(fields: [branchId], references: [id])
-  branchId     String?
-  active       Boolean  @default(true)
-  createdBy    User     @relation("WebhookCreator", fields: [createdById], references: [id])
-  createdById  String
+  events         String[]
+  branch         Branch?           @relation(fields: [branchId], references: [id])
+  branchId       String?
+  active         Boolean           @default(true)
+  createdBy      User              @relation("WebhookCreator", fields: [createdById], references: [id])
+  createdById    String
   lastDeliveryAt DateTime?
-  createdAt    DateTime @default(now())
-  deliveries   WebhookDelivery[]
+  createdAt      DateTime          @default(now())
+  deliveries     WebhookDelivery[]
 
   @@index([active])
   @@index([branchId])
 }
 
 model WebhookDelivery {
-  id              String   @id @default(cuid())
-  webhook         WebhookSubscription @relation(fields: [webhookId], references: [id], onDelete: Cascade)
-  webhookId       String
-  event           String
-  payload         Json
-  status          String   // 'success' | 'pending' | 'failed' | 'dead_letter'
-  responseStatus  Int?     // HTTP status from receiver
-  attempts        Int      @default(0)
-  error           String?
+  id             String              @id @default(cuid())
+  webhook        WebhookSubscription @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  webhookId      String
+  event          String
+  payload        Json
+  status         String // 'success' | 'pending' | 'failed' | 'dead_letter'
+  responseStatus Int? // HTTP status from receiver
+  attempts       Int                 @default(0)
+  error          String?
   // Retry scheduler — `pending` rows are picked up by the dispatcher when
   // nextAttemptAt has passed. `dead_letter` rows have exhausted retries
   // and stay dormant unless an operator hits /retry manually.
-  nextAttemptAt   DateTime?
-  lastAttemptAt   DateTime?
-  createdAt       DateTime @default(now())
+  nextAttemptAt  DateTime?
+  lastAttemptAt  DateTime?
+  createdAt      DateTime            @default(now())
 
   @@index([webhookId, createdAt])
   @@index([status, createdAt])
@@ -600,7 +605,7 @@ model Pembayaran {
   branch    Branch   @relation(fields: [branchId], references: [id])
   branchId  String
   nominal   BigInt
-  metode    String   // tunai | transfer | autodebet
+  metode    String // tunai | transfer | autodebet
   status    String   @default("berhasil")
   jam       String
   tanggal   DateTime @default(now())
@@ -610,31 +615,31 @@ model Pembayaran {
 }
 
 model Blast {
-  id           String       @id @default(cuid())
-  judul        String
-  kanal        BlastChannel
-  template     String
-  status       BlastStatus  @default(TERJADWAL)
-  target       Int          @default(0)
-  terkirim     Int          @default(0)
-  dibaca       Int?
-  scheduledAt  DateTime?
-  branch       Branch       @relation(fields: [branchId], references: [id])
-  branchId     String
-  createdAt    DateTime     @default(now())
-  recipients   BlastRecipient[]
+  id          String           @id @default(cuid())
+  judul       String
+  kanal       BlastChannel
+  template    String
+  status      BlastStatus      @default(TERJADWAL)
+  target      Int              @default(0)
+  terkirim    Int              @default(0)
+  dibaca      Int?
+  scheduledAt DateTime?
+  branch      Branch           @relation(fields: [branchId], references: [id])
+  branchId    String
+  createdAt   DateTime         @default(now())
+  recipients  BlastRecipient[]
 
   @@index([branchId, createdAt])
 }
 
 model BlastRecipient {
-  id        String  @id @default(cuid())
-  blast     Blast   @relation(fields: [blastId], references: [id], onDelete: Cascade)
+  id        String    @id @default(cuid())
+  blast     Blast     @relation(fields: [blastId], references: [id], onDelete: Cascade)
   blastId   String
-  nasabah   Nasabah @relation(fields: [nasabahId], references: [id])
+  nasabah   Nasabah   @relation(fields: [nasabahId], references: [id])
   nasabahId String
   hp        String
-  status    String  @default("pending")  // pending | terkirim | gagal | dibaca
+  status    String    @default("pending") // pending | terkirim | gagal | dibaca
   sentAt    DateTime?
 
   @@unique([blastId, nasabahId])
@@ -645,20 +650,20 @@ model BlastRecipient {
 // validUntil tags expiry. UI sorts by validUntil so things about to lapse
 // surface first; a worker (or just supervisor review) handles renewal.
 model PetugasCertification {
-  id            String    @id @default(cuid())
-  petugas       Petugas   @relation(fields: [petugasId], references: [id], onDelete: Cascade)
-  petugasId     String
-  nama          String
-  penerbit      String?
-  noSertifikat  String?
-  issuedAt      DateTime
-  validUntil    DateTime?
-  status        String    @default("aktif")  // aktif | dicabut | expired
-  catatan       String?
-  createdById   String?
-  createdBy     User?     @relation("CertCreator", fields: [createdById], references: [id])
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  petugas      Petugas   @relation(fields: [petugasId], references: [id], onDelete: Cascade)
+  petugasId    String
+  nama         String
+  penerbit     String?
+  noSertifikat String?
+  issuedAt     DateTime
+  validUntil   DateTime?
+  status       String    @default("aktif") // aktif | dicabut | expired
+  catatan      String?
+  createdById  String?
+  createdBy    User?     @relation("CertCreator", fields: [createdById], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([petugasId, validUntil])
 }
@@ -666,14 +671,14 @@ model PetugasCertification {
 // BT — log per-edit on a kunjungan. Each PATCH creates one row so the
 // audit viewer can render a side-by-side timeline of what changed.
 model KunjunganEditLog {
-  id           String    @id @default(cuid())
-  kunjungan    Kunjungan @relation(fields: [kunjunganId], references: [id], onDelete: Cascade)
-  kunjunganId  String
-  editor       User      @relation("EditLogEditor", fields: [editorId], references: [id])
-  editorId     String
+  id          String    @id @default(cuid())
+  kunjungan   Kunjungan @relation(fields: [kunjunganId], references: [id], onDelete: Cascade)
+  kunjunganId String
+  editor      User      @relation("EditLogEditor", fields: [editorId], references: [id])
+  editorId    String
   // Changed fields as JSON: { field: { from, to } }
-  changes      Json
-  createdAt    DateTime  @default(now())
+  changes     Json
+  createdAt   DateTime  @default(now())
 
   @@index([kunjunganId, createdAt])
 }
@@ -683,22 +688,22 @@ model KunjunganEditLog {
 // Supervisors close them once contact has been made or another action
 // taken; closed tickets stay in the table as the paper trail.
 model EscalationTicket {
-  id         String    @id @default(cuid())
-  nasabah    Nasabah   @relation(fields: [nasabahId], references: [id])
-  nasabahId  String
-  branch     Branch    @relation(fields: [branchId], references: [id])
-  branchId   String
+  id           String    @id @default(cuid())
+  nasabah      Nasabah   @relation(fields: [nasabahId], references: [id])
+  nasabahId    String
+  branch       Branch    @relation(fields: [branchId], references: [id])
+  branchId     String
   // 'critical' (kol K5 or DPD > 90), 'high' (K4), 'medium' (K3 + no payment ≥ 30d)
-  severity   String
-  reason     String    // human-readable: "K5 — 45 hari tanpa bayar"
+  severity     String
+  reason       String // human-readable: "K5 — 45 hari tanpa bayar"
   // 'open' (auto-created) → 'in_progress' (supervisor acknowledged)
   // → 'resolved' (action taken) | 'dismissed' (false positive)
-  status     String    @default("open")
-  note       String?
-  assignedTo User?     @relation("EscalationAssignee", fields: [assignedToId], references: [id])
+  status       String    @default("open")
+  note         String?
+  assignedTo   User?     @relation("EscalationAssignee", fields: [assignedToId], references: [id])
   assignedToId String?
-  createdAt  DateTime  @default(now())
-  resolvedAt DateTime?
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
 
   @@index([branchId, status, createdAt])
   @@index([nasabahId, status])
@@ -709,17 +714,17 @@ model EscalationTicket {
 // petugas on the dates they're out. Soft delete via status='cancelled' so
 // withdrawn requests stay in the trail.
 model PetugasLeave {
-  id          String    @id @default(cuid())
-  petugas     Petugas   @relation(fields: [petugasId], references: [id], onDelete: Cascade)
-  petugasId   String
-  startDate   DateTime
-  endDate     DateTime
-  type        String    // 'cuti_tahunan' | 'sakit' | 'dinas_luar' | 'lain'
-  status      String    @default("pending")    // pending | approved | rejected | cancelled
-  reason      String?
-  approvedBy  User?     @relation("LeaveApprover", fields: [approvedById], references: [id])
-  approvedById String?
-  decisionAt  DateTime?
+  id                  String    @id @default(cuid())
+  petugas             Petugas   @relation(fields: [petugasId], references: [id], onDelete: Cascade)
+  petugasId           String
+  startDate           DateTime
+  endDate             DateTime
+  type                String // 'cuti_tahunan' | 'sakit' | 'dinas_luar' | 'lain'
+  status              String    @default("pending") // pending | approved | rejected | cancelled
+  reason              String?
+  approvedBy          User?     @relation("LeaveApprover", fields: [approvedById], references: [id])
+  approvedById        String?
+  decisionAt          DateTime?
   // DG — optional substitute. Worker swaps all nasabah of `petugasId`
   // over to `substitutePetugasId` on the leave's start date, then
   // restores them when the leave ends. Both transitions are audited.
@@ -728,8 +733,8 @@ model PetugasLeave {
   // True after the start-of-leave swap has fired; flipped back to false
   // after restoration so the worker stays idempotent.
   reassigned          Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([petugasId, status, startDate])
   @@index([status, endDate])
@@ -739,17 +744,17 @@ model PetugasLeave {
 // inside routes/petugas.PATCH writes it when branchId changes. Closed
 // transfers stay in the table as audit context.
 model PetugasTransfer {
-  id          String   @id @default(cuid())
-  petugas     Petugas  @relation(fields: [petugasId], references: [id], onDelete: Cascade)
-  petugasId   String
-  fromBranch  Branch   @relation("TransferFrom", fields: [fromBranchId], references: [id])
+  id           String   @id @default(cuid())
+  petugas      Petugas  @relation(fields: [petugasId], references: [id], onDelete: Cascade)
+  petugasId    String
+  fromBranch   Branch   @relation("TransferFrom", fields: [fromBranchId], references: [id])
   fromBranchId String
-  toBranch    Branch   @relation("TransferTo", fields: [toBranchId], references: [id])
-  toBranchId  String
-  reason      String?
-  movedBy     User?    @relation("TransferMover", fields: [movedById], references: [id])
-  movedById   String?
-  createdAt   DateTime @default(now())
+  toBranch     Branch   @relation("TransferTo", fields: [toBranchId], references: [id])
+  toBranchId   String
+  reason       String?
+  movedBy      User?    @relation("TransferMover", fields: [movedById], references: [id])
+  movedById    String?
+  createdAt    DateTime @default(now())
 
   @@index([petugasId, createdAt])
   @@index([fromBranchId, createdAt])
@@ -762,7 +767,7 @@ model PetugasTransfer {
 model Tag {
   id          String       @id @default(cuid())
   name        String
-  color       String       @default("#64748b")   // tailwind slate-500 — neutral default
+  color       String       @default("#64748b") // tailwind slate-500 — neutral default
   branch      Branch?      @relation(fields: [branchId], references: [id], onDelete: Cascade)
   branchId    String?
   createdBy   User?        @relation("TagCreator", fields: [createdById], references: [id])
@@ -777,15 +782,15 @@ model Tag {
 }
 
 model NasabahTag {
-  nasabah     Nasabah  @relation(fields: [nasabahId], references: [id], onDelete: Cascade)
-  nasabahId   String
-  tag         Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
-  tagId       String
+  nasabah   Nasabah  @relation(fields: [nasabahId], references: [id], onDelete: Cascade)
+  nasabahId String
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  tagId     String
   // DH — when set, this NasabahTag was applied automatically by a rule
   // sweep rather than a human assigner. Auto-applied rows can be removed
   // by the sweep when the rule no longer matches; manual rows are kept.
-  ruleId      String?
-  createdAt   DateTime @default(now())
+  ruleId    String?
+  createdAt DateTime @default(now())
 
   @@id([nasabahId, tagId])
   @@index([tagId])
@@ -803,18 +808,18 @@ enum TagRuleType {
 }
 
 model TagRule {
-  id            String       @id @default(cuid())
-  tag           Tag          @relation("TagRuleTag", fields: [tagId], references: [id], onDelete: Cascade)
-  tagId         String
-  name          String
-  type          TagRuleType
-  threshold     Int?         // for DPD_ABOVE + DAYS_SINCE_PAYMENT_ABOVE
-  kolValues     String[]     @default([])     // for KOL_IN — list of KolKey enum values
-  active        Boolean      @default(true)
-  createdBy     User?        @relation("TagRuleCreator", fields: [createdById], references: [id])
-  createdById   String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id          String      @id @default(cuid())
+  tag         Tag         @relation("TagRuleTag", fields: [tagId], references: [id], onDelete: Cascade)
+  tagId       String
+  name        String
+  type        TagRuleType
+  threshold   Int? // for DPD_ABOVE + DAYS_SINCE_PAYMENT_ABOVE
+  kolValues   String[]    @default([]) // for KOL_IN — list of KolKey enum values
+  active      Boolean     @default(true)
+  createdBy   User?       @relation("TagRuleCreator", fields: [createdById], references: [id])
+  createdById String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
   @@index([tagId])
   @@index([active])
@@ -847,23 +852,23 @@ enum PetugasSwapStatus {
 }
 
 model PetugasSwapRequest {
-  id              String            @id @default(cuid())
-  proposer        Petugas           @relation("SwapProposer", fields: [proposerId], references: [id])
-  proposerId      String
-  counterpart     Petugas           @relation("SwapCounterpart", fields: [counterpartId], references: [id])
-  counterpartId   String
-  proposerNasabah Nasabah           @relation("SwapProposerNasabah", fields: [proposerNasabahId], references: [id])
-  proposerNasabahId   String
-  counterpartNasabah  Nasabah       @relation("SwapCounterpartNasabah", fields: [counterpartNasabahId], references: [id])
+  id                   String            @id @default(cuid())
+  proposer             Petugas           @relation("SwapProposer", fields: [proposerId], references: [id])
+  proposerId           String
+  counterpart          Petugas           @relation("SwapCounterpart", fields: [counterpartId], references: [id])
+  counterpartId        String
+  proposerNasabah      Nasabah           @relation("SwapProposerNasabah", fields: [proposerNasabahId], references: [id])
+  proposerNasabahId    String
+  counterpartNasabah   Nasabah           @relation("SwapCounterpartNasabah", fields: [counterpartNasabahId], references: [id])
   counterpartNasabahId String
-  status          PetugasSwapStatus @default(PENDING)
-  reason          String
-  decidedBy       User?             @relation("SwapDecider", fields: [decidedById], references: [id])
-  decidedById     String?
-  decisionNote    String?
-  decidedAt       DateTime?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  status               PetugasSwapStatus @default(PENDING)
+  reason               String
+  decidedBy            User?             @relation("SwapDecider", fields: [decidedById], references: [id])
+  decidedById          String?
+  decisionNote         String?
+  decidedAt            DateTime?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 
   @@index([proposerId, status])
   @@index([counterpartId, status])
@@ -882,18 +887,18 @@ enum NasabahDocumentKind {
 }
 
 model NasabahDocument {
-  id          String              @id @default(cuid())
-  nasabah     Nasabah             @relation(fields: [nasabahId], references: [id], onDelete: Cascade)
-  nasabahId   String
-  kind        NasabahDocumentKind
-  fileName    String
-  filePath    String
-  mimeType    String
-  sizeBytes   Int
-  notes       String?
-  uploadedBy  User?               @relation("NasabahDocumentUploader", fields: [uploadedById], references: [id])
+  id           String              @id @default(cuid())
+  nasabah      Nasabah             @relation(fields: [nasabahId], references: [id], onDelete: Cascade)
+  nasabahId    String
+  kind         NasabahDocumentKind
+  fileName     String
+  filePath     String
+  mimeType     String
+  sizeBytes    Int
+  notes        String?
+  uploadedBy   User?               @relation("NasabahDocumentUploader", fields: [uploadedById], references: [id])
   uploadedById String?
-  createdAt   DateTime            @default(now())
+  createdAt    DateTime            @default(now())
 
   @@index([nasabahId, createdAt])
 }
@@ -909,21 +914,21 @@ enum AttendanceDisputeStatus {
 }
 
 model AttendanceDispute {
-  id              String                  @id @default(cuid())
-  attendance      Attendance              @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
-  attendanceId    String
-  petugas         Petugas                 @relation("AttendanceDisputePetugas", fields: [petugasId], references: [id])
-  petugasId       String
-  status          AttendanceDisputeStatus @default(PENDING)
-  reason          String
+  id               String                  @id @default(cuid())
+  attendance       Attendance              @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  attendanceId     String
+  petugas          Petugas                 @relation("AttendanceDisputePetugas", fields: [petugasId], references: [id])
+  petugasId        String
+  status           AttendanceDisputeStatus @default(PENDING)
+  reason           String
   proposedClockIn  DateTime?
   proposedClockOut DateTime?
-  decidedBy       User?                   @relation("AttendanceDisputeDecider", fields: [decidedById], references: [id])
-  decidedById     String?
-  decisionNote    String?
-  decidedAt       DateTime?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  decidedBy        User?                   @relation("AttendanceDisputeDecider", fields: [decidedById], references: [id])
+  decidedById      String?
+  decisionNote     String?
+  decidedAt        DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
 
   @@index([attendanceId])
   @@index([status])
@@ -942,25 +947,25 @@ enum RestructureStatus {
 }
 
 model NasabahRestructure {
-  id            String            @id @default(cuid())
-  nasabah       Nasabah           @relation(fields: [nasabahId], references: [id], onDelete: Cascade)
-  nasabahId     String
-  status        RestructureStatus @default(PENDING)
-  reason        String
-  oldSisa       BigInt
-  newSisa       BigInt
-  oldAngsuran   BigInt
-  newAngsuran   BigInt
-  oldTenor      Int
-  newTenor      Int
-  proposedBy    User              @relation("RestructureProposer", fields: [proposedById], references: [id])
-  proposedById  String
-  decidedBy     User?             @relation("RestructureDecider", fields: [decidedById], references: [id])
-  decidedById   String?
-  decisionNote  String?
-  decidedAt     DateTime?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  id           String            @id @default(cuid())
+  nasabah      Nasabah           @relation(fields: [nasabahId], references: [id], onDelete: Cascade)
+  nasabahId    String
+  status       RestructureStatus @default(PENDING)
+  reason       String
+  oldSisa      BigInt
+  newSisa      BigInt
+  oldAngsuran  BigInt
+  newAngsuran  BigInt
+  oldTenor     Int
+  newTenor     Int
+  proposedBy   User              @relation("RestructureProposer", fields: [proposedById], references: [id])
+  proposedById String
+  decidedBy    User?             @relation("RestructureDecider", fields: [decidedById], references: [id])
+  decidedById  String?
+  decisionNote String?
+  decidedAt    DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
   @@index([nasabahId, createdAt])
   @@index([status])

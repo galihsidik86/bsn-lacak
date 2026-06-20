@@ -138,12 +138,24 @@ export async function enqueueFeedbackRequest(kunjunganId: string): Promise<void>
       include: {
         nasabah: { select: { id: true, hp: true, nama: true } },
         petugas: { select: { id: true, nama: true } },
-        branch: { select: { id: true, nama: true } },
+        branch: { select: { id: true, nama: true, csatEnabled: true } },
       },
     });
     if (!k) return;
+    // DY — CSAT is opt-in per branch.
+    if (!k.branch.csatEnabled) return;
+    // DY — only after a successful payment visit. Other hasil (JANJI,
+    // TIDAKADA, TOLAK) don't earn a survey — there's nothing to rate.
+    if (k.hasil !== 'BAYAR') return;
     const existing = await prisma.customerFeedback.findUnique({ where: { kunjunganId } });
     if (existing) return;
+    // DY — per-nasabah cooldown to avoid survey spam.
+    const cutoff = new Date(Date.now() - env.CSAT_COOLDOWN_DAYS * 86400_000);
+    const recent = await prisma.customerFeedback.findFirst({
+      where: { nasabahId: k.nasabahId, sentAt: { gte: cutoff } },
+      select: { id: true },
+    });
+    if (recent) return;
 
     const token = randomBytes(24).toString('hex');
     await prisma.customerFeedback.create({

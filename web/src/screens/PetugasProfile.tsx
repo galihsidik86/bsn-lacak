@@ -430,6 +430,7 @@ interface LeaveRow {
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   reason: string | null; decisionAt: string | null;
   approvedBy: { username: string; nama: string } | null;
+  substitutePetugasId?: string | null;
 }
 function LeavePanel({ petugasId }: { petugasId: string }) {
   const role = useAuth(s => s.user?.role);
@@ -448,6 +449,24 @@ function LeavePanel({ petugasId }: { petugasId: string }) {
         { status },
         { withCredentials: true, headers: certHeaders() }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['leaves', petugasId] }),
+  });
+
+  const bulkReassign = useMutation({
+    mutationFn: (id: string) =>
+      axios.post(`${import.meta.env.VITE_API_URL || '/api'}/leaves/${id}/bulk-reassign`, {},
+        { withCredentials: true, headers: certHeaders() }),
+    onSuccess: (r: any) => {
+      alert(`Berhasil. ${r?.data?.moved ?? 0} nasabah dipindah ke substitute.`);
+      qc.invalidateQueries({ queryKey: ['leaves', petugasId] });
+      qc.invalidateQueries({ queryKey: ['nasabah'] });
+    },
+    onError: (e: any) => {
+      const c = e?.response?.data?.error;
+      if (c === 'not_approved') alert('Hanya cuti yang sudah APPROVED yang bisa di-bulk reassign.');
+      else if (c === 'no_substitute') alert('Cuti ini belum punya substitute petugas.');
+      else if (c === 'substitute_invalid') alert('Substitute petugas tidak valid (mungkin sudah resign).');
+      else alert('Gagal memindah nasabah.');
+    },
   });
 
   return (
@@ -507,6 +526,16 @@ function LeavePanel({ petugasId }: { petugasId: string }) {
                             <Ic.x size={12} />Tolak
                           </button>
                         </div>
+                      )}
+                      {l.status === 'approved' && l.substitutePetugasId && (
+                        <button className="btn btn-sm btn-ghost"
+                          disabled={bulkReassign.isPending}
+                          onClick={() => {
+                            if (!window.confirm('Pindahkan SEMUA nasabah petugas ini ke substitute? Tidak otomatis dikembalikan saat cuti selesai.')) return;
+                            bulkReassign.mutate(l.id);
+                          }}>
+                          <Ic.users size={12} />Reassign semua nasabah
+                        </button>
                       )}
                     </td>
                   )}
