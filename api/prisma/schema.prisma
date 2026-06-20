@@ -37,6 +37,9 @@ model Branch {
   // Both default zero so untouched branches don't show fake utilization.
   budgetOperational  BigInt  @default(0)
   budgetCommission   BigInt  @default(0)
+  // DP — default commission rate (bps) applied to new petugas when the
+  // create call omits commissionBps. Null = use the system-wide 150.
+  defaultCommissionBps Int?
   users        User[]
   petugas      Petugas[]
   nasabah      Nasabah[]
@@ -414,6 +417,11 @@ model Nasabah {
   blacklisted     Boolean   @default(false)
   blacklistReason String?
   blacklistedAt   DateTime?
+  // DQ — temporary deactivation: while snoozedUntil is in the future,
+  // morning reminder / due-soon / stale-nasabah skip this row. Cleared
+  // by setting snoozedUntil = null. Reason is free text.
+  snoozedUntil    DateTime?
+  snoozeReason    String?
   kunjungan      Kunjungan[]
   pembayaran     Pembayaran[]
   blastRecipient BlastRecipient[]
@@ -431,6 +439,7 @@ model Nasabah {
   @@index([branchId])
   @@index([active])
   @@index([blacklisted])
+  @@index([snoozedUntil])
 }
 
 model Kunjungan {

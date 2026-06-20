@@ -99,6 +99,10 @@ const upsert = z.object({
   // on large branches; the UI renders them as Rp.
   budgetOperational: z.coerce.bigint().nonnegative().optional(),
   budgetCommission: z.coerce.bigint().nonnegative().optional(),
+  // DP — default commission rate (bps) seeded onto new petugas in this
+  // branch when their create call omits commissionBps. Null = use the
+  // hard-coded 150 system floor.
+  defaultCommissionBps: z.coerce.number().int().min(0).max(10_000).nullable().optional(),
 });
 
 router.post('/', requireRole('ADMIN'), async (req, res) => {

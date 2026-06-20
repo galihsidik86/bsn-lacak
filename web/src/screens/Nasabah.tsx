@@ -37,6 +37,8 @@ interface NasabahRow {
   tags?: Array<{ id: string; name: string; color: string }>;
   blacklisted?: boolean;
   blacklistReason?: string | null;
+  snoozedUntil?: string | null;
+  snoozeReason?: string | null;
 }
 
 interface TagRow {
@@ -54,13 +56,14 @@ function headers() {
   return h;
 }
 
-async function listNasabah(includeInactive: boolean, tagId?: string, blacklistOnly?: boolean): Promise<NasabahRow[]> {
+async function listNasabah(includeInactive: boolean, tagId?: string, blacklistOnly?: boolean, snoozedOnly?: boolean): Promise<NasabahRow[]> {
   return (await axios.get(`${BASE}/nasabah`, {
     withCredentials: true, headers: headers(),
     params: {
       includeInactive: includeInactive ? '1' : '0',
       ...(tagId ? { tagId } : {}),
       ...(blacklistOnly ? { blacklistOnly: '1' } : {}),
+      ...(snoozedOnly ? { snoozedOnly: '1' } : {}),
     },
   })).data;
 }
@@ -154,9 +157,10 @@ export function ScreenNasabah() {
   const [search, setSearch] = useState('');
   const [tagFilter, setTagFilter] = useState<string>('');
   const [blacklistOnly, setBlacklistOnly] = useState(false);
+  const [snoozedOnly, setSnoozedOnly] = useState(false);
   const q = useQuery({
-    queryKey: ['nasabah', { includeInactive, tagFilter, blacklistOnly }],
-    queryFn: () => listNasabah(includeInactive, tagFilter || undefined, blacklistOnly),
+    queryKey: ['nasabah', { includeInactive, tagFilter, blacklistOnly, snoozedOnly }],
+    queryFn: () => listNasabah(includeInactive, tagFilter || undefined, blacklistOnly, snoozedOnly),
   });
   const petugasQ = useQuery({ queryKey: ['petugas'], queryFn: listPetugas });
   const tagsQ = useQuery({ queryKey: ['tags'], queryFn: listTags });
@@ -205,6 +209,10 @@ export function ScreenNasabah() {
           <label className="center gap-2" style={{ fontSize: 13, fontWeight: 600, color: 'var(--col-macet)' }}>
             <input type="checkbox" checked={blacklistOnly} onChange={e => setBlacklistOnly(e.target.checked)} />
             Blacklist saja
+          </label>
+          <label className="center gap-2" style={{ fontSize: 13, fontWeight: 600, color: 'oklch(0.4 0.13 75)' }}>
+            <input type="checkbox" checked={snoozedOnly} onChange={e => setSnoozedOnly(e.target.checked)} />
+            Snooze saja
           </label>
         </div>
         <div className="center gap-2">
@@ -271,6 +279,12 @@ export function ScreenNasabah() {
                           fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
                           letterSpacing: 0.4, textTransform: 'uppercase',
                         }}>Blacklist</span>
+                      )}
+                      {n.snoozedUntil && new Date(n.snoozedUntil) > new Date() && (
+                        <span title={n.snoozeReason ?? undefined} style={{
+                          background: 'oklch(0.93 0.05 75)', color: 'oklch(0.4 0.13 75)',
+                          fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                        }}>Snooze</span>
                       )}
                     </div>
                     <div className="muted mono" style={{ fontSize: 11 }}>{n.hp}</div>

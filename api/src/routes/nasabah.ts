@@ -29,6 +29,7 @@ router.get('/', async (req, res) => {
   const akad = str(req.query.akad);
   const tagId = str(req.query.tagId);
   const blacklistOnly = str(req.query.blacklistOnly) === '1';
+  const snoozedOnly = str(req.query.snoozedOnly) === '1';
   const includeInactive = str(req.query.includeInactive) === '1';
 
   const list = await prisma.nasabah.findMany({
@@ -36,6 +37,7 @@ router.get('/', async (req, res) => {
       ...scope(req),
       ...(includeInactive ? {} : { active: true }),
       ...(blacklistOnly ? { blacklisted: true } : {}),
+      ...(snoozedOnly ? { snoozedUntil: { gt: new Date() } } : {}),
       ...(q ? { OR: [{ nama: { contains: q, mode: 'insensitive' } }, { kode: { contains: q, mode: 'insensitive' } }] } : {}),
       ...(kol ? { kol: kol as any } : {}),
       ...(petugasId ? { petugasId } : {}),
@@ -64,6 +66,9 @@ router.get('/due-soon', async (req, res) => {
     where: {
       ...scope(req), active: true,
       nextVisitAt: { not: null, lte: cutoff },
+      // DQ — hide snoozed nasabah from the due-soon worklist; supervisor
+      // explicitly paused them.
+      OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: new Date() } }],
     },
     include: {
       petugas: { select: { id: true, kode: true, nama: true, hue: true, inisial: true } },
@@ -686,6 +691,39 @@ router.patch('/:id/blacklist', requireRole('SUPERVISOR', 'ADMIN'), async (req, r
     action: blacklisted ? 'nasabah.blacklist' : 'nasabah.unblacklist',
     target: id, ...fromReq(req),
     meta: blacklisted ? { reason } : {},
+  });
+  res.json(updated);
+});
+
+// DQ — snooze toggle. Setting requires a future date + reason; clearing
+// nukes both. SUPERVISOR/ADMIN only.
+router.patch('/:id/snooze', requireRole('SUPERVISOR', 'ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const target = await prisma.nasabah.findFirst({ where: { id, ...scope(req) }, select: { id: true } });
+  if (!target) return res.status(404).json({ error: 'not_found' });
+
+  const raw = (req.body ?? {}).snoozedUntil;
+  if (raw === null || raw === undefined || raw === '') {
+    const updated = await prisma.nasabah.update({
+      where: { id }, data: { snoozedUntil: null, snoozeReason: null },
+    });
+    await audit({ action: 'nasabah.snooze_clear', target: id, ...fromReq(req) });
+    return res.json(updated);
+  }
+
+  const until = new Date(raw);
+  if (Number.isNaN(until.getTime())) return res.status(400).json({ error: 'bad_request' });
+  if (until <= new Date()) return res.status(400).json({ error: 'snooze_must_be_future' });
+
+  const reason = String((req.body ?? {}).reason ?? '').trim().slice(0, 500);
+  if (!reason) return res.status(400).json({ error: 'reason_required' });
+
+  const updated = await prisma.nasabah.update({
+    where: { id }, data: { snoozedUntil: until, snoozeReason: reason },
+  });
+  await audit({
+    action: 'nasabah.snooze_set', target: id, ...fromReq(req),
+    meta: { until: until.toISOString(), reason },
   });
   res.json(updated);
 });

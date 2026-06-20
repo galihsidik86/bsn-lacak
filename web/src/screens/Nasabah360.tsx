@@ -52,6 +52,8 @@ interface NasabahDetail {
   active: boolean;
   blacklisted?: boolean;
   blacklistReason?: string | null;
+  snoozedUntil?: string | null;
+  snoozeReason?: string | null;
   petugas: { kode: string; nama: string; hp: string; inisial: string; hue: number; wilayah: string; branch: { kode: string; nama: string } };
   branch: { kode: string; nama: string; alamat: string | null };
 }
@@ -130,12 +132,19 @@ export function ScreenNasabah360({ nasabahId, onClose }: { nasabahId: string; on
                 <Ic.alert size={12} />BLACKLIST
               </span>
             )}
+            {n.snoozedUntil && new Date(n.snoozedUntil) > new Date() && (
+              <span className="chip" title={n.snoozeReason ?? undefined}
+                style={{ background: 'oklch(0.93 0.05 75)', color: 'oklch(0.4 0.13 75)', fontWeight: 700 }}>
+                <Ic.clock size={12} />Snooze s/d {new Date(n.snoozedUntil).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+              </span>
+            )}
           </div>
           <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
             {n.alamat} · {n.hp}
           </div>
         </div>
         <div className="center gap-2">
+          <SnoozeToggle nasabah={n} />
           <BlacklistToggle nasabah={n} />
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
         </div>
@@ -623,6 +632,83 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>{label}</div>
       {children}
     </div>
+  );
+}
+
+function SnoozeToggle({ nasabah }: { nasabah: NasabahDetail }) {
+  const qc = useQueryClient();
+  const me = useAuth(s => s.user);
+  const [open, setOpen] = useState(false);
+  const [until, setUntil] = useState(() => {
+    const d = new Date(Date.now() + 7 * 86400_000);
+    return d.toISOString().slice(0, 10);
+  });
+  const [reason, setReason] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const isSnoozed = !!nasabah.snoozedUntil && new Date(nasabah.snoozedUntil) > new Date();
+  const save = useMutation({
+    mutationFn: async (payload: { snoozedUntil: string | null; reason?: string }) =>
+      axios.patch(`${BASE}/nasabah/${nasabah.id}/snooze`, payload,
+        { withCredentials: true, headers: headers() }),
+    onSuccess: () => {
+      setOpen(false); setReason(''); setErr(null);
+      qc.invalidateQueries({ queryKey: ['nasabah-360', nasabah.id] });
+      qc.invalidateQueries({ queryKey: ['nasabah'] });
+    },
+    onError: (e: any) => {
+      const c = e?.response?.data?.error;
+      if (c === 'reason_required') setErr('Alasan wajib diisi.');
+      else if (c === 'snooze_must_be_future') setErr('Tanggal harus di masa depan.');
+      else setErr('Gagal menyimpan.');
+    },
+  });
+  if (!me || me.role === 'PETUGAS') return null;
+  if (isSnoozed) {
+    return (
+      <button className="btn btn-sm" disabled={save.isPending}
+        onClick={() => save.mutate({ snoozedUntil: null })}>
+        <Ic.check size={14} />Cabut snooze
+      </button>
+    );
+  }
+  return (
+    <>
+      <button className="btn btn-sm" onClick={() => setOpen(true)}>
+        <Ic.clock size={14} />Snooze
+      </button>
+      {open && (
+        <Modal onClose={() => setOpen(false)} max={420}>
+          <div className="modal-head">
+            <div style={{ flex: 1 }}><div className="section-title">Snooze Nasabah</div></div>
+            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}><Ic.x size={16} /></button>
+          </div>
+          <div className="modal-body" style={{ display: 'grid', gap: 10 }}>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Saat aktif, nasabah dikecualikan dari morning reminder, daftar due-soon, dan stale-alert.
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Sampai (tanggal)</div>
+              <input className="input" type="date" value={until} onChange={e => setUntil(e.target.value)} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Alasan</div>
+              <textarea className="input" rows={3} maxLength={500} value={reason}
+                onChange={e => setReason(e.target.value)}
+                placeholder="Mis. nasabah dirawat, libur Idul Fitri" />
+            </div>
+            {err && <div style={{ color: 'var(--col-macet)', fontSize: 12, fontWeight: 600 }}>{err}</div>}
+          </div>
+          <div className="modal-foot">
+            <button className="btn" onClick={() => setOpen(false)}>Batal</button>
+            <button className="btn btn-primary"
+              disabled={!reason.trim() || save.isPending}
+              onClick={() => save.mutate({ snoozedUntil: until, reason: reason.trim() })}>
+              {save.isPending ? 'Menyimpan…' : 'Snooze'}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }
 

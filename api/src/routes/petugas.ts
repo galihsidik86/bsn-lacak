@@ -192,6 +192,9 @@ router.post('/:id/position', async (req, res) => {
 });
 
 // ---- create / patch (ADMIN + SUPERVISOR within own branch) ----
+// commissionBps is optional here — when omitted, we fall back first to
+// Branch.defaultCommissionBps (DP), then to the system-wide 150 floor.
+const SYSTEM_DEFAULT_COMMISSION_BPS = 150;
 const createSchema = z.object({
   kode: z.string().min(2).max(20).regex(/^[A-Z0-9]+$/, 'Huruf besar + angka'),
   nama: z.string().min(1).max(200),
@@ -202,8 +205,9 @@ const createSchema = z.object({
   target: z.coerce.bigint().nonnegative().default(0n),
   status: z.enum(['LAPANGAN', 'ISTIRAHAT', 'KANTOR']).default('LAPANGAN'),
   hue: z.coerce.number().int().min(0).max(360).default(156),
-  // Commission rate as basis points (0..10_000 = 0..100%).
-  commissionBps: z.coerce.number().int().min(0).max(10_000).default(150),
+  // Commission rate as basis points (0..10_000 = 0..100%). Optional —
+  // when omitted, branch's defaultCommissionBps is used.
+  commissionBps: z.coerce.number().int().min(0).max(10_000).optional(),
 });
 
 function canManagePetugas(req: any, branchId: string): boolean {
@@ -218,11 +222,21 @@ router.post('/', async (req, res) => {
   if (!canManagePetugas(req, parsed.data.branchId)) {
     return res.status(403).json({ error: 'forbidden' });
   }
+
+  let commissionBps = parsed.data.commissionBps;
+  if (commissionBps == null) {
+    const branch = await prisma.branch.findUnique({
+      where: { id: parsed.data.branchId },
+      select: { defaultCommissionBps: true },
+    });
+    commissionBps = branch?.defaultCommissionBps ?? SYSTEM_DEFAULT_COMMISSION_BPS;
+  }
+
   try {
-    const p = await prisma.petugas.create({ data: parsed.data });
+    const p = await prisma.petugas.create({ data: { ...parsed.data, commissionBps } });
     await audit({
       action: 'petugas.create', target: p.id, ...fromReq(req),
-      meta: { kode: p.kode, branchId: p.branchId },
+      meta: { kode: p.kode, branchId: p.branchId, commissionBps },
     });
     res.status(201).json(p);
   } catch (err: any) {

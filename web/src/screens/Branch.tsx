@@ -20,6 +20,7 @@ interface Branch {
   targetApprovalRate: number;
   budgetOperational: string | number;
   budgetCommission: string | number;
+  defaultCommissionBps: number | null;
   _count: { petugas: number; nasabah: number; users: number };
   createdAt: string;
   updatedAt: string;
@@ -46,6 +47,7 @@ interface UpsertPayload {
   targetApprovalRate?: number;
   budgetOperational?: string | number;
   budgetCommission?: string | number;
+  defaultCommissionBps?: number | null;
 }
 
 async function createBranch(p: UpsertPayload) {
@@ -150,15 +152,22 @@ function BranchForm({ initial, onClose, onSaved }: {
   const [targetApprovalRate, setTargetApprovalRate] = useState(String(initial?.targetApprovalRate ?? '85'));
   const [budgetOperational, setBudgetOperational] = useState(String(initial?.budgetOperational ?? '0'));
   const [budgetCommission, setBudgetCommission] = useState(String(initial?.budgetCommission ?? '0'));
+  const [defaultCommissionPct, setDefaultCommissionPct] = useState(
+    initial?.defaultCommissionBps == null ? '' : String(initial.defaultCommissionBps / 100));
   const [err, setErr] = useState<string | null>(null);
 
-  const targetPayload = () => ({
-    targetCollection: targetCollection.replace(/[^\d]/g, '') || '0',
-    targetVisits: Number(targetVisits.replace(/[^\d]/g, '')) || 0,
-    targetApprovalRate: Math.max(0, Math.min(100, Number(targetApprovalRate) || 0)),
-    budgetOperational: budgetOperational.replace(/[^\d]/g, '') || '0',
-    budgetCommission: budgetCommission.replace(/[^\d]/g, '') || '0',
-  });
+  const targetPayload = () => {
+    const pct = defaultCommissionPct.trim();
+    const defaultCommissionBps = pct === '' ? null : Math.max(0, Math.min(10_000, Math.round(Number(pct) * 100)));
+    return {
+      targetCollection: targetCollection.replace(/[^\d]/g, '') || '0',
+      targetVisits: Number(targetVisits.replace(/[^\d]/g, '')) || 0,
+      targetApprovalRate: Math.max(0, Math.min(100, Number(targetApprovalRate) || 0)),
+      budgetOperational: budgetOperational.replace(/[^\d]/g, '') || '0',
+      budgetCommission: budgetCommission.replace(/[^\d]/g, '') || '0',
+      defaultCommissionBps,
+    };
+  };
 
   const isEdit = !!initial;
 
@@ -247,6 +256,13 @@ function BranchForm({ initial, onClose, onSaved }: {
               <Field label="Budget Komisi (Rp)">
                 <input className="input" type="text" inputMode="numeric"
                   value={budgetCommission} onChange={e => setBudgetCommission(e.target.value)} placeholder="0" />
+              </Field>
+            </div>
+            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginTop: 10 }}>
+              <Field label="Komisi Default Petugas (%)">
+                <input className="input" type="number" min={0} max={100} step={0.01}
+                  value={defaultCommissionPct} onChange={e => setDefaultCommissionPct(e.target.value)}
+                  placeholder="Kosongkan = 1.5%" />
               </Field>
             </div>
           </div>

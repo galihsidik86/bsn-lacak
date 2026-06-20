@@ -34,7 +34,11 @@ export async function runStaleNasabahSweep(opts?: { now?: Date; force?: boolean 
   const cutoff = new Date(now.getTime() - env.STALE_NASABAH_DAYS * 24 * 60 * 60_000);
 
   const stale = await prisma.nasabah.findMany({
-    where: { active: true },
+    where: {
+      active: true,
+      // DQ — supervisor explicitly snoozed: skip the daily alert.
+      OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
+    },
     select: {
       id: true, kode: true, nama: true, petugasId: true,
       kunjungan: { orderBy: { tanggal: 'desc' }, take: 1, select: { tanggal: true } },
