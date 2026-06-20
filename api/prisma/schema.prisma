@@ -407,6 +407,10 @@ model Nasabah {
   akad       Akad        @default(MURABAHAH)
   plafon     BigInt
   tenor      Int
+  // DW — start date of the akad. Kontrak end = kontrakMulai + tenor (bln).
+  // Optional because legacy data may not have the date filled; without it,
+  // the expiry alert simply skips the row.
+  kontrakMulai DateTime?
   angsuran   BigInt
   sisa       BigInt
   dpd        Int         @default(0)

@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import axios from 'axios';
+import { useQuery } from '@tanstack/react-query';
+import { tokenStore } from '../lib/api';
 import { Map as MlMap, Marker, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Ic, type IconKey } from '../components/Icons';
@@ -1274,6 +1277,7 @@ function MLapor({ n, me: ME, here, onClose, onDone }: {
   const [tanggal, setTanggal] = useState<string>(() => localDateKey(new Date()));
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [showGallery, setShowGallery] = useState(false);
 
   const todayKeyStr = localDateKey(new Date());
   const minDateStr = (() => {
@@ -1422,8 +1426,15 @@ function MLapor({ n, me: ME, here, onClose, onDone }: {
             <div style={{ fontWeight: 700, fontSize: 14 }}>{n.nama}</div>
             <div className="muted" style={{ fontSize: 12 }}>{n.alamat}</div>
           </div>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowGallery(true)}>
+            <Ic.eye size={14} />Galeri
+          </button>
           <KolBadge kol={n.kol} />
         </div>
+        {showGallery && (
+          <NasabahPhotoGalleryModal nasabahId={n.id} nasabahNama={n.nama}
+            onClose={() => setShowGallery(false)} />
+        )}
 
         <div>
           <MLabel>Foto Bukti Kunjungan</MLabel>
@@ -1631,5 +1642,89 @@ function MTabBar({ tab, setTab, onReport }: { tab: Tab; setTab: (t: Tab) => void
         );
       })}
     </div>
+  );
+}
+
+interface GalleryFoto {
+  id: string; path: string;
+  kunjungan: {
+    id: string; tanggal: string; jam: string; hasil: string;
+    petugas: { kode: string; nama: string };
+  };
+}
+
+function NasabahPhotoGalleryModal({ nasabahId, nasabahNama, onClose }: {
+  nasabahId: string; nasabahNama: string; onClose: () => void;
+}) {
+  const BASE = (import.meta as any).env?.VITE_API_URL || '/api';
+  const [active, setActive] = useState<GalleryFoto | null>(null);
+  const q = useQuery<GalleryFoto[]>({
+    queryKey: ['nasabah-foto-gallery', nasabahId],
+    queryFn: async () => {
+      const t = tokenStore.get();
+      return (await axios.get(`${BASE}/foto/by-nasabah/${nasabahId}`, {
+        withCredentials: true,
+        headers: t ? { Authorization: `Bearer ${t}` } : {},
+      })).data;
+    },
+  });
+  const fotos = q.data ?? [];
+  return (
+    <>
+      <div onClick={onClose} style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+        zIndex: 50, display: 'grid', placeItems: 'center', padding: 16,
+      }}>
+        <div onClick={e => e.stopPropagation()} style={{
+          background: 'var(--surface)', borderRadius: 16, maxWidth: 520,
+          width: '100%', maxHeight: '90vh', overflow: 'auto',
+        }}>
+          <div className="between" style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>Galeri Foto</div>
+              <div className="muted" style={{ fontSize: 11 }}>{nasabahNama}</div>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+          </div>
+          <div style={{ padding: 12 }}>
+            {q.isLoading ? <Skeleton h={200} />
+              : q.isError ? <ErrorState onRetry={() => q.refetch()} />
+              : fotos.length === 0 ? <EmptyState title="Belum ada foto" />
+              : (
+                <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                  {fotos.map(f => (
+                    <button key={f.id} onClick={() => setActive(f)} style={{
+                      padding: 0, border: 'none', borderRadius: 10, overflow: 'hidden',
+                      background: 'var(--ink)', cursor: 'pointer', aspectRatio: '1',
+                    }}>
+                      <img src={`/${f.path}`} alt={`Foto ${f.kunjungan.tanggal}`}
+                        loading="lazy"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    </button>
+                  ))}
+                </div>
+              )}
+          </div>
+        </div>
+      </div>
+      {active && (
+        <div onClick={() => setActive(null)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
+          zIndex: 60, display: 'grid', placeItems: 'center', padding: 16,
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{ display: 'grid', gap: 10, maxWidth: 560, width: '100%' }}>
+            <img src={`/${active.path}`} alt="Foto"
+              style={{ width: '100%', borderRadius: 10, maxHeight: '70vh', objectFit: 'contain' }} />
+            <div style={{ color: '#fff', fontSize: 12.5, padding: '6px 4px' }}>
+              <div style={{ fontWeight: 700 }}>{new Date(active.kunjungan.tanggal).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })} · {active.kunjungan.jam}</div>
+              <div style={{ opacity: 0.8, marginTop: 2 }}>
+                {active.kunjungan.hasil} · {active.kunjungan.petugas.nama} ({active.kunjungan.petugas.kode})
+              </div>
+            </div>
+            <button className="btn" onClick={() => setActive(null)}>Tutup</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

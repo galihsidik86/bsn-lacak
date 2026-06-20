@@ -27,6 +27,7 @@ interface NasabahRow {
   akad: Akad;
   plafon: string | number;
   tenor: number;
+  kontrakMulai?: string | null;
   angsuran: string | number;
   sisa: string | number;
   dpd: number;
@@ -120,6 +121,7 @@ interface CreatePayload {
   akad: Akad;
   plafon: number;
   tenor: number;
+  kontrakMulai?: string | null;
   angsuran: number;
   sisa: number;
   dpd: number;
@@ -618,6 +620,7 @@ function NasabahForm({ mode, initial, petugas, onClose, onSaved }: {
   const [akad, setAkad] = useState<Akad>(initial?.akad ?? 'MURABAHAH');
   const [plafon, setPlafon] = useState(String(initial?.plafon ?? 0));
   const [tenor, setTenor] = useState(String(initial?.tenor ?? 12));
+  const [kontrakMulai, setKontrakMulai] = useState(initial?.kontrakMulai ? initial.kontrakMulai.slice(0, 10) : '');
   const [angsuran, setAngsuran] = useState(String(initial?.angsuran ?? 0));
   const [sisa, setSisa] = useState(String(initial?.sisa ?? 0));
   const [dpd, setDpd] = useState(String(initial?.dpd ?? 0));
@@ -636,6 +639,7 @@ function NasabahForm({ mode, initial, petugas, onClose, onSaved }: {
         kol, akad,
         plafon: num(plafon),
         tenor: Number(tenor) || 12,
+        kontrakMulai: kontrakMulai || null,
         angsuran: num(angsuran),
         sisa: num(sisa),
         dpd: Number(dpd) || 0,
@@ -716,6 +720,13 @@ function NasabahForm({ mode, initial, petugas, onClose, onSaved }: {
           <Field label="Tenor (bulan)">
             <input className="input" type="number" min={1} max={360} value={tenor}
               onChange={e => setTenor(e.target.value)} required />
+          </Field>
+          <Field label="Tgl Mulai Kontrak">
+            <input className="input" type="date" value={kontrakMulai}
+              onChange={e => setKontrakMulai(e.target.value)} />
+            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+              Untuk alert ekspirasi otomatis.
+            </div>
           </Field>
           <Field label="Plafon (Rp)">
             <input className="input" type="text"

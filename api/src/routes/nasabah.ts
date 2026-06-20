@@ -479,6 +479,9 @@ const createSchema = z.object({
   dpd: z.number().int().min(0).max(3650).default(0),
   dueIn: z.number().int().min(-3650).max(3650).default(0),
   petugasId: z.string().min(1).max(64),
+  // DW — tanggal mulai akad (opsional). Saat di-set bersama tenor, worker
+  // ekspirasi tahu kapan nasabah perlu di-follow-up renew / pelunasan.
+  kontrakMulai: z.coerce.date().nullable().optional(),
 });
 
 async function canManageNasabah(req: any, targetPetugasId: string): Promise<{ ok: boolean; branchId?: string; error?: string }> {

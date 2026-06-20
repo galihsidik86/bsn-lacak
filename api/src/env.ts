@@ -97,6 +97,10 @@ const schema = z.object({
   IDLE_KANTOR_DAYS: z.coerce.number().int().min(1).max(30).default(2),
   IDLE_TIDAKADA_RATIO_PCT: z.coerce.number().int().min(1).max(100).default(50),
   IDLE_DETECTOR_HOUR: z.coerce.number().int().min(0).max(23).default(9),
+  // DW — alert when nasabah kontrak ends in fewer than N days. Worker
+  // fires once a day at this hour and dedups per nasabah per day.
+  CONTRACT_EXPIRY_DAYS: z.coerce.number().int().min(1).max(180).default(30),
+  CONTRACT_EXPIRY_HOUR: z.coerce.number().int().min(0).max(23).default(8),
   // Public-facing base URL used to compose share links (receipt PDF, feedback).
   // Defaults to WEB_ORIGIN; override in prod when behind a separate ingress.
   PUBLIC_BASE_URL: z.string().url().optional(),

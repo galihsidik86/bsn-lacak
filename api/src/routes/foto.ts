@@ -56,6 +56,36 @@ async function scopedFoto(req: any, fotoId: string) {
   return foto;
 }
 
+// DV — all foto for one nasabah (across kunjungan), sorted newest first.
+// PETUGAS may only see foto for nasabah they own; SUPERVISOR/ADMIN see
+// foto within branch scope.
+router.get('/by-nasabah/:nasabahId', async (req, res) => {
+  const id = String(req.params.nasabahId);
+  const branchId = scopedBranchId(req);
+  const nasabah = await prisma.nasabah.findFirst({
+    where: { id, ...(branchId ? { branchId } : {}) },
+    select: { id: true, petugasId: true },
+  });
+  if (!nasabah) return res.status(404).json({ error: 'not_found' });
+  if (req.user?.role === 'PETUGAS' && nasabah.petugasId !== req.user.petugasId) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const fotos = await prisma.foto.findMany({
+    where: { kunjungan: { nasabahId: id } },
+    include: {
+      kunjungan: {
+        select: {
+          id: true, tanggal: true, jam: true, hasil: true,
+          petugas: { select: { kode: true, nama: true } },
+        },
+      },
+    },
+    orderBy: { kunjungan: { tanggal: 'desc' } },
+    take: 200,
+  });
+  res.json(fotos);
+});
+
 router.get('/:id/annotations', async (req, res) => {
   const foto = await scopedFoto(req, String(req.params.id));
   if (!foto) return res.status(404).json({ error: 'not_found' });
