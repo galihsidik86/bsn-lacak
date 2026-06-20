@@ -50,6 +50,7 @@ const ScreenLeaveCalendar = lazy(() => import('./screens/LeaveCalendar').then(m 
 const ScreenPromiseTracker = lazy(() => import('./screens/PromiseTracker').then(m => ({ default: m.ScreenPromiseTracker })));
 const ScreenAttendanceDisputes = lazy(() => import('./screens/AttendanceDisputes').then(m => ({ default: m.ScreenAttendanceDisputes })));
 const ScreenKmReport = lazy(() => import('./screens/KmReport').then(m => ({ default: m.ScreenKmReport })));
+const ScreenPetugasSwap = lazy(() => import('./screens/PetugasSwap').then(m => ({ default: m.ScreenPetugasSwap })));
 
 function ScreenFallback() {
   return (
@@ -62,7 +63,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'churn' | 'activity' | 'leaderboard' | 'system-health' | 'commission' | 'escalation' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks' | 'leave-calendar' | 'promise-tracker' | 'attendance-disputes' | 'km-report';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'churn' | 'activity' | 'leaderboard' | 'system-health' | 'commission' | 'escalation' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks' | 'leave-calendar' | 'promise-tracker' | 'attendance-disputes' | 'km-report' | 'petugas-swap';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -97,6 +98,7 @@ function useNav(): NavGroup[] {
       { k: 'promise-tracker', label: 'Tracker Janji', icon: 'wa' },
       { k: 'attendance-disputes', label: 'Dispute Absensi', icon: 'alert' },
       { k: 'km-report', label: 'Laporan KM', icon: 'map' },
+      { k: 'petugas-swap', label: 'Tukar Nasabah', icon: 'users' },
     ] },
     { group: 'Lapangan', items: [
       { k: 'wilayah', label: 'Wilayah Binaan', icon: 'map' },
@@ -160,6 +162,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   'promise-tracker': ['Tracker Janji', 'Daftar JANJI 30 hari dengan status ditepati / wanprestasi / menunggu'],
   'attendance-disputes': ['Dispute Absensi', 'Antrian dispute clock-in / clock-out petugas; supervisor approve/reject'],
   'km-report': ['Laporan KM Petugas', 'Total kilometer ditempuh per petugas dari odometer clock-in/out — basis klaim BBM'],
+  'petugas-swap': ['Tukar Nasabah', 'Pengajuan tukar nasabah antar petugas dalam cabang yang sama'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -436,6 +439,7 @@ export function App() {
             {page === 'promise-tracker' && <ScreenPromiseTracker />}
             {page === 'attendance-disputes' && <ScreenAttendanceDisputes />}
             {page === 'km-report' && <ScreenKmReport />}
+            {page === 'petugas-swap' && <ScreenPetugasSwap />}
           </Suspense>
         </main>
       </div>

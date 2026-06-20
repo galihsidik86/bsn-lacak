@@ -4,6 +4,7 @@ import { logger } from '../lib/logger.js';
 import { audit } from '../lib/audit.js';
 import { enqueueNotification } from '../routes/notifications.js';
 import { pushToUsers } from '../lib/webPush.js';
+import { isWorkingDay, getHolidayOn } from '../lib/holidays.js';
 
 // DM — daily JANJI reminder. For each JANJI whose deadline (tanggal +
 // JANJI_FOLLOWUP_HOURS) falls in [now, now+24h] AND has no follow-up
@@ -29,6 +30,13 @@ export async function runJanjiReminderSweep(opts?: { now?: Date; force?: boolean
 
   if (!force && now.getHours() !== env.JANJI_REMINDER_HOUR) {
     return { ok: false, reason: 'not_hour' };
+  }
+
+  // DU — skip on weekends/holidays; the petugas isn't expected to follow
+  // up on a libur nasional, and pinging them only generates noise.
+  if (!force && !isWorkingDay(now)) {
+    const h = getHolidayOn(now);
+    return { ok: false, reason: h ? `holiday:${h.name}` : 'weekend' };
   }
 
   // JANJIs whose deadline lies in [now, now+24h].

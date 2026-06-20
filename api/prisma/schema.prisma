@@ -153,6 +153,7 @@ model User {
   decidedRestructures  NasabahRestructure[] @relation("RestructureDecider")
   uploadedNasabahDocuments NasabahDocument[] @relation("NasabahDocumentUploader")
   decidedAttendanceDisputes AttendanceDispute[] @relation("AttendanceDisputeDecider")
+  decidedPetugasSwaps  PetugasSwapRequest[] @relation("SwapDecider")
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
@@ -252,6 +253,8 @@ model Petugas {
   substituteFor PetugasLeave[] @relation("LeaveSubstitute")
   transfers   PetugasTransfer[]
   attendanceDisputes AttendanceDispute[] @relation("AttendanceDisputePetugas")
+  swapsProposed   PetugasSwapRequest[] @relation("SwapProposer")
+  swapsAsCounterpart PetugasSwapRequest[] @relation("SwapCounterpart")
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -440,6 +443,8 @@ model Nasabah {
   notes          NasabahNote[]
   restructures   NasabahRestructure[]
   documents      NasabahDocument[]
+  swapsAsProposerNasabah    PetugasSwapRequest[] @relation("SwapProposerNasabah")
+  swapsAsCounterpartNasabah PetugasSwapRequest[] @relation("SwapCounterpartNasabah")
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -824,6 +829,41 @@ model NasabahNote {
   createdAt DateTime @default(now())
 
   @@index([nasabahId, createdAt])
+}
+
+// DT — petugas-to-petugas nasabah swap. Proposer (PETUGAS) selects one
+// nasabah they own + one nasabah from the counterpart, and supervisor
+// approves to atomically reassign both. Cancelling allowed by proposer
+// or counterpart while PENDING.
+enum PetugasSwapStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model PetugasSwapRequest {
+  id              String            @id @default(cuid())
+  proposer        Petugas           @relation("SwapProposer", fields: [proposerId], references: [id])
+  proposerId      String
+  counterpart     Petugas           @relation("SwapCounterpart", fields: [counterpartId], references: [id])
+  counterpartId   String
+  proposerNasabah Nasabah           @relation("SwapProposerNasabah", fields: [proposerNasabahId], references: [id])
+  proposerNasabahId   String
+  counterpartNasabah  Nasabah       @relation("SwapCounterpartNasabah", fields: [counterpartNasabahId], references: [id])
+  counterpartNasabahId String
+  status          PetugasSwapStatus @default(PENDING)
+  reason          String
+  decidedBy       User?             @relation("SwapDecider", fields: [decidedById], references: [id])
+  decidedById     String?
+  decisionNote    String?
+  decidedAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([proposerId, status])
+  @@index([counterpartId, status])
+  @@index([status])
 }
 
 // DN — nasabah document attachments (KTP, kontrak, foto agunan, etc).

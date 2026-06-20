@@ -36,6 +36,7 @@ import tags from '../../src/routes/tags.js';
 import restructures from '../../src/routes/restructures.js';
 import nasabahDocs from '../../src/routes/nasabahDocs.js';
 import attendanceDisputes from '../../src/routes/attendanceDisputes.js';
+import petugasSwaps from '../../src/routes/petugasSwaps.js';
 import auditRoutes from '../../src/routes/audit.js';
 import users from '../../src/routes/users.js';
 import branches from '../../src/routes/branches.js';
@@ -79,6 +80,7 @@ export function buildApp() {
   app.use('/api/restructures', restructures);
   app.use('/api/nasabah-docs', nasabahDocs);
   app.use('/api/attendance-disputes', attendanceDisputes);
+  app.use('/api/petugas-swaps', petugasSwaps);
   app.use('/api/audit', auditRoutes);
   app.use('/api/users', users);
   app.use('/api/branches', branches);

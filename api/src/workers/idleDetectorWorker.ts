@@ -3,6 +3,7 @@ import { env } from '../env.js';
 import { logger } from '../lib/logger.js';
 import { audit } from '../lib/audit.js';
 import { enqueueNotification } from '../routes/notifications.js';
+import { isWorkingDay, getHolidayOn } from '../lib/holidays.js';
 
 // DS — idle / standby penalty detector. Two triggers, evaluated per
 // active petugas:
@@ -36,6 +37,12 @@ export async function runIdleDetectorSweep(opts?: { now?: Date; force?: boolean 
 
   if (!force && now.getHours() !== env.IDLE_DETECTOR_HOUR) {
     return { ok: false, reason: 'not_hour' };
+  }
+
+  // DU — don't flag petugas as idle on a libur. Avoids supervisor noise.
+  if (!force && !isWorkingDay(now)) {
+    const h = getHolidayOn(now);
+    return { ok: false, reason: h ? `holiday:${h.name}` : 'weekend' };
   }
 
   const startOfToday = new Date(now);

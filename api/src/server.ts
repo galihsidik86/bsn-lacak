@@ -55,6 +55,7 @@ import tags from './routes/tags.js';
 import restructures from './routes/restructures.js';
 import nasabahDocs from './routes/nasabahDocs.js';
 import attendanceDisputes from './routes/attendanceDisputes.js';
+import petugasSwaps from './routes/petugasSwaps.js';
 import { startEscalationWorker, stopEscalationWorker } from './workers/escalationWorker.js';
 import { startWeeklyDigestWorker, stopWeeklyDigestWorker } from './workers/weeklyDigestWorker.js';
 import { startInactivityWorker, stopInactivityWorker } from './workers/inactivityWorker.js';
@@ -179,6 +180,7 @@ app.use('/api/tags', tags);
 app.use('/api/restructures', restructures);
 app.use('/api/nasabah-docs', nasabahDocs);
 app.use('/api/attendance-disputes', attendanceDisputes);
+app.use('/api/petugas-swaps', petugasSwaps);
 
 // Static uploads — Cache-Control prevents stale photo IDs from sticking.
 app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR), {

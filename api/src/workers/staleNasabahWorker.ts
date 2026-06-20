@@ -5,6 +5,7 @@ import { audit } from '../lib/audit.js';
 import { enqueueNotification } from '../routes/notifications.js';
 import { pushToUsers } from '../lib/webPush.js';
 import { petugasOnLeaveOn } from '../lib/leaveCheck.js';
+import { isWorkingDay, getHolidayOn } from '../lib/holidays.js';
 
 // DF — stale-nasabah alert. Daily at STALE_NASABAH_HOUR. For each active
 // nasabah whose latest kunjungan is older than STALE_NASABAH_DAYS (or
@@ -29,6 +30,12 @@ export async function runStaleNasabahSweep(opts?: { now?: Date; force?: boolean 
 
   if (!force && now.getHours() !== env.STALE_NASABAH_HOUR) {
     return { ok: false, reason: 'not_hour' };
+  }
+
+  // DU — skip on weekends and national holidays.
+  if (!force && !isWorkingDay(now)) {
+    const h = getHolidayOn(now);
+    return { ok: false, reason: h ? `holiday:${h.name}` : 'weekend' };
   }
 
   const cutoff = new Date(now.getTime() - env.STALE_NASABAH_DAYS * 24 * 60 * 60_000);
