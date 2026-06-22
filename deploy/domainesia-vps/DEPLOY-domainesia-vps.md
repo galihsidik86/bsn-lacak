@@ -61,12 +61,15 @@ cd /srv/bsn-lacak
 cd /srv/bsn-lacak/deploy/domainesia-vps
 cp .env.example .env
 
-# Generate dua secret
-PGPW=$(openssl rand -base64 24)
+# Generate dua secret.
+# Penting: POSTGRES_PASSWORD pakai hex, bukan base64. base64 bisa
+# berisi "/" atau "+" yang mengacak Prisma DATABASE_URL parser
+# ("Invalid url" → api crash-loop).
+PGPW=$(openssl rand -hex 24)
 JWTS=$(openssl rand -base64 48)
 
 # Patch ke file
-sed -i "s|ganti-dengan-openssl-rand-base64-24|$PGPW|" .env
+sed -i "s|ganti-dengan-openssl-rand-hex-24|$PGPW|" .env
 sed -i "s|ganti-dengan-openssl-rand-base64-48|$JWTS|" .env
 chmod 600 .env
 ```
@@ -300,6 +303,21 @@ Rotasi manual: tambah cron `find /var/backups -mtime +7 -delete` di
 ---
 
 ## Troubleshooting
+
+### api crash-loop dengan `Invalid environment configuration: { DATABASE_URL: ['Invalid url'] }`
+
+Password Postgres berisi karakter URL-reserved (`/`, `+`, `=`). Regenerate
+hex-only lalu rebuild dengan volume dibersihkan:
+
+```bash
+docker compose -f docker-compose.slim.yml down -v
+PGPW=$(openssl rand -hex 24)
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$PGPW|" .env
+docker compose -f docker-compose.slim.yml --env-file .env up -d --build
+```
+
+`down -v` wajib — kalau hanya `restart`, Postgres tetap pakai password
+lama yang sudah di-bake ke data volume saat init pertama.
 
 ### `port is already allocated` saat `docker compose up`
 
