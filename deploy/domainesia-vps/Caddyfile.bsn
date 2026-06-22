@@ -18,12 +18,10 @@ lacak.sosmartpro.com {
 	respond @blocked 404
 
 	# ---- API: reverse-proxy ke container bsn_api di 127.0.0.1:4001 ----
+	# Caddy auto-pass Host + X-Forwarded-For + X-Forwarded-Proto secara default.
 	handle /api/* {
 		reverse_proxy 127.0.0.1:4001 {
-			header_up Host {host}
 			header_up X-Real-IP {remote_host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
 		}
 	}
 
