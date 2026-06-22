@@ -55,6 +55,43 @@ test.describe('recently shipped screens', () => {
   });
 });
 
+test.describe('sidebar filter + collapsible groups', () => {
+  test('Ctrl+/ focuses sidebar filter; typing narrows nav', async ({ page }) => {
+    await login(page);
+    await page.keyboard.press('Control+/');
+    const filter = page.getByPlaceholder(/cari menu/i);
+    await expect(filter).toBeFocused();
+    await filter.fill('kolek');
+    // Match: Kolektabilitas
+    await expect(page.getByRole('button', { name: /^Kolektabilitas/i })).toBeVisible();
+    // Non-match should disappear from sidebar
+    await expect(page.getByRole('button', { name: /^Blast SMS/i })).toHaveCount(0);
+    // Esc clears
+    await filter.press('Escape');
+    await expect(filter).toHaveValue('');
+    await expect(page.getByRole('button', { name: /^Blast SMS/i })).toBeVisible();
+  });
+
+  test('clicking group header collapses items', async ({ page }) => {
+    await login(page);
+    const toggle = page.getByRole('button', { name: /^Monitoring$/, exact: false }).first();
+    // Sanity: dashboard visible before collapse
+    await expect(page.getByRole('button', { name: /^Dashboard/i })).toBeVisible();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByRole('button', { name: /^Dashboard/i })).toHaveCount(0);
+    // Expand back
+    await toggle.click();
+    await expect(page.getByRole('button', { name: /^Dashboard/i })).toBeVisible();
+  });
+
+  test('filter with no match shows empty state', async ({ page }) => {
+    await login(page);
+    await page.getByPlaceholder(/cari menu/i).fill('xyzzy123');
+    await expect(page.getByText(/tidak ada menu cocok/i)).toBeVisible();
+  });
+});
+
 test.describe('global search', () => {
   test('Ctrl+K opens the search dialog', async ({ page }) => {
     await login(page);

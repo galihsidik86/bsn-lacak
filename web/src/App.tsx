@@ -1,4 +1,4 @@
-import { Fragment, Suspense, lazy, useEffect, useState } from 'react';
+import { Fragment, Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { Ic, type IconKey } from './components/Icons';
 import { NotificationBell } from './components/NotificationBell';
 import { GlobalSearchModal } from './components/GlobalSearch';
@@ -202,6 +202,16 @@ export function App() {
   const bootstrapped = useAuth(s => s.bootstrapped);
   const [showChangePw, setShowChangePw] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  // Sidebar UX: collapsible groups + quick filter (Ctrl+/).
+  // Collapsed state persisted to localStorage so it survives reloads.
+  const [navCollapsed, setNavCollapsed] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('bsn-lacak:nav-collapsed');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch { return new Set(); }
+  });
+  const [navFilter, setNavFilter] = useState('');
+  const navFilterRef = useRef<HTMLInputElement>(null);
   const [page, setPage] = useState<PageKey>(() => {
     const h = location.hash.slice(1);
     if (isPage(h)) return h;
@@ -231,16 +241,37 @@ export function App() {
   }, []);
 
   // Ctrl+K / Cmd+K opens the global search palette.
+  // Ctrl+/ focuses the sidebar nav filter.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setSearchOpen(o => !o);
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        navFilterRef.current?.focus();
+        navFilterRef.current?.select();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Persist collapsed groups whenever the set changes.
+  useEffect(() => {
+    try {
+      localStorage.setItem('bsn-lacak:nav-collapsed', JSON.stringify([...navCollapsed]));
+    } catch { /* quota or private mode — non-fatal */ }
+  }, [navCollapsed]);
+
+  function toggleGroup(name: string) {
+    setNavCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }
 
   // Build nav before any conditional return so hook order is stable across
   // bootstrap → login → dashboard transitions.
@@ -295,6 +326,20 @@ export function App() {
 
   const [title, sub] = TITLES[page];
 
+  // Build filtered nav based on current query. When filter is non-empty,
+  // groups with at least one match are force-expanded regardless of
+  // navCollapsed (so the user sees their hit immediately). Plain map (no
+  // useMemo) because this point is past conditional returns — hook order
+  // must stay stable across login/logout transitions.
+  const navFilterNorm = navFilter.trim().toLowerCase();
+  const filteredNav = NAV.map(grp => ({
+    group: grp.group,
+    items: navFilterNorm
+      ? grp.items.filter(it => it.label.toLowerCase().includes(navFilterNorm))
+      : grp.items,
+  }));
+  const navTotalMatches = filteredNav.reduce((n, g) => n + g.items.length, 0);
+
   return (
     <div className="app">
       <a href="#main-content" className="visually-hidden focus-visible-skip">Lewati ke konten utama</a>
@@ -314,27 +359,66 @@ export function App() {
           </div>
         </div>
 
+        <div className="nav-filter">
+          <Ic.search size={14} aria-hidden="true" />
+          <input
+            ref={navFilterRef}
+            type="search"
+            value={navFilter}
+            onChange={e => setNavFilter(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Escape') { setNavFilter(''); e.currentTarget.blur(); } }}
+            placeholder="Cari menu… (Ctrl+/)"
+            aria-label="Cari menu sidebar"
+          />
+          {navFilter && (
+            <button type="button" className="nav-filter-clear"
+              onClick={() => { setNavFilter(''); navFilterRef.current?.focus(); }}
+              aria-label="Bersihkan pencarian">×</button>
+          )}
+        </div>
+
         <nav aria-label="Menu">
-          {NAV.map(grp => (
-            <Fragment key={grp.group}>
-              <div className="nav-label" id={`nav-${grp.group}`}>{grp.group}</div>
-              <div role="group" aria-labelledby={`nav-${grp.group}`}>
-                {grp.items.map(it => {
-                  const Icon = Ic[it.icon];
-                  const isActive = page === it.k;
-                  return (
-                    <button key={it.k} className={'nav-item' + (isActive ? ' active' : '')}
-                      onClick={() => go(it.k)}
-                      aria-current={isActive ? 'page' : undefined}
-                      aria-label={it.label + (it.badge ? `, ${it.badge} item perlu perhatian` : '')}>
-                      <Icon aria-hidden="true" /><span className="lbl">{it.label}</span>
-                      {it.badge ? <span className="badge-count num" aria-hidden="true">{it.badge}</span> : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </Fragment>
-          ))}
+          {filteredNav.map(grp => {
+            // When filter is active, hide groups with zero matches entirely.
+            if (navFilterNorm && grp.items.length === 0) return null;
+            // Force expand on filter; otherwise honour user preference.
+            const collapsed = !navFilterNorm && navCollapsed.has(grp.group);
+            return (
+              <Fragment key={grp.group}>
+                <button type="button" className="nav-group-toggle"
+                  onClick={() => toggleGroup(grp.group)}
+                  aria-expanded={!collapsed}
+                  aria-controls={`nav-grp-${grp.group}`}>
+                  <span className="lbl">{grp.group}</span>
+                  <svg className={'chev' + (collapsed ? ' chev-closed' : '')}
+                    width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+                    <path d="M3 4.5l3 3 3-3" stroke="currentColor" strokeWidth="1.6"
+                      fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                {!collapsed && (
+                  <div role="group" id={`nav-grp-${grp.group}`} aria-labelledby={`nav-${grp.group}`}>
+                    {grp.items.map(it => {
+                      const Icon = Ic[it.icon];
+                      const isActive = page === it.k;
+                      return (
+                        <button key={it.k} className={'nav-item' + (isActive ? ' active' : '')}
+                          onClick={() => go(it.k)}
+                          aria-current={isActive ? 'page' : undefined}
+                          aria-label={it.label + (it.badge ? `, ${it.badge} item perlu perhatian` : '')}>
+                          <Icon aria-hidden="true" /><span className="lbl">{it.label}</span>
+                          {it.badge ? <span className="badge-count num" aria-hidden="true">{it.badge}</span> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </Fragment>
+            );
+          })}
+          {navFilterNorm && navTotalMatches === 0 && (
+            <div className="nav-empty">Tidak ada menu cocok untuk "{navFilter}"</div>
+          )}
         </nav>
 
         <div className="sidebar-foot"
