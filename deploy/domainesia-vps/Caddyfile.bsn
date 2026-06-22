@@ -11,6 +11,10 @@
 # Cek: nslookup lacak.sosmartpro.com 8.8.8.8
 
 lacak.sosmartpro.com {
+	# Selaras dengan stmik/religio block yang juga pakai `bind 0.0.0.0`.
+	# Tanpa direktif ini Caddy bikin server terpisah untuk lacak (dual-stack
+	# default), bentrok dengan listener HTTP/3 UDP :443 dari server lain.
+	bind 0.0.0.0
 	encode zstd gzip
 
 	# Defence-in-depth — Express + nginx sudah block via path, ini lapis luar.
