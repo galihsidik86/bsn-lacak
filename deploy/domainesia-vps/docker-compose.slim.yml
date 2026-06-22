@@ -1,0 +1,92 @@
+# BSN Lacak — slim docker-compose untuk Domainesia VPS Lite 2 GB.
+#
+# Tujuan: demo workload + tetangga (siakad Docker + religio native + Caddy +
+# MariaDB native). Hanya 2 container: postgres + api. SPA web di-build di
+# host dan di-serve langsung oleh Caddy (file_server) — lebih hemat 1
+# container + ±50 MB RAM ketimbang docker-compose.yml utama.
+#
+# Run dari folder ini:
+#   docker compose -f docker-compose.slim.yml --env-file .env up -d --build
+#
+# Reverse proxy: Caddy block di Caddyfile.bsn meneruskan lacak.sosmartpro.com
+# /api/* → 127.0.0.1:4001 ; sisanya static dari /srv/bsn-lacak/web/dist/.
+
+name: bsn-lacak
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bsn_lacak}
+      POSTGRES_USER: ${POSTGRES_USER:-bsn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    # Tuning low-memory: total cap target ~150 MB. Cocok untuk demo, jangan
+    # dipakai apa adanya kalau workload sudah real.
+    command: >
+      postgres
+      -c shared_buffers=64MB
+      -c effective_cache_size=256MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=32MB
+      -c max_connections=20
+      -c wal_buffers=4MB
+      -c checkpoint_completion_target=0.9
+      -c random_page_cost=1.1
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - db_backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bsn} -d ${POSTGRES_DB:-bsn_lacak}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    # Cap memory hard supaya OOM killer pilih Postgres dulu sebelum nendang
+    # tetangga yang lebih penting (siakad / religio).
+    mem_limit: 220m
+    mem_reservation: 150m
+    networks: [bsn_net]
+
+  api:
+    build:
+      context: ../../api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bsn}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-bsn_lacak}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?set in .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      REFRESH_TTL_DAYS: ${REFRESH_TTL_DAYS:-7}
+      WEB_ORIGIN: ${WEB_ORIGIN:-https://lacak.sosmartpro.com}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      UPLOAD_DIR: /app/uploads
+      BLAST_PROVIDER: ${BLAST_PROVIDER:-stub}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_SMS: ${TWILIO_FROM_SMS:-}
+      TWILIO_WA_FROM: ${TWILIO_WA_FROM:-}
+      # Tekan Node heap supaya tidak rakus saat idle.
+      NODE_OPTIONS: --max-old-space-size=256
+    volumes:
+      - api_uploads:/app/uploads
+    # Bind ke localhost saja — Caddy yang akan reverse-proxy publik.
+    ports:
+      - "127.0.0.1:4001:4000"
+    mem_limit: 320m
+    mem_reservation: 200m
+    networks: [bsn_net]
+
+volumes:
+  db_data:
+  db_backups:
+  api_uploads:
+
+networks:
+  bsn_net:
+    driver: bridge

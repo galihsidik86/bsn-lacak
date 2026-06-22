@@ -1,0 +1,69 @@
+# BSN Lacak — Caddy block untuk Domainesia VPS yang sudah host religio + siakad.
+#
+# Pasang dengan dua cara:
+#   (a) Append isi file ini ke /etc/caddy/Caddyfile, ATAU
+#   (b) Salin ke /etc/caddy/sites/bsn-lacak.caddy lalu tambah di Caddyfile:
+#         import sites/*.caddy
+#
+# Lalu reload: sudo systemctl reload caddy
+#
+# Prasyarat: DNS A-record lacak.sosmartpro.com → IP VPS sudah propagated.
+# Cek: nslookup lacak.sosmartpro.com 8.8.8.8
+
+lacak.sosmartpro.com {
+	encode zstd gzip
+
+	# Defence-in-depth — Express + nginx sudah block via path, ini lapis luar.
+	@blocked path /.env* /.git/* /package*.json /api/prisma/* /api/src/*
+	respond @blocked 404
+
+	# ---- API: reverse-proxy ke container bsn_api di 127.0.0.1:4001 ----
+	handle /api/* {
+		reverse_proxy 127.0.0.1:4001 {
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# ---- SSE / streaming endpoints butuh flush + tanpa buffer ----
+	handle /api/events {
+		reverse_proxy 127.0.0.1:4001 {
+			flush_interval -1
+			transport http {
+				read_timeout 30m
+			}
+		}
+	}
+
+	# ---- Health & metrics — tetap public-readable, tapi nggak cache ----
+	handle_path /healthz {
+		reverse_proxy 127.0.0.1:4001
+	}
+
+	# ---- SPA: serve build statis dari host ----
+	# `npm run build` di web/ menghasilkan web/dist/. Sync ke
+	# /srv/bsn-lacak/web/dist/ tiap deploy (lihat DEPLOY-domainesia-vps.md).
+	handle {
+		root * /srv/bsn-lacak/web/dist
+		try_files {path} /index.html
+		file_server
+
+		# Hash-named assets boleh aggressive cache.
+		@hashed path_regexp ^/assets/.*\.[0-9a-f]{8,}\.(js|css|woff2?|png|svg|jpg|webp)$
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+		# index.html jangan di-cache supaya update SPA langsung kelihatan.
+		@html path /index.html /
+		header @html Cache-Control "no-cache, no-store, must-revalidate"
+	}
+
+	log {
+		output file /var/log/caddy/bsn-lacak.log {
+			roll_size 50mb
+			roll_keep 7
+		}
+		format json
+	}
+}
