@@ -39,8 +39,9 @@ lacak.sosmartpro.com {
 		}
 	}
 
-	# ---- Health & metrics — tetap public-readable, tapi nggak cache ----
-	handle_path /healthz {
+	# ---- Public health probe — rewrite /healthz → /health (API mount root) ----
+	handle /healthz {
+		rewrite * /health
 		reverse_proxy 127.0.0.1:4001
 	}
 
