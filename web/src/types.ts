@@ -83,6 +83,11 @@ export interface Kunjungan {
   fotoUrls?: string[];
   fotos?: { id: string; url: string; annotations: any[] }[];
   valid: boolean;
+  // GPS koordinat lokasi laporan kunjungan — opsional (petugas bisa lapor
+  // tanpa GPS fix kalau di area tanpa sinyal). Dipakai overlay "jejak
+  // kunjungan" di map Tracking.
+  lat?: number | null;
+  lng?: number | null;
   riskScore?: number;
   riskFlags?: string[];
   reviewStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';

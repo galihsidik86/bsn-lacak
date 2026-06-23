@@ -79,6 +79,10 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
 
   const [sel, setSel] = useState<string>(PETUGAS[0]?.id ?? '');
   const [showAll, setShowAll] = useState(true);
+  // Toggle overlay "Jejak Kunjungan": marker per laporan kunjungan dengan
+  // GPS fix, diurutkan kronologis. Off by default supaya map tidak terlalu
+  // ramai untuk supervisor yang baru buka layar.
+  const [showJejak, setShowJejak] = useState(false);
   useEffect(() => { if (!sel && PETUGAS[0]) setSel(PETUGAS[0].id); }, [sel, PETUGAS]);
 
   const p = petugasById(sel);
@@ -120,6 +124,29 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
   );
   const myRoute = routes.find(r => r.pt.id === sel);
 
+  // Jejak kunjungan: laporan dengan GPS fix milik petugas terpilih, urut
+  // kronologis (createdAt asc) — bukan nearest-neighbor — supaya line
+  // menggambarkan path aktual yang dilewati.
+  const jejak = useMemo(() => {
+    if (!showJejak) return [];
+    return KUNJUNGAN
+      .filter(k =>
+        k.petugas === sel
+        && typeof k.lat === 'number'
+        && typeof k.lng === 'number',
+      )
+      .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''))
+      .map(k => ({
+        id: k.id,
+        lat: k.lat as number,
+        lng: k.lng as number,
+        hasil: k.hasil,
+        nominal: k.nominal,
+        jam: k.jam,
+        nasabahNama: nasabahById(k.nasabah)?.nama ?? '—',
+      }));
+  }, [showJejak, KUNJUNGAN, sel, nasabahById]);
+
   if (petugasQ.isPending || kunjunganQ.isPending || nasabahQ.isPending) {
     return (
       <div className="content" style={{ display: 'grid', gap: 16, gridTemplateColumns: '318px 1fr' }}>
@@ -154,6 +181,10 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
           <label className="center gap-2" style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', cursor: 'pointer' }}>
             <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
             Tampilkan semua rute di peta
+          </label>
+          <label className="center gap-2" style={{ marginTop: 6, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={showJejak} onChange={e => setShowJejak(e.target.checked)} />
+            Tampilkan jejak kunjungan
           </label>
         </div>
         <div style={{ overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -193,7 +224,7 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
       <div style={{ display: 'grid', gridTemplateRows: '1fr auto', overflow: 'hidden', position: 'relative' }}>
         <div style={{ position: 'relative', overflow: 'hidden', background: 'var(--surface-2)' }}>
           {MAPTILER_KEY ? (
-            <MapTilerMap routes={routes} sel={sel} showAll={showAll} setSel={setSel} live={livePositions} />
+            <MapTilerMap routes={routes} sel={sel} showAll={showAll} setSel={setSel} live={livePositions} jejak={jejak} />
           ) : (
             <MapStylized routes={routes} sel={sel} showAll={showAll} setSel={setSel} myRoute={myRoute} />
           )}
@@ -276,10 +307,27 @@ function MiniKv({ label, value }: { label: string; value: string }) {
 
 type Route = { pt: Petugas; stops: { lat: number; lng: number; x: number; y: number; t: string; idx: number }[] };
 
+// Visit history dengan GPS fix — passed dari ScreenTracking saat toggle
+// "Tampilkan jejak kunjungan" aktif. Diurut kronologis di parent.
+interface JejakStop {
+  id: string; lat: number; lng: number;
+  hasil: 'bayar' | 'janji' | 'tidakada' | 'tolak';
+  nominal: number; jam: string; nasabahNama: string;
+}
+
+// Warna marker per hasil kunjungan — selaras dengan palette HASIL_KUNJUNGAN.
+const JEJAK_COLOR: Record<JejakStop['hasil'], string> = {
+  bayar: 'oklch(0.57 0.13 162)',     // accent hijau
+  janji: 'oklch(0.7 0.15 75)',       // amber
+  tidakada: 'oklch(0.55 0.02 0)',    // ink-3 abu
+  tolak: 'oklch(0.55 0.17 25)',      // macet merah
+};
+
 // MapTiler basemap + route lines + petugas markers via MapLibre GL.
-function MapTilerMap({ routes, sel, showAll, setSel, live }: {
+function MapTilerMap({ routes, sel, showAll, setSel, live, jejak }: {
   routes: Route[]; sel: string; showAll: boolean; setSel: (s: string) => void;
   live: Record<string, { lat: number; lng: number; ts: number }>;
+  jejak: JejakStop[];
 }) {
   const accent = cssVar('--accent') || '#1f8a5b';
   const styleUrl = `https://api.maptiler.com/maps/${MAPTILER_STYLE}/style.json?key=${MAPTILER_KEY}`;
@@ -302,6 +350,20 @@ function MapTilerMap({ routes, sel, showAll, setSel, live }: {
         },
       })),
   }), [routes, sel, showAll, accent]);
+
+  // Polyline kronologis dari jejak — opacity rendah agar tidak dominasi
+  // garis rute terencana.
+  const jejakLineGeo = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: jejak.length < 2 ? [] : [{
+      type: 'Feature' as const,
+      properties: {},
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: jejak.map(j => [j.lng, j.lat] as [number, number]),
+      },
+    }],
+  }), [jejak]);
 
   return (
     <MlMap
@@ -362,6 +424,35 @@ function MapTilerMap({ routes, sel, showAll, setSel, live }: {
             })
           : []
       )}
+
+      {/* Jejak Kunjungan — polyline kronologis + marker per laporan ber-GPS */}
+      <Source id="bsn-jejak" type="geojson" data={jejakLineGeo}>
+        <Layer
+          id="bsn-jejak-line"
+          type="line"
+          paint={{
+            'line-color': accent,
+            'line-width': 3,
+            'line-opacity': 0.55,
+            'line-dasharray': [1, 1.5],
+          }}
+          layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+        />
+      </Source>
+      {jejak.map((j, i) => (
+        <Marker key={j.id} longitude={j.lng} latitude={j.lat} anchor="center">
+          <div title={`#${i + 1} · ${j.jam} · ${j.nasabahNama}\nHasil: ${j.hasil}${j.nominal ? ` · Rp${j.nominal.toLocaleString('id-ID')}` : ''}`}
+            style={{
+              width: 22, height: 22, borderRadius: 99,
+              background: JEJAK_COLOR[j.hasil],
+              border: '2px solid white',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+              color: 'white', fontWeight: 800, fontSize: 10,
+              display: 'grid', placeItems: 'center',
+              cursor: 'help',
+            }}>{i + 1}</div>
+        </Marker>
+      ))}
     </MlMap>
   );
 }

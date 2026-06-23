@@ -114,6 +114,8 @@ function kunjunganFromServer(x: any): Kunjungan {
     fotoUrls: urls,
     fotos,
     valid: x.valid ?? true,
+    lat: typeof x.lat === 'number' ? x.lat : null,
+    lng: typeof x.lng === 'number' ? x.lng : null,
     riskScore: typeof x.riskScore === 'number' ? x.riskScore : 0,
     riskFlags: Array.isArray(x.riskFlags) ? x.riskFlags : [],
     reviewStatus: x.reviewStatus ?? 'APPROVED',
