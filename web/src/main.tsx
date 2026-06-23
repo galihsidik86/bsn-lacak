@@ -19,12 +19,16 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 }
 
 // Register the service worker so Chrome's installability check passes —
-// without this, beforeinstallprompt never fires. We deliberately ignore
-// onNeedRefresh so a new SW version (frequent in dev when HMR rebuilds the
-// worker) never triggers an auto-reload mid-form.
-registerSW({
+// without this, beforeinstallprompt never fires. onNeedRefresh fires
+// whenever a fresh SW + precache manifest is detected — we auto-apply so
+// users always end up on the latest bundle (Vite content-hash invalidates
+// every chunk per deploy). Trade-off: a deploy that happens while user
+// is mid-form can wipe the form state on reload. For production with
+// active forms, swap this for a "Update tersedia" toast that lets the
+// user opt in.
+const updateSW = registerSW({
   immediate: true,
-  onNeedRefresh: () => { /* swallow — user can hard-reload to take updates */ },
+  onNeedRefresh() { updateSW(true); },
   onOfflineReady: () => { /* no UI hookup */ },
 });
 
