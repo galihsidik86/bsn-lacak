@@ -220,25 +220,56 @@ async function main() {
   }
   console.log('  88 nasabah');
 
-  // Sample kunjungan + pembayaran for today
+  // Sample kunjungan + pembayaran for today.
+  // GPS coords = nasabah lat/lng + small jitter (≈10–30 m) to mimic the
+  // petugas filing a report from "near" the nasabah's address, so the
+  // Tracking screen's "jejak kunjungan" overlay renders a realistic
+  // chronological trail.
+  function jitter(v: number): number {
+    // ±0.0002° ≈ ±22 m at Jabodetabek latitude — readable separation between
+    // jejak marker and nasabah marker without misrepresenting location.
+    return v + (Math.random() - 0.5) * 0.0004;
+  }
+
   const sampleVisits = [
-    { petugasKode: 'P2', nasabahKode: 'N1003', jam: '09:48', hasil: HasilKunjungan.BAYAR, nominal: 1_500_000n, catatan: 'Bayar tunai 1 bulan angsuran.', lokasi: 'Jl. Mawar No.12, Citayam' },
-    { petugasKode: 'P1', nasabahKode: 'N1012', jam: '10:15', hasil: HasilKunjungan.JANJI, nominal: 0n, catatan: 'Berjanji bayar tgl 15.', lokasi: 'Jl. Pasar Lama, Cibinong' },
-    { petugasKode: 'P2', nasabahKode: 'N1021', jam: '10:32', hasil: HasilKunjungan.BAYAR, nominal: 900_000n, catatan: 'Setoran rutin.', lokasi: 'Gg. Kenanga 4, Citayam' },
-    { petugasKode: 'P1', nasabahKode: 'N1006', jam: '11:05', hasil: HasilKunjungan.BAYAR, nominal: 2_100_000n, catatan: 'Bayar 2 bulan sekaligus.', lokasi: 'Perum Griya Asri B2, Cibinong' },
-    { petugasKode: 'P6', nasabahKode: 'N1024', jam: '10:50', hasil: HasilKunjungan.BAYAR, nominal: 750_000n, catatan: 'Bayar sebagian.', lokasi: 'Jl. Pahlawan No.9, Limo' },
+    { petugasKode: 'P1', nasabahKode: 'N1006', jam: '08:30', hasil: HasilKunjungan.BAYAR,    nominal: 2_100_000n, catatan: 'Bayar 2 bulan sekaligus.',         lokasi: 'Perum Griya Asri B2, Cibinong' },
+    { petugasKode: 'P1', nasabahKode: 'N1012', jam: '10:15', hasil: HasilKunjungan.JANJI,    nominal: 0n,         catatan: 'Berjanji bayar tgl 15.',           lokasi: 'Jl. Pasar Lama, Cibinong' },
+    { petugasKode: 'P1', nasabahKode: 'N1018', jam: '11:20', hasil: HasilKunjungan.TIDAKADA, nominal: 0n,         catatan: 'Rumah terkunci, kunjungan ulang.', lokasi: 'Jl. Anggrek No.7, Cibinong' },
+    { petugasKode: 'P1', nasabahKode: 'N1031', jam: '13:40', hasil: HasilKunjungan.BAYAR,    nominal: 800_000n,   catatan: 'Bayar sebagian.',                  lokasi: 'Jl. Veteran No.45, Cibinong' },
+
+    { petugasKode: 'P2', nasabahKode: 'N1003', jam: '09:48', hasil: HasilKunjungan.BAYAR,    nominal: 1_500_000n, catatan: 'Bayar tunai 1 bulan angsuran.',    lokasi: 'Jl. Mawar No.12, Citayam' },
+    { petugasKode: 'P2', nasabahKode: 'N1021', jam: '10:32', hasil: HasilKunjungan.BAYAR,    nominal: 900_000n,   catatan: 'Setoran rutin.',                   lokasi: 'Gg. Kenanga 4, Citayam' },
+    { petugasKode: 'P2', nasabahKode: 'N1009', jam: '13:05', hasil: HasilKunjungan.JANJI,    nominal: 0n,         catatan: 'Akan transfer sore ini.',          lokasi: 'Gg. Dahlia 2, Citayam' },
+
+    { petugasKode: 'P3', nasabahKode: 'N1015', jam: '09:10', hasil: HasilKunjungan.BAYAR,    nominal: 600_000n,   catatan: 'Bayar tunai.',                     lokasi: 'Jl. Melati Raya, Sawangan' },
+    { petugasKode: 'P3', nasabahKode: 'N1029', jam: '11:45', hasil: HasilKunjungan.TOLAK,    nominal: 0n,         catatan: 'Menolak ditemui, escalation.',     lokasi: 'Jl. Pahlawan No.9, Sawangan' },
+
+    { petugasKode: 'P4', nasabahKode: 'N1037', jam: '10:00', hasil: HasilKunjungan.BAYAR,    nominal: 1_200_000n, catatan: 'Bayar penuh.',                     lokasi: 'Komplek Bumi Indah C8, Tapos' },
+    { petugasKode: 'P4', nasabahKode: 'N1043', jam: '14:20', hasil: HasilKunjungan.JANJI,    nominal: 0n,         catatan: 'Janji minggu depan.',              lokasi: 'Jl. Mawar No.12, Tapos' },
+
+    { petugasKode: 'P5', nasabahKode: 'N1052', jam: '09:30', hasil: HasilKunjungan.BAYAR,    nominal: 1_800_000n, catatan: 'Lunas bulan ini.',                 lokasi: 'Gg. Kenanga 4, Beji' },
+
+    { petugasKode: 'P6', nasabahKode: 'N1024', jam: '10:50', hasil: HasilKunjungan.BAYAR,    nominal: 750_000n,   catatan: 'Bayar sebagian.',                  lokasi: 'Jl. Pahlawan No.9, Limo' },
+    { petugasKode: 'P6', nasabahKode: 'N1058', jam: '13:15', hasil: HasilKunjungan.TIDAKADA, nominal: 0n,         catatan: 'Tetangga bilang ke luar kota.',    lokasi: 'Jl. Anggrek No.7, Limo' },
   ];
 
+  let kunjunganGpsCount = 0;
   for (const v of sampleVisits) {
     const petugas = await prisma.petugas.findUnique({ where: { kode: v.petugasKode } });
     const nasabah = await prisma.nasabah.findUnique({ where: { kode: v.nasabahKode } });
     if (!petugas || !nasabah) continue;
+    const lat = nasabah.lat ?? null;
+    const lng = nasabah.lng ?? null;
+    const hasGps = lat !== null && lng !== null;
+    if (hasGps) kunjunganGpsCount++;
     await prisma.kunjungan.create({
       data: {
         petugasId: petugas.id, nasabahId: nasabah.id,
         branchId: petugas.branchId,
         jam: v.jam, hasil: v.hasil, nominal: v.nominal,
         catatan: v.catatan, lokasi: v.lokasi, valid: true,
+        lat: hasGps ? jitter(lat as number) : null,
+        lng: hasGps ? jitter(lng as number) : null,
       },
     });
     if (v.hasil === HasilKunjungan.BAYAR && v.nominal > 0n) {
@@ -250,7 +281,7 @@ async function main() {
       });
     }
   }
-  console.log(`  ${sampleVisits.length} kunjungan + pembayaran sample`);
+  console.log(`  ${sampleVisits.length} kunjungan + pembayaran sample (${kunjunganGpsCount} dengan GPS untuk jejak)`);
 
   // Sample PetugasPosition rows so dashboard "mulai"/"terakhir" + Tracking
   // marker have something realistic to render even before petugas mobile
