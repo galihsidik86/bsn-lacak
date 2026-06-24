@@ -42,18 +42,47 @@ export interface GeoFix {
   ts: number;
 }
 
+// Status GPS yang surface ke UI petugas — supaya mereka tahu kalau fix
+// mereka jelek tanpa harus tanya supervisor.
+export type GeoStatus =
+  | 'idle'         // belum aktif (belum clock-in / petugasId belum siap)
+  | 'waiting'     // diaktifkan, belum dapat fix pertama
+  | 'precise'     // accuracy <= 50m, GPS chip sehat
+  | 'moderate'    // 50-200m, masih ok untuk visit verification
+  | 'poor'        // 200-500m, mulai meragukan
+  | 'coarse'      // > 500m, ditolak backend, kemungkinan IP-based
+  | 'denied'      // user tolak izin lokasi
+  | 'unavailable' // device tidak punya geolocation / kegagalan lain
+  | 'timeout';    // tidak dapat fix dalam window
+
+// Ambang harus selaras dengan backend `MAX_POSITION_ACCURACY_M = 500`.
+const COARSE_THRESHOLD_M = 500;
+
+function classifyAccuracy(acc: number | null): GeoStatus {
+  if (acc == null) return 'waiting';
+  if (acc <= 50) return 'precise';
+  if (acc <= 200) return 'moderate';
+  if (acc <= COARSE_THRESHOLD_M) return 'poor';
+  return 'coarse';
+}
+
 export function useGeolocationStream({
   petugasId,
   enabled = true,
   minDistanceMeters = 50,
   maxIntervalMs = 60_000,
-}: Options): { latest: GeoFix | null } {
+}: Options): { latest: GeoFix | null; status: GeoStatus } {
   const lastSent = useRef<LastSent | null>(null);
   const [latest, setLatest] = useState<GeoFix | null>(null);
+  const [status, setStatus] = useState<GeoStatus>('idle');
 
   useEffect(() => {
-    if (!enabled) return;
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    if (!enabled) { setStatus('idle'); return; }
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setStatus('unavailable');
+      return;
+    }
+    setStatus('waiting');
 
     const send = async (lat: number, lng: number, accuracy: number | undefined) => {
       // Backend POST is gated on having a real petugasId AND not being in
@@ -78,6 +107,7 @@ export function useGeolocationStream({
       const { latitude: lat, longitude: lng, accuracy } = p.coords;
       const now = Date.now();
       setLatest({ lat, lng, accuracy: accuracy ?? null, ts: now });
+      setStatus(classifyAccuracy(accuracy ?? null));
       const last = lastSent.current;
       if (last) {
         const moved = distMeters(last, { lat, lng });
@@ -87,9 +117,12 @@ export function useGeolocationStream({
       void send(lat, lng, accuracy);
     };
 
-    const onError = (_err: GeolocationPositionError) => {
-      // Don't spam audit — most errors are PERMISSION_DENIED or stale fixes.
-      // Component is responsible for surfacing the permission UX.
+    const onError = (err: GeolocationPositionError) => {
+      // Surface kategori error spesifik supaya badge UI bisa kasih hint
+      // yang actionable ("buka pengaturan izin" vs "GPS unavailable").
+      if (err.code === err.PERMISSION_DENIED) setStatus('denied');
+      else if (err.code === err.TIMEOUT) setStatus('timeout');
+      else setStatus('unavailable');
     };
 
     const id = navigator.geolocation.watchPosition(onPosition, onError, {
@@ -101,5 +134,5 @@ export function useGeolocationStream({
     return () => navigator.geolocation.clearWatch(id);
   }, [petugasId, enabled, minDistanceMeters, maxIntervalMs]);
 
-  return { latest };
+  return { latest, status };
 }

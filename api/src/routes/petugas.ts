@@ -150,10 +150,28 @@ router.get('/:id/profile', async (req, res) => {
   });
 });
 
+// Ambang akurasi maksimum (m). Browser yang tidak punya GPS chip aktif
+// jatuh ke IP / WiFi triangulation, akurasi biasanya 1000-3000m. Real GPS
+// di luar ruangan <50m, di dalam ruangan 100-500m. 500m adalah kompromi
+// yang masuk akal: tolak data yang pasti bukan GPS, tetap terima fix
+// indoor yang lumayan.
+const MAX_POSITION_ACCURACY_M = 500;
+
 router.post('/:id/position', async (req, res) => {
   const { lat, lng, accuracy } = req.body ?? {};
   if (typeof lat !== 'number' || typeof lng !== 'number') {
     return res.status(400).json({ error: 'bad_request' });
+  }
+  // Reject coarse fixes (IP / cell tower). Audit 1x per session implicit
+  // via attendance.id — tapi posisi sendiri tidak punya session id, jadi
+  // log per kejadian saja. Throttle sisi client kalau noise.
+  if (typeof accuracy === 'number' && accuracy > MAX_POSITION_ACCURACY_M) {
+    await audit({
+      action: 'petugas.position.coarse_rejected', target: String(req.params.id),
+      ...fromReq(req),
+      meta: { accuracy, lat, lng, threshold: MAX_POSITION_ACCURACY_M },
+    });
+    return res.status(202).json({ ok: false, error: 'accuracy_too_low', threshold: MAX_POSITION_ACCURACY_M });
   }
   const id = String(req.params.id);
   // A petugas can only update their own position; supervisor of the petugas's

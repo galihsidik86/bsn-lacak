@@ -170,7 +170,7 @@ export function ScreenMobile() {
   // petugasId check inside the hook gates it out). The hook also exposes the
   // most recent fix so the Rute tab can order stops by nearest-neighbor from
   // wherever the petugas actually is right now.
-  const { latest: hereFix } = useGeolocationStream({
+  const { latest: hereFix, status: gpsStatus } = useGeolocationStream({
     petugasId: isPetugasUser ? user?.petugasId : null,
     enabled: isPetugasUser && !!ME,
   });
@@ -206,7 +206,7 @@ export function ScreenMobile() {
     <div style={{ fontFamily: 'var(--font)', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--ink)' }}>
       <div style={{ flex: 1, overflowY: 'auto', paddingTop: isPetugasUser ? 12 : 54 }}>
         {isPetugasUser && <InstallPrompt />}
-        {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} here={hereFix} zone={zone} />}
+        {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} here={hereFix} zone={zone} gpsStatus={gpsStatus} />}
         {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} here={hereFix} zone={zone} />}
         {!reportFor && tab === 'riwayat' && <MRiwayat me={ME} onLaporUlang={setReportFor} />}
         {!reportFor && tab === 'profil' && <MProfil me={ME} here={hereFix} pendingOffline={offline.pending} />}
@@ -293,6 +293,48 @@ function greeting(): string {
   return 'Selamat malam';
 }
 
+// GPS health badge — surface ke petugas supaya tahu fix mereka cukup
+// presisi untuk laporan diterima. Bukan blocker (laporan tetap bisa
+// dikirim), tapi badge merah harus segera dia perbaiki di pengaturan
+// browser/device sebelum naik motor.
+function GpsStatusBadge({ status, fix }: {
+  status: import('../lib/geolocation').GeoStatus;
+  fix: { lat: number; lng: number; accuracy: number | null; ts: number } | null;
+}) {
+  const MAP: Record<import('../lib/geolocation').GeoStatus, { bg: string; fg: string; icon: 'check' | 'alert' | 'clock' | 'cross'; label: string; hint: string }> = {
+    idle:        { bg: 'var(--surface-2)',       fg: 'var(--ink-3)',     icon: 'clock', label: 'GPS belum aktif',          hint: 'Aktifkan saat clock-in.' },
+    waiting:     { bg: 'oklch(0.93 0.05 75)',    fg: 'oklch(0.4 0.13 75)', icon: 'clock', label: 'Menunggu fix GPS…',         hint: 'Pastikan di luar ruangan.' },
+    precise:     { bg: 'var(--col-lancar-soft)', fg: 'var(--col-lancar)',  icon: 'check', label: 'GPS presisi',                hint: '' },
+    moderate:    { bg: 'var(--col-lancar-soft)', fg: 'var(--col-lancar)',  icon: 'check', label: 'GPS standar',                hint: '' },
+    poor:        { bg: 'oklch(0.93 0.05 75)',    fg: 'oklch(0.4 0.13 75)', icon: 'alert', label: 'GPS lemah',                  hint: 'Mendekat ke ruang terbuka.' },
+    coarse:      { bg: 'var(--col-macet-soft)',  fg: 'var(--col-macet)',   icon: 'alert', label: 'GPS tidak presisi',          hint: 'Aktifkan izin "Precise location" + GPS device.' },
+    denied:      { bg: 'var(--col-macet-soft)',  fg: 'var(--col-macet)',   icon: 'cross', label: 'Izin lokasi ditolak',        hint: 'Buka pengaturan browser → izinkan lokasi.' },
+    unavailable: { bg: 'var(--col-macet-soft)',  fg: 'var(--col-macet)',   icon: 'cross', label: 'GPS tidak tersedia',         hint: 'Aktifkan GPS device.' },
+    timeout:     { bg: 'oklch(0.93 0.05 75)',    fg: 'oklch(0.4 0.13 75)', icon: 'clock', label: 'GPS lambat',                 hint: 'Tetap di luar ruangan beberapa detik.' },
+  };
+  const cfg = MAP[status];
+  const Icon = cfg.icon === 'check' ? Ic.check : cfg.icon === 'alert' ? Ic.alert : cfg.icon === 'cross' ? Ic.x : Ic.clock;
+  const ageSec = fix ? Math.round((Date.now() - fix.ts) / 1000) : null;
+  const acc = fix?.accuracy != null ? `±${Math.round(fix.accuracy)} m` : null;
+  return (
+    <div className="center gap-2" style={{
+      margin: '10px 16px 0', padding: '8px 12px', borderRadius: 12,
+      background: cfg.bg, color: cfg.fg,
+      fontSize: 12, fontWeight: 700,
+    }}>
+      <Icon size={14} />
+      <span style={{ flex: 1 }}>
+        {cfg.label}
+        {acc && <span style={{ marginLeft: 6, fontWeight: 600, opacity: 0.85 }}>· {acc}</span>}
+        {ageSec != null && ageSec < 3600 && (
+          <span style={{ marginLeft: 6, fontWeight: 600, opacity: 0.7 }}>· {ageSec}s lalu</span>
+        )}
+      </span>
+      {cfg.hint && <span style={{ fontWeight: 500, opacity: 0.85, fontSize: 11 }}>{cfg.hint}</span>}
+    </div>
+  );
+}
+
 function BriefingCard({ me, doneInTasks, tasksCount }: {
   me: Petugas; doneInTasks: number; tasksCount: number;
 }) {
@@ -376,9 +418,12 @@ function BriefingCard({ me, doneInTasks, tasksCount }: {
   );
 }
 
-function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone }: {
+function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone, gpsStatus }: {
   me: Petugas; tasks: Nasabah[]; onReport: (n: Nasabah) => void; doneSet: Set<string>;
-  here: { lat: number; lng: number } | null; zone: ZoneInfo | null;
+  // here memuat full GeoFix (accuracy + ts) supaya GpsStatusBadge bisa
+  // tampilkan akurasi & umur fix; field lat/lng tetap dipakai zone check.
+  here: GeoFix | null; zone: ZoneInfo | null;
+  gpsStatus: import('../lib/geolocation').GeoStatus;
 }) {
   const pct = ME.target > 0 ? Math.round(ME.terkumpul / ME.target * 100) : 0;
   // Live "Anda di dalam zona?" computed from the latest GPS fix vs the
@@ -391,6 +436,7 @@ function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone }: {
   return (
     <div>
       <BriefingCard me={ME} doneInTasks={doneInTasks} tasksCount={MY_TASKS.length} />
+      <GpsStatusBadge status={gpsStatus} fix={here} />
       {zone && inZone === false && (
         <div className="center gap-2" style={{
           margin: '10px 16px 0', padding: '10px 12px', borderRadius: 12,
