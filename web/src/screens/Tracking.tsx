@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import { Map as MlMap, Marker, Source, Layer } from 'react-map-gl/maplibre';
+import { Map as MlMap, Marker, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Ic } from '../components/Icons';
 import { Avatar, StatusPill, cssVar } from '../components/UI';
@@ -331,6 +331,29 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak }: {
 }) {
   const accent = cssVar('--accent') || '#1f8a5b';
   const styleUrl = `https://api.maptiler.com/maps/${MAPTILER_STYLE}/style.json?key=${MAPTILER_KEY}`;
+  const mapRef = useRef<MapRef | null>(null);
+
+  // Auto-pan ke posisi petugas terpilih supaya supervisor tidak perlu
+  // geser map manual. Prioritas target:
+  //   1. Live GPS fix dari SSE / endpoint positions/latest
+  //   2. Posisi stop terakhir di rute (fallback bila live belum ada)
+  // Zoom 14 = ~kotamadya kecil (cukup intim tapi konteks daerah masih ada).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const target = live[sel] ?? (() => {
+      const r = routes.find(rr => rr.pt.id === sel);
+      if (!r || r.stops.length === 0) return undefined;
+      return r.stops[r.stops.length - 1];
+    })();
+    if (!target) return;
+    map.flyTo({
+      center: [target.lng, target.lat],
+      zoom: 14,
+      duration: 1200,
+      essential: true,
+    });
+  }, [sel, live, routes]);
 
   // GeoJSON FeatureCollection of route LineStrings — each feature carries a
   // `kind` so the line style picks selected vs. faint via case-expression.
@@ -367,6 +390,7 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak }: {
 
   return (
     <MlMap
+      ref={mapRef}
       initialViewState={{ longitude: HUB.lng, latitude: HUB.lat, zoom: 12 }}
       style={{ width: '100%', height: '100%' }}
       mapStyle={styleUrl}
