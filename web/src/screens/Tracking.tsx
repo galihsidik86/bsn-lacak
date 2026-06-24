@@ -226,7 +226,7 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
           {MAPTILER_KEY ? (
             <MapTilerMap routes={routes} sel={sel} showAll={showAll} setSel={setSel} live={livePositions} jejak={jejak} />
           ) : (
-            <MapStylized routes={routes} sel={sel} showAll={showAll} setSel={setSel} myRoute={myRoute} />
+            <MapStylized routes={routes} sel={sel} showAll={showAll} setSel={setSel} myRoute={myRoute} jejak={jejak} />
           )}
 
           <div className="card fade-up" style={{ position: 'absolute', top: 16, left: 16, width: 250, padding: 14, boxShadow: 'var(--sh-2)' }}>
@@ -458,8 +458,9 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak }: {
 }
 
 // Fallback stylized map for when no Google Maps API key is provided
-function MapStylized({ routes, sel, showAll, setSel, myRoute }: {
+function MapStylized({ routes, sel, showAll, setSel, myRoute, jejak }: {
   routes: Route[]; sel: string; showAll: boolean; setSel: (s: string) => void; myRoute: Route;
+  jejak: JejakStop[];
 }) {
   const accent = cssVar('--accent') || '#1f8a5b';
   const W = 1000;
@@ -467,6 +468,8 @@ function MapStylized({ routes, sel, showAll, setSel, myRoute }: {
   const vRoads = [120, 240, 360, 480, 600, 720, 840];
   const hRoads = [90, 200, 310, 420, 530];
   const pathFor = (stops: { x: number; y: number }[]) => stops.map((s, i) => `${i === 0 ? 'M' : 'L'}${s.x} ${s.y}`).join(' ');
+  // Project lat/lng jejak ke canvas — pakai helper yang sama dengan makeRoute.
+  const jejakXY = jejak.map(j => ({ ...j, ...projToCanvas(j.lat, j.lng) }));
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid slice" style={{ display: 'block' }}>
@@ -492,6 +495,19 @@ function MapStylized({ routes, sel, showAll, setSel, myRoute }: {
           <g key={i}>
             <circle cx={s.x} cy={s.y} r="11" fill="var(--surface)" stroke={accent} strokeWidth="3" />
             <text x={s.x} y={s.y + 4} textAnchor="middle" fontSize="11" fontWeight="800" fill={accent}>{i + 1}</text>
+          </g>
+        ))}
+        {/* Jejak kunjungan — polyline dashed + marker bernomor per hasil */}
+        {jejakXY.length >= 2 && (
+          <path
+            d={jejakXY.map((j, i) => `${i === 0 ? 'M' : 'L'}${j.x} ${j.y}`).join(' ')}
+            fill="none" stroke={accent} strokeWidth="2.4" strokeDasharray="3 5"
+            strokeLinecap="round" opacity="0.7" />
+        )}
+        {jejakXY.map((j, i) => (
+          <g key={`jejak-${j.id}`}>
+            <circle cx={j.x} cy={j.y} r="11" fill={JEJAK_COLOR[j.hasil]} stroke="white" strokeWidth="2" />
+            <text x={j.x} y={j.y + 3.5} textAnchor="middle" fontSize="10" fontWeight="800" fill="white">{i + 1}</text>
           </g>
         ))}
         {(() => {

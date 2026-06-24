@@ -138,31 +138,34 @@ export const HASIL_KUNJUNGAN: Record<HasilKunjungan, HasilMeta> = {
   tolak: { label: 'Menolak/Kabur', c: 'var(--col-macet)', soft: 'var(--col-macet-soft)' },
 };
 
+// GPS koordinat clustering per petugas — selaras dengan seed prod, supaya
+// jejak kunjungan di overlay Tracking konsisten antara mock dev/capture
+// dan VPS riil.
 export const KUNJUNGAN: Kunjungan[] = [
   { id: 'K1', petugas: 'P2', nasabah: 'N1003', jam: '09:48', hasil: 'bayar', nominal: 1_500_000, dpd: 18,
     catatan: 'Nasabah bayar tunai 1 bulan angsuran. Usaha warung lancar, omzet stabil.',
-    lokasi: 'Jl. Mawar No.12, Citayam', foto: 2, valid: true },
+    lokasi: 'Jl. Mawar No.12, Citayam', foto: 2, valid: true, lat: -6.4395, lng: 106.8205 },
   { id: 'K2', petugas: 'P1', nasabah: 'N1012', jam: '10:15', hasil: 'janji', nominal: 0, dpd: 95,
     catatan: 'Berjanji melunasi tunggakan tgl 15. Sedang menunggu pembayaran dari pelanggan besar.',
-    lokasi: 'Jl. Pasar Lama, Cibinong', foto: 1, valid: true },
+    lokasi: 'Jl. Pasar Lama, Cibinong', foto: 1, valid: true, lat: -6.4828, lng: 106.8555 },
   { id: 'K3', petugas: 'P2', nasabah: 'N1021', jam: '10:32', hasil: 'bayar', nominal: 900_000, dpd: 0,
     catatan: 'Setoran rutin lewat petugas. Minta reminder H-3 via WhatsApp.',
-    lokasi: 'Gg. Kenanga 4, Citayam', foto: 2, valid: true },
+    lokasi: 'Gg. Kenanga 4, Citayam', foto: 2, valid: true, lat: -6.4408, lng: 106.8190 },
   { id: 'K4', petugas: 'P3', nasabah: 'N1018', jam: '09:20', hasil: 'tidakada', nominal: 0, dpd: 150,
     catatan: 'Rumah terkunci, tetangga bilang sedang ke luar kota. Akan dikunjungi ulang besok.',
-    lokasi: 'Jl. Anggrek No.7, Sawangan', foto: 1, valid: true },
+    lokasi: 'Jl. Anggrek No.7, Sawangan', foto: 1, valid: true, lat: -6.3955, lng: 106.7908 },
   { id: 'K5', petugas: 'P1', nasabah: 'N1006', jam: '11:05', hasil: 'bayar', nominal: 2_100_000, dpd: 0,
     catatan: 'Bayar 2 bulan sekaligus. Nasabah ingin top-up plafon, diteruskan ke AO.',
-    lokasi: 'Perum Griya Asri B2, Cibinong', foto: 3, valid: true },
+    lokasi: 'Perum Griya Asri B2, Cibinong', foto: 3, valid: true, lat: -6.4820, lng: 106.8540 },
   { id: 'K6', petugas: 'P4', nasabah: 'N1031', jam: '08:55', hasil: 'tolak', nominal: 0, dpd: 210,
     catatan: 'Nasabah menolak ditemui, usaha tutup. Indikasi pindah alamat. Eskalasi ke remedial.',
-    lokasi: 'Jl. Veteran No.45, Tapos', foto: 1, valid: false },
+    lokasi: 'Jl. Veteran No.45, Tapos', foto: 1, valid: false, lat: -6.3805, lng: 106.8508 },
   { id: 'K7', petugas: 'P3', nasabah: 'N1009', jam: '11:40', hasil: 'janji', nominal: 0, dpd: 30,
     catatan: 'Akan transfer sore ini. Minta nomor rekening virtual account.',
-    lokasi: 'Gg. Dahlia 2, Sawangan', foto: 1, valid: true },
+    lokasi: 'Gg. Dahlia 2, Sawangan', foto: 1, valid: true, lat: -6.3947, lng: 106.7895 },
   { id: 'K8', petugas: 'P6', nasabah: 'N1024', jam: '10:50', hasil: 'bayar', nominal: 750_000, dpd: 16,
     catatan: 'Bayar sebagian, sisa minggu depan. Kondisi usaha konveksi cukup ramai pesanan.',
-    lokasi: 'Jl. Pahlawan No.9, Limo', foto: 2, valid: true },
+    lokasi: 'Jl. Pahlawan No.9, Limo', foto: 2, valid: true, lat: -6.3705, lng: 106.7708 },
 ];
 
 export const BLAST_HISTORY: BlastEntry[] = [

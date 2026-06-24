@@ -73,6 +73,17 @@ test.describe('manual capture', () => {
     await shot(page, '06-tracking.png', false);
   });
 
+  test('05b tracking dengan jejak kunjungan', async ({ page }) => {
+    await login(page);
+    await page.getByRole('button', { name: /tracking petugas/i }).click();
+    await expect(page.getByText(/petugas lapangan/i).first()).toBeVisible();
+    // Aktifkan overlay jejak.
+    await page.getByLabel(/tampilkan jejak kunjungan/i).check();
+    // Beri waktu map redraw + tiles + marker custom.
+    await page.waitForTimeout(1500);
+    await shot(page, '06b-tracking-jejak.png', false);
+  });
+
   test('06 global search (Ctrl+K)', async ({ page }) => {
     await login(page);
     await page.keyboard.press('Control+K');

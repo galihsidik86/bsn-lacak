@@ -115,9 +115,50 @@ Pada panel kiri:
 - Indikator kunjungan tercapai vs rencana harian.
 - Klik salah satu petugas → peta zoom ke posisi terakhirnya, dan panel bawah
   menampilkan **Lintasan Pergerakan** beserta ringkasan kunjungan terakhir.
+- **Dua toggle** di atas daftar petugas:
+  - *Tampilkan semua rute di peta* — overlay rute terencana seluruh petugas
+    (default on).
+  - *Tampilkan jejak kunjungan* — overlay marker per laporan kunjungan
+    petugas terpilih (default off). Lihat bagian berikut.
 
 Marker di peta diperbarui realtime via SSE saat petugas clock-in / mengirim
 ping posisi.
+
+### 5a. Jejak Kunjungan (audit kepatuhan rute)
+
+Centang **"Tampilkan jejak kunjungan"** untuk menambahkan overlay history
+laporan kunjungan petugas terpilih ke peta:
+
+![Tracking dengan jejak kunjungan](manual/screenshots/06b-tracking-jejak.png)
+
+Yang ditampilkan:
+
+- **Marker bulat bernomor (1, 2, 3, …)** di setiap titik GPS petugas saat
+  laporkan kunjungan, **urut kronologis** dari paling awal.
+- **Warna marker per hasil**:
+  - 🟢 Hijau = Bayar
+  - 🟡 Amber = Janji Bayar
+  - ⚪ Abu = Tidak di Tempat
+  - 🔴 Merah = Menolak/Kabur
+- **Garis putus-putus** menghubungkan urutan kronologis 1 → 2 → 3 → … —
+  menggambarkan path aktual yang dilewati petugas.
+- **Hover marker** → tooltip menampilkan jam laporan, nama nasabah, hasil,
+  dan nominal pembayaran.
+
+Kegunaan praktis:
+
+- **Audit kepatuhan rute** — bandingkan jejak (warna campur) dengan rute
+  terencana (garis tebal). Petugas yang konsisten skip nasabah tertentu
+  akan terlihat polanya.
+- **Verifikasi laporan** — laporan tanpa GPS fix (petugas izinkan location
+  off) tidak muncul di overlay — supervisor bisa flag untuk review.
+- **Deteksi anomali** — jejak yang melompat jauh dari rute terencana atau
+  cluster timestamp berdekatan tapi GPS jauh = indikasi false reporting.
+
+> Catatan: kalau jejak kosong walau toggle on, kemungkinan petugas yang
+> dipilih belum pernah lapor kunjungan dengan GPS aktif (atau semua
+> laporannya dari area tanpa sinyal). Pilih petugas lain dari sidebar
+> kiri.
 
 ---
 
