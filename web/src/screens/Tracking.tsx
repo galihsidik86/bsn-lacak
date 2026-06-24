@@ -83,6 +83,11 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
   // GPS fix, diurutkan kronologis. Off by default supaya map tidak terlalu
   // ramai untuk supervisor yang baru buka layar.
   const [showJejak, setShowJejak] = useState(false);
+  // Toggle "Trail Pergerakan": polyline dari semua PetugasPosition hari
+  // ini (00:00 → sekarang). Beda dari jejak kunjungan — ini path GPS
+  // mentah, bukan titik laporan. Off by default.
+  const [showTrail, setShowTrail] = useState(false);
+  const [trail, setTrail] = useState<Array<{ lat: number; lng: number; ts: number }>>([]);
   useEffect(() => { if (!sel && PETUGAS[0]) setSel(PETUGAS[0].id); }, [sel, PETUGAS]);
 
   const p = petugasById(sel);
@@ -115,6 +120,29 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
+
+  // Fetch trail pergerakan ketika toggle on + petugas berubah. Auto-refresh
+  // tiap 30 detik supaya path tetap up-to-date saat petugas masih jalan.
+  useEffect(() => {
+    if (!showTrail || !sel) { setTrail([]); return; }
+    const tok = tokenStore.get();
+    if (!tok) return;
+    let cancelled = false;
+    const headers: Record<string, string> = { Authorization: `Bearer ${tok}` };
+    const override = useAuth.getState().branchOverride;
+    if (override) headers['x-branch-id'] = override;
+    const fetchTrail = () => {
+      void axios.get<{ points: Array<{ lat: number; lng: number; ts: number }> }>(
+        `${BASE}/petugas/${sel}/positions/trail`,
+        { withCredentials: true, headers },
+      ).then(r => {
+        if (!cancelled) setTrail(r.data.points);
+      }).catch(() => { if (!cancelled) setTrail([]); });
+    };
+    fetchTrail();
+    const iv = setInterval(fetchTrail, 30_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [showTrail, sel]);
 
   // Routes are rebuilt whenever the petugas's live fix changes so the order
   // updates as they move — same nearest-neighbor algorithm Mobile uses.
@@ -186,6 +214,10 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
             <input type="checkbox" checked={showJejak} onChange={e => setShowJejak(e.target.checked)} />
             Tampilkan jejak kunjungan
           </label>
+          <label className="center gap-2" style={{ marginTop: 6, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={showTrail} onChange={e => setShowTrail(e.target.checked)} />
+            Tampilkan trail pergerakan
+          </label>
         </div>
         <div style={{ overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {PETUGAS.map(pt => {
@@ -224,9 +256,9 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
       <div style={{ display: 'grid', gridTemplateRows: '1fr auto', overflow: 'hidden', position: 'relative' }}>
         <div style={{ position: 'relative', overflow: 'hidden', background: 'var(--surface-2)' }}>
           {MAPTILER_KEY ? (
-            <MapTilerMap routes={routes} sel={sel} showAll={showAll} setSel={setSel} live={livePositions} jejak={jejak} />
+            <MapTilerMap routes={routes} sel={sel} showAll={showAll} setSel={setSel} live={livePositions} jejak={jejak} trail={trail} />
           ) : (
-            <MapStylized routes={routes} sel={sel} showAll={showAll} setSel={setSel} myRoute={myRoute} jejak={jejak} />
+            <MapStylized routes={routes} sel={sel} showAll={showAll} setSel={setSel} myRoute={myRoute} jejak={jejak} trail={trail} />
           )}
 
           <div className="card fade-up" style={{ position: 'absolute', top: 16, left: 16, width: 250, padding: 14, boxShadow: 'var(--sh-2)' }}>
@@ -324,10 +356,11 @@ const JEJAK_COLOR: Record<JejakStop['hasil'], string> = {
 };
 
 // MapTiler basemap + route lines + petugas markers via MapLibre GL.
-function MapTilerMap({ routes, sel, showAll, setSel, live, jejak }: {
+function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail }: {
   routes: Route[]; sel: string; showAll: boolean; setSel: (s: string) => void;
   live: Record<string, { lat: number; lng: number; ts: number }>;
   jejak: JejakStop[];
+  trail: Array<{ lat: number; lng: number; ts: number }>;
 }) {
   const accent = cssVar('--accent') || '#1f8a5b';
   const styleUrl = `https://api.maptiler.com/maps/${MAPTILER_STYLE}/style.json?key=${MAPTILER_KEY}`;
@@ -387,6 +420,20 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak }: {
       },
     }],
   }), [jejak]);
+
+  // Trail polyline dari ping GPS petugas — solid biru cyan agar visually
+  // beda dari rute terencana (accent hijau) dan jejak kunjungan (dashed).
+  const trailLineGeo = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: trail.length < 2 ? [] : [{
+      type: 'Feature' as const,
+      properties: {},
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: trail.map(t => [t.lng, t.lat] as [number, number]),
+      },
+    }],
+  }), [trail]);
 
   return (
     <MlMap
@@ -449,6 +496,40 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak }: {
           : []
       )}
 
+      {/* Trail pergerakan GPS — polyline solid + marker start/end */}
+      <Source id="bsn-trail" type="geojson" data={trailLineGeo}>
+        <Layer
+          id="bsn-trail-line"
+          type="line"
+          paint={{
+            'line-color': 'oklch(0.55 0.15 230)', // biru cyan, beda dari accent hijau
+            'line-width': 4,
+            'line-opacity': 0.75,
+          }}
+          layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+        />
+      </Source>
+      {trail.length >= 2 && (
+        <>
+          <Marker longitude={trail[0].lng} latitude={trail[0].lat} anchor="center">
+            <div title={`Awal trail · ${new Date(trail[0].ts).toLocaleTimeString('id-ID')}`}
+              style={{
+                width: 14, height: 14, borderRadius: 99,
+                background: 'oklch(0.55 0.15 230)', border: '2.5px solid white',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+              }} />
+          </Marker>
+          <Marker longitude={trail[trail.length - 1].lng} latitude={trail[trail.length - 1].lat} anchor="center">
+            <div title={`Posisi terakhir · ${new Date(trail[trail.length - 1].ts).toLocaleTimeString('id-ID')}`}
+              style={{
+                width: 14, height: 14, borderRadius: 99,
+                background: 'oklch(0.55 0.15 230)', border: '2.5px solid white',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+              }} />
+          </Marker>
+        </>
+      )}
+
       {/* Jejak Kunjungan — polyline kronologis + marker per laporan ber-GPS */}
       <Source id="bsn-jejak" type="geojson" data={jejakLineGeo}>
         <Layer
@@ -482,9 +563,10 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak }: {
 }
 
 // Fallback stylized map for when no Google Maps API key is provided
-function MapStylized({ routes, sel, showAll, setSel, myRoute, jejak }: {
+function MapStylized({ routes, sel, showAll, setSel, myRoute, jejak, trail }: {
   routes: Route[]; sel: string; showAll: boolean; setSel: (s: string) => void; myRoute: Route;
   jejak: JejakStop[];
+  trail: Array<{ lat: number; lng: number; ts: number }>;
 }) {
   const accent = cssVar('--accent') || '#1f8a5b';
   const W = 1000;
@@ -494,6 +576,7 @@ function MapStylized({ routes, sel, showAll, setSel, myRoute, jejak }: {
   const pathFor = (stops: { x: number; y: number }[]) => stops.map((s, i) => `${i === 0 ? 'M' : 'L'}${s.x} ${s.y}`).join(' ');
   // Project lat/lng jejak ke canvas — pakai helper yang sama dengan makeRoute.
   const jejakXY = jejak.map(j => ({ ...j, ...projToCanvas(j.lat, j.lng) }));
+  const trailXY = trail.map(t => projToCanvas(t.lat, t.lng));
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid slice" style={{ display: 'block' }}>
@@ -521,6 +604,13 @@ function MapStylized({ routes, sel, showAll, setSel, myRoute, jejak }: {
             <text x={s.x} y={s.y + 4} textAnchor="middle" fontSize="11" fontWeight="800" fill={accent}>{i + 1}</text>
           </g>
         ))}
+        {/* Trail pergerakan GPS — polyline biru solid */}
+        {trailXY.length >= 2 && (
+          <path
+            d={trailXY.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join(' ')}
+            fill="none" stroke="oklch(0.55 0.15 230)" strokeWidth="3.5"
+            strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
+        )}
         {/* Jejak kunjungan — polyline dashed + marker bernomor per hasil */}
         {jejakXY.length >= 2 && (
           <path

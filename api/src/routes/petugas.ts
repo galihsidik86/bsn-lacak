@@ -77,6 +77,58 @@ router.get('/positions/latest', async (req, res) => {
   })));
 });
 
+// Trail pergerakan petugas — semua PetugasPosition dalam window waktu,
+// urut kronologis. Dipakai supervisor Tracking untuk render polyline
+// "history pergerakan hari ini". Scope branch wajib: petugas hanya boleh
+// dilihat oleh supervisor cabang yang sama / admin.
+// Mount sebelum '/:id' supaya '/positions/trail/:id' tidak ke-konsumsi
+// sebagai id petugas. Pakai segmen "positions/trail" eksplisit.
+router.get('/:id/positions/trail', async (req, res) => {
+  const branchId = scopedBranchId(req);
+  const id = String(req.params.id);
+  // Default window: hari ini (midnight local server time → sekarang).
+  // Bisa override via ?since=ISO&until=ISO untuk audit lintas-hari.
+  const sinceParam = String(req.query.since ?? '');
+  const untilParam = String(req.query.until ?? '');
+  const sinceDt = sinceParam ? new Date(sinceParam) : (() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
+  })();
+  const untilDt = untilParam ? new Date(untilParam) : new Date();
+  if (Number.isNaN(sinceDt.getTime()) || Number.isNaN(untilDt.getTime())) {
+    return res.status(400).json({ error: 'bad_request' });
+  }
+  // Cap max points untuk lindungi browser dari render polyline 10k+ titik.
+  const maxPoints = Math.min(2000, Number.parseInt(String(req.query.max ?? '1000'), 10) || 1000);
+
+  // Verify petugas ada + dalam scope branch supervisor.
+  const target = await prisma.petugas.findFirst({
+    where: { id, ...(branchId ? { branchId } : {}) },
+    select: { id: true },
+  });
+  if (!target) return res.status(404).json({ error: 'not_found' });
+
+  const rows = await prisma.petugasPosition.findMany({
+    where: {
+      petugasId: id,
+      recordedAt: { gte: sinceDt, lte: untilDt },
+    },
+    orderBy: { recordedAt: 'asc' },
+    take: maxPoints,
+    select: { lat: true, lng: true, accuracy: true, recordedAt: true },
+  });
+  res.json({
+    petugasId: id,
+    sinceIso: sinceDt.toISOString(),
+    untilIso: untilDt.toISOString(),
+    count: rows.length,
+    points: rows.map(r => ({
+      lat: r.lat, lng: r.lng,
+      accuracy: r.accuracy,
+      ts: r.recordedAt.getTime(),
+    })),
+  });
+});
+
 router.get('/:id', async (req, res) => {
   const branchId = scopedBranchId(req);
   const p = await prisma.petugas.findFirst({
