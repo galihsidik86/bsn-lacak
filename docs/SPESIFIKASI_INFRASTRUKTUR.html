@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <title>Spesifikasi Infrastruktur — BSN Lacak</title>
+  <style>
+  :root {
+    --ink: #1f2a37;
+    --ink-2: #374151;
+    --ink-3: #4b5563;
+    --muted: #6b7280;
+    --accent: #047857;
+    --accent-soft: #ecfdf5;
+    --gold: #b45309;
+    --gold-soft: #fef3c7;
+    --line: #e5e7eb;
+    --line-2: #d1d5db;
+    --code-bg: #f3f4f6;
+    --table-stripe: #fafafa;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+    color: var(--ink);
+    line-height: 1.55;
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 0;
+    background: #fff;
+    font-size: 13.5px;
+  }
+  h1, h2, h3, h4 { color: var(--ink); line-height: 1.25; }
+  h1 {
+    font-size: 26px;
+    margin: 0 0 8px;
+    padding-bottom: 14px;
+    border-bottom: 3px solid var(--accent);
+    color: var(--accent);
+  }
+  h2 {
+    font-size: 19px;
+    margin: 36px 0 12px;
+    padding-top: 10px;
+    color: var(--accent);
+    page-break-before: always;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 6px;
+  }
+  h2:first-of-type, .body > h2:first-child { page-break-before: avoid; }
+  h3 {
+    font-size: 15px;
+    margin: 22px 0 8px;
+    color: var(--ink);
+  }
+  h4 {
+    font-size: 13.5px;
+    margin: 16px 0 6px;
+    color: var(--ink-2);
+  }
+  p { margin: 8px 0; }
+  ul, ol { padding-left: 22px; margin: 8px 0; }
+  li { margin: 3px 0; }
+  a { color: var(--accent); text-decoration: none; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+  blockquote {
+    margin: 12px 0;
+    padding: 9px 14px;
+    border-left: 3px solid var(--gold);
+    background: var(--gold-soft);
+    color: var(--ink-2);
+    border-radius: 4px;
+    font-size: 12.5px;
+  }
+  blockquote p { margin: 3px 0; }
+  code {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size: 0.86em;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    border-radius: 6px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    page-break-inside: avoid;
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  pre code { background: none; padding: 0; }
+  table {
+    border-collapse: collapse;
+    margin: 12px 0 16px;
+    width: 100%;
+    page-break-inside: avoid;
+    font-size: 12.5px;
+  }
+  th, td {
+    border: 1px solid var(--line);
+    padding: 7px 9px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 700;
+  }
+  tbody tr:nth-child(2n) { background: var(--table-stripe); }
+  strong { color: var(--ink); }
+  em { color: var(--ink-2); }
+
+  /* Cover page */
+  .cover {
+    page-break-after: always;
+    padding: 120px 60px 60px;
+    text-align: center;
+    background: linear-gradient(180deg, var(--accent-soft) 0%, #fff 100%);
+    min-height: 90vh;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: space-between;
+  }
+  .cover-top { width: 100%; }
+  .cover .logo {
+    display: inline-block;
+    width: 72px; height: 72px;
+    background: var(--accent);
+    border-radius: 18px;
+    margin-bottom: 28px;
+    position: relative;
+  }
+  .cover .logo::before {
+    content: '';
+    position: absolute;
+    inset: 16px;
+    border: 3px solid #fff;
+    border-radius: 6px;
+    transform: rotate(45deg);
+  }
+  .cover .title {
+    font-size: 32px;
+    font-weight: 800;
+    margin: 0 0 12px;
+    color: var(--accent);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  .cover .sub {
+    font-size: 17px;
+    color: var(--ink-2);
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+  .cover .org {
+    font-size: 14px;
+    color: var(--muted);
+    margin: 0;
+  }
+  .cover .meta {
+    margin-top: 24px;
+    padding: 14px 22px;
+    background: white;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    display: inline-block;
+    text-align: left;
+    font-size: 12px;
+    color: var(--ink-2);
+    line-height: 1.7;
+  }
+  .cover .meta strong { color: var(--ink); display: inline-block; min-width: 100px; }
+  .cover-footer {
+    width: 100%;
+    border-top: 2px solid var(--accent);
+    padding-top: 14px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .body {
+    padding: 32px 56px 60px;
+  }
+
+  /* PDF page setup */
+  @page { size: A4; margin: 18mm 16mm 22mm; }
+  @media print {
+    body { padding: 0; max-width: none; }
+    .body { padding: 24px 0 0; }
+    .cover { min-height: 95vh; }
+  }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <div class="cover-top">
+      <div class="logo"></div>
+      <div class="title">Spesifikasi<br>Kebutuhan Infrastruktur</div>
+      <div class="sub">Sistem Tracking Penagihan BSN Lacak</div>
+      <div class="org">Bank Syariah Nasional</div>
+      <div class="meta">
+        <div><strong>Dokumen</strong> SPESIFIKASI_INFRASTRUKTUR v1.0</div>
+        <div><strong>Versi</strong> 1.0</div>
+        <div><strong>Tanggal</strong> 25 Juni 2026</div>
+        <div><strong>Klasifikasi</strong> Internal — Procurement</div>
+      </div>
+    </div>
+    <div class="cover-footer">
+      Dokumen ini menetapkan spesifikasi minimum dan rekomendasi perangkat
+      keras untuk operasional aplikasi BSN Lacak — siap dilampirkan ke
+      proposal procurement infrastruktur.
+    </div>
+  </div>
+
+  <div class="body">
+    <p><strong>Sistem Tracking Penagihan BSN Lacak</strong>
+Bank Syariah Nasional</p>
+<hr>
+<h2>Ringkasan Eksekutif</h2>
+<p>Dokumen ini menetapkan spesifikasi minimum dan rekomendasi untuk tiga
+komponen perangkat keras yang menopang operasional aplikasi <strong>BSN Lacak</strong> —
+sistem tracking penagihan berbasis web + mobile PWA:</p>
+<ol>
+<li><strong>Server backend</strong> (host API + database + reverse proxy)</li>
+<li><strong>Workstation supervisor/admin</strong> (akses dashboard web)</li>
+<li><strong>Device petugas lapangan</strong> (kolektor + aplikator laporan kunjungan)</li>
+</ol>
+<p>Spek dirancang untuk operasional 1 cabang dengan 1 supervisor dan
+6 petugas lapangan, dengan jalur scaling jelas hingga skala enterprise
+multi-cabang.</p>
+<hr>
+<h2>1. Arsitektur Sistem</h2>
+<pre><code>        ┌─────────────────────────────────────────────────┐
+        │              Internet (HTTPS / TLS)             │
+        └─────────────────────────────────────────────────┘
+              │                                  │
+              ▼                                  ▼
+  ┌───────────────────────┐         ┌──────────────────────┐
+  │  Laptop / PC          │         │  HP Petugas (PWA)    │
+  │  Supervisor &amp; Admin   │         │  GPS + Kamera        │
+  │  Browser modern       │         │  Online + offline    │
+  └───────────────────────┘         └──────────────────────┘
+              │                                  │
+              └──────────────┬───────────────────┘
+                             ▼
+               ┌──────────────────────────────┐
+               │       SERVER PRODUKSI        │
+               │  ┌────────────────────────┐  │
+               │  │ Caddy (Reverse Proxy)  │  │
+               │  └────────────────────────┘  │
+               │  ┌────────────────────────┐  │
+               │  │ Node API + SSE worker  │  │
+               │  └────────────────────────┘  │
+               │  ┌────────────────────────┐  │
+               │  │ PostgreSQL 16          │  │
+               │  └────────────────────────┘  │
+               │  ┌────────────────────────┐  │
+               │  │ File storage (foto)    │  │
+               │  └────────────────────────┘  │
+               └──────────────────────────────┘
+</code></pre>
+<p>Komunikasi end-to-end melewati TLS (Let&#39;s Encrypt) — tidak ada port
+non-HTTPS yang terbuka ke publik. PWA petugas dapat queue laporan saat
+offline dan auto-sync ketika koneksi pulih.</p>
+<hr>
+<h2>2. Spesifikasi Server Backend</h2>
+<p>Pilih tier yang sesuai dengan skala operasional. Migrasi antar tier
+non-disruptif (Postgres dump-restore + Docker compose redeploy).</p>
+<h3>2.1 Tier per skala</h3>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>RAM</th>
+<th>vCPU</th>
+<th>Disk</th>
+<th>Bandwidth bulanan</th>
+<th>Cocok untuk</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Demo / Pilot</strong></td>
+<td>2 GB</td>
+<td>1-2 core</td>
+<td>30 GB SSD</td>
+<td>1 TB</td>
+<td>≤ 10 petugas aktif, 1 cabang, &lt; 500 nasabah. POC + uji coba.</td>
+</tr>
+<tr>
+<td><strong>Operasional Kecil</strong></td>
+<td>4 GB</td>
+<td>2 core</td>
+<td>60 GB SSD</td>
+<td>2 TB</td>
+<td>10–50 petugas, 1–3 cabang, 500–2.000 nasabah. <strong>Sweet spot</strong> untuk satu kantor cabang.</td>
+</tr>
+<tr>
+<td><strong>Skala Menengah</strong></td>
+<td>8 GB</td>
+<td>4 core</td>
+<td>120 GB SSD + storage terpisah</td>
+<td>5 TB</td>
+<td>50–200 petugas, multi-cabang, 5.000+ nasabah. Pertimbangkan DB pada instance terpisah.</td>
+</tr>
+<tr>
+<td><strong>Enterprise</strong></td>
+<td>16+ GB</td>
+<td>8+ core</td>
+<td>Database terpisah + S3-compatible storage untuk foto</td>
+<td>Private link / unlimited</td>
+<td>200+ petugas. Database dan object storage harus terpisah dari API.</td>
+</tr>
+</tbody></table>
+<h3>2.2 Software prerequisites</h3>
+<table>
+<thead>
+<tr>
+<th>Komponen</th>
+<th>Versi minimum</th>
+<th>Catatan</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>OS Linux</td>
+<td>Ubuntu 22.04 LTS / Debian 12 / RHEL 9</td>
+<td>Direkomendasikan Ubuntu 24.04 LTS</td>
+</tr>
+<tr>
+<td>Docker Engine</td>
+<td>24.0</td>
+<td>Wajib untuk container runtime</td>
+</tr>
+<tr>
+<td>Docker Compose</td>
+<td>v2.20</td>
+<td>Plugin Docker resmi</td>
+</tr>
+<tr>
+<td>Node.js</td>
+<td>20.0 LTS</td>
+<td>Untuk build SPA + run API native</td>
+</tr>
+<tr>
+<td>PostgreSQL</td>
+<td>16</td>
+<td>Database utama (container atau native)</td>
+</tr>
+<tr>
+<td>Caddy</td>
+<td>2.7+</td>
+<td>Reverse proxy + TLS Let&#39;s Encrypt otomatis</td>
+</tr>
+<tr>
+<td>Domain + DNS</td>
+<td>A-record terpropagasi</td>
+<td>DNS provider apapun</td>
+</tr>
+</tbody></table>
+<h3>2.3 Footprint riil (operasional kecil)</h3>
+<p>Pengukuran dari deployment aktual:</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>RAM idle</th>
+<th>RAM peak</th>
+<th>Catatan</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>API container (Node)</td>
+<td>80 MB</td>
+<td>250 MB</td>
+<td>Scale linear ke concurrent request</td>
+</tr>
+<tr>
+<td>PostgreSQL</td>
+<td>150 MB</td>
+<td>350 MB</td>
+<td>Tergantung shared_buffers config</td>
+</tr>
+<tr>
+<td>Caddy reverse proxy</td>
+<td>30 MB</td>
+<td>80 MB</td>
+<td>Termasuk TLS termination</td>
+</tr>
+<tr>
+<td><strong>Total baseline</strong></td>
+<td><strong>±260 MB</strong></td>
+<td><strong>±680 MB</strong></td>
+<td>Per VPS</td>
+</tr>
+</tbody></table>
+<p><strong>Storage growth proyeksi</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Komponen</th>
+<th>Pertumbuhan harian</th>
+<th>Per tahun</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Database PostgreSQL</td>
+<td>5–20 MB</td>
+<td>2–7 GB</td>
+</tr>
+<tr>
+<td>Foto kunjungan (rata 1.5 MB × 2 foto × 100 visit/hari)</td>
+<td>±300 MB</td>
+<td>±110 GB</td>
+</tr>
+<tr>
+<td>Audit log</td>
+<td>5–10 MB</td>
+<td>2–4 GB</td>
+</tr>
+<tr>
+<td>Backup harian</td>
+<td>±50 MB</td>
+<td>18 GB (retensi 30 hari)</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>Foto kunjungan adalah konsumsi disk terbesar. Sejak operasional 12
+bulan, alokasi storage minimum <strong>150 GB</strong>. Tier Skala Menengah dan
+Enterprise wajib pakai object storage terpisah (S3-compatible).</p>
+</blockquote>
+<h3>2.4 Rekomendasi vendor VPS</h3>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Plan</th>
+<th>Harga estimasi</th>
+<th>Catatan</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Domainesia VPS Reguler</strong></td>
+<td>4 GB / 2 vCPU / 60 GB</td>
+<td>±Rp 250.000 / bulan</td>
+<td>Cocok demo + 1 cabang. Lokasi data center Indonesia.</td>
+</tr>
+<tr>
+<td><strong>Niagahoster Cloud VPS</strong></td>
+<td>4 GB / 2 vCPU / 80 GB</td>
+<td>±Rp 300.000 / bulan</td>
+<td>Support 24/7 Indonesia</td>
+</tr>
+<tr>
+<td><strong>DigitalOcean</strong></td>
+<td>Basic Droplet 4 GB</td>
+<td>$24 / bulan (±Rp 380.000)</td>
+<td>Performa konsisten, region Singapore</td>
+</tr>
+<tr>
+<td><strong>AWS EC2</strong></td>
+<td>t3.medium (4 GB / 2 vCPU)</td>
+<td>$30+ / bulan</td>
+<td>Untuk skala menengah ke atas, terintegrasi dengan RDS Postgres + S3</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>3. Spesifikasi Workstation Supervisor &amp; Admin</h2>
+<p>Dashboard web men-render data tabel, chart trend, dan peta MapTiler
+dengan WebGL2. Browser modern adalah syarat utama; spek hardware moderat.</p>
+<h3>3.1 Hardware</h3>
+<table>
+<thead>
+<tr>
+<th>Komponen</th>
+<th>Minimum</th>
+<th>Direkomendasikan</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Prosesor</strong></td>
+<td>Intel Core i3 generasi 6 / AMD Ryzen 3 / Apple M1</td>
+<td>Intel Core i5 generasi 10+ / AMD Ryzen 5 / Apple M2</td>
+</tr>
+<tr>
+<td><strong>RAM</strong></td>
+<td>4 GB</td>
+<td>8 GB</td>
+</tr>
+<tr>
+<td><strong>Storage</strong></td>
+<td>128 GB SSD</td>
+<td>256 GB SSD</td>
+</tr>
+<tr>
+<td><strong>Layar</strong></td>
+<td>13&quot; 1366×768</td>
+<td>14&quot;+ 1920×1080 (tabel data lebih luas)</td>
+</tr>
+<tr>
+<td><strong>Konektivitas</strong></td>
+<td>Wi-Fi / Ethernet 100 Mbps</td>
+<td>Wi-Fi 5 / Ethernet 1 Gbps</td>
+</tr>
+</tbody></table>
+<h3>3.2 Software</h3>
+<table>
+<thead>
+<tr>
+<th>Komponen</th>
+<th>Minimum</th>
+<th>Direkomendasikan</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>OS</strong></td>
+<td>Windows 10 / macOS 11 / Linux Ubuntu 22.04</td>
+<td>Windows 11 / macOS 13+ / Ubuntu 24.04</td>
+</tr>
+<tr>
+<td><strong>Browser</strong></td>
+<td>Chrome 100 / Firefox 100 / Edge 100 / Safari 16</td>
+<td>Chrome / Edge versi terbaru</td>
+</tr>
+<tr>
+<td><strong>Internet</strong></td>
+<td>5 Mbps stabil</td>
+<td>10+ Mbps</td>
+</tr>
+</tbody></table>
+<h3>3.3 Fitur browser yang dipakai aplikasi</h3>
+<ul>
+<li>WebGL2 (rendering peta MapTiler)</li>
+<li>Service Worker + Push API (notifikasi review &amp; escalation)</li>
+<li>localStorage + IndexedDB (preferensi UI + cache query)</li>
+<li>Server-Sent Events (realtime tracking petugas)</li>
+<li>Fetch + WebSocket (komunikasi API)</li>
+</ul>
+<h3>3.4 Browser yang TIDAK didukung</h3>
+<ul>
+<li>Internet Explorer 11 (tidak ada WebGL2 + ES2020)</li>
+<li>Chrome / Firefox pre-2020 (kekurangan API kunci)</li>
+<li>Browser custom di mesin lawas</li>
+</ul>
+<h3>3.5 Rekomendasi laptop</h3>
+<table>
+<thead>
+<tr>
+<th>Kategori</th>
+<th>Model contoh</th>
+<th>Harga estimasi</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Entry</strong></td>
+<td>Acer Aspire 3 (Ryzen 3, 8 GB)</td>
+<td>Rp 6–8 juta</td>
+</tr>
+<tr>
+<td><strong>Optimal</strong></td>
+<td>Lenovo ThinkBook 14 (i5 / Ryzen 5, 8 GB)</td>
+<td>Rp 8–10 juta</td>
+</tr>
+<tr>
+<td><strong>Premium</strong></td>
+<td>MacBook Air M2 (8 GB)</td>
+<td>Rp 14–18 juta</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>4. Spesifikasi Device Petugas Lapangan</h2>
+<p>Aplikasi mobile berjalan sebagai PWA (Progressive Web App) di browser.
+GPS dan kamera adalah komponen kritis. Battery life menentukan jam
+operasional.</p>
+<h3>4.1 Hardware</h3>
+<table>
+<thead>
+<tr>
+<th>Komponen</th>
+<th>Minimum</th>
+<th>Direkomendasikan</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Prosesor</strong></td>
+<td>Snapdragon 4-series / Mediatek Helio G35</td>
+<td>Snapdragon 6-series / Helio G99</td>
+</tr>
+<tr>
+<td><strong>RAM</strong></td>
+<td>2 GB</td>
+<td>3+ GB</td>
+</tr>
+<tr>
+<td><strong>Storage free</strong></td>
+<td>1 GB (untuk PWA cache + antrian offline)</td>
+<td>4+ GB</td>
+</tr>
+<tr>
+<td><strong>Layar</strong></td>
+<td>5.0&quot; HD 720×1280</td>
+<td>5.5&quot;+ Full HD 1080×1920</td>
+</tr>
+<tr>
+<td><strong>Kamera belakang</strong></td>
+<td>5 MP autofocus + flash</td>
+<td>8+ MP, autofocus, HDR</td>
+</tr>
+<tr>
+<td><strong>GPS</strong></td>
+<td>A-GPS aktif, support precise location</td>
+<td>A-GPS + GLONASS + Galileo (akurasi &lt; 10 m outdoor)</td>
+</tr>
+<tr>
+<td><strong>Baterai</strong></td>
+<td>3.000 mAh + powerbank cadangan wajib</td>
+<td>4.500+ mAh</td>
+</tr>
+<tr>
+<td><strong>Konektivitas</strong></td>
+<td>4G LTE Band 1/3/5/8 (operator Indonesia)</td>
+<td>4G LTE / 5G</td>
+</tr>
+</tbody></table>
+<h3>4.2 Software</h3>
+<table>
+<thead>
+<tr>
+<th>Komponen</th>
+<th>Minimum</th>
+<th>Direkomendasikan</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>OS Android</strong></td>
+<td>Android 8.0 (Oreo)</td>
+<td>Android 13+</td>
+</tr>
+<tr>
+<td><strong>Chrome Android</strong></td>
+<td>versi 90+</td>
+<td>versi terbaru</td>
+</tr>
+<tr>
+<td><strong>OS iOS</strong></td>
+<td>iOS 14</td>
+<td>iOS 16+</td>
+</tr>
+<tr>
+<td><strong>Safari iOS</strong></td>
+<td>versi 14+</td>
+<td>versi terbaru</td>
+</tr>
+<tr>
+<td><strong>Google Play Services</strong></td>
+<td>terinstall + ter-update</td>
+<td>(untuk push notification)</td>
+</tr>
+</tbody></table>
+<h3>4.3 Permission yang wajib di-grant</h3>
+<p>Sebelum hand-off device ke petugas, pastikan keenam izin berikut sudah
+diaktifkan:</p>
+<table>
+<thead>
+<tr>
+<th>Izin</th>
+<th>Lokasi setting</th>
+<th>Wajib</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>☑ GPS / Location service device-level</td>
+<td>Settings → Location → ON, mode &quot;High accuracy&quot;</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>☑ Browser allow precise location untuk domain aplikasi</td>
+<td>Site settings → Location → Allow + <strong>Precise</strong> (Android 12+)</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>☑ Browser allow camera</td>
+<td>Site settings → Camera → Allow</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>☑ Browser allow notifications</td>
+<td>Site settings → Notifications → Allow</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>☑ PWA terinstall ke home screen</td>
+<td>Browser menu → &quot;Add to Home Screen&quot;</td>
+<td>Direkomendasikan</td>
+</tr>
+<tr>
+<td>☑ Battery saver tidak agresif</td>
+<td>Settings → Battery → tidak hemat untuk browser</td>
+<td>Direkomendasikan</td>
+</tr>
+</tbody></table>
+<h3>4.4 Rekomendasi HP</h3>
+<table>
+<thead>
+<tr>
+<th>Kategori</th>
+<th>Model contoh</th>
+<th>Harga estimasi</th>
+<th>Catatan</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Entry layak</strong></td>
+<td>Infinix Hot 50i / Realme C61</td>
+<td>Rp 1.5–1.8 juta</td>
+<td>RAM 4 GB, Android 14</td>
+</tr>
+<tr>
+<td><strong>Optimal</strong></td>
+<td>Samsung Galaxy A15 / Xiaomi Redmi 13C</td>
+<td>Rp 2.0–2.5 juta</td>
+<td>RAM 6 GB, kamera 50 MP, baterai 5000 mAh</td>
+</tr>
+<tr>
+<td><strong>Premium</strong></td>
+<td>Samsung Galaxy A55 5G</td>
+<td>Rp 5–6 juta</td>
+<td>Performa &amp; build quality jangka panjang</td>
+</tr>
+</tbody></table>
+<h3>4.5 Aksesori wajib</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Estimasi harga</th>
+<th>Tujuan</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Powerbank</strong> ≥ 10.000 mAh</td>
+<td>Rp 200–350 rb</td>
+<td>Shift penuh 8 jam dengan GPS aktif konsumsi tinggi</td>
+</tr>
+<tr>
+<td><strong>Holder motor / mobil</strong></td>
+<td>Rp 50–150 rb</td>
+<td>Akses cepat saat di kendaraan, navigasi rute</td>
+</tr>
+<tr>
+<td><strong>Charger mobil USB</strong></td>
+<td>Rp 50–100 rb</td>
+<td>Top-up baterai antar kunjungan</td>
+</tr>
+<tr>
+<td><strong>Pelindung layar + casing tahan banting</strong></td>
+<td>Rp 100–200 rb</td>
+<td>HP lapangan sering jatuh, melindungi investasi</td>
+</tr>
+</tbody></table>
+<h3>4.6 Device yang TIDAK direkomendasikan</h3>
+<ul>
+<li>HP dengan RAM 1 GB → PWA + MapLibre OOM crash sering</li>
+<li>HP Android &lt; 8.0 → Chrome 90+ tidak tersedia</li>
+<li>HP tanpa Google Play Services (grey market China) → push notification gagal</li>
+<li>Feature phone / tablet kecil tanpa GPS chip native</li>
+</ul>
+<hr>
+<h2>5. Estimasi Biaya CapEx</h2>
+<h3>5.1 Setup 1 cabang (1 supervisor + 6 petugas)</h3>
+<table>
+<thead>
+<tr>
+<th>Komponen</th>
+<th>Jumlah</th>
+<th>Harga satuan</th>
+<th>Subtotal</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Server VPS (4 GB) — biaya bulanan</td>
+<td>1</td>
+<td>Rp 300.000 / bln</td>
+<td>Rp 3.600.000 / tahun (OpEx)</td>
+</tr>
+<tr>
+<td>Laptop supervisor (Optimal tier)</td>
+<td>1</td>
+<td>Rp 9.000.000</td>
+<td>Rp 9.000.000</td>
+</tr>
+<tr>
+<td>HP petugas (Optimal tier)</td>
+<td>6</td>
+<td>Rp 2.200.000</td>
+<td>Rp 13.200.000</td>
+</tr>
+<tr>
+<td>Powerbank petugas</td>
+<td>6</td>
+<td>Rp 250.000</td>
+<td>Rp 1.500.000</td>
+</tr>
+<tr>
+<td>Holder motor + charger + casing</td>
+<td>6 set</td>
+<td>Rp 250.000</td>
+<td>Rp 1.500.000</td>
+</tr>
+<tr>
+<td><strong>Total CapEx 1 cabang</strong></td>
+<td></td>
+<td></td>
+<td><strong>±Rp 25.200.000</strong></td>
+</tr>
+<tr>
+<td>OpEx server tahunan</td>
+<td></td>
+<td></td>
+<td><strong>±Rp 3.600.000 / tahun</strong></td>
+</tr>
+</tbody></table>
+<h3>5.2 Skala 3 cabang (1 supervisor per cabang + total 18 petugas)</h3>
+<table>
+<thead>
+<tr>
+<th>Komponen</th>
+<th>Jumlah</th>
+<th>Subtotal</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Server VPS (8 GB skala menengah) tahunan</td>
+<td>1</td>
+<td>Rp 6.000.000</td>
+</tr>
+<tr>
+<td>Laptop supervisor</td>
+<td>3</td>
+<td>Rp 27.000.000</td>
+</tr>
+<tr>
+<td>HP + aksesori petugas (18 set)</td>
+<td>18</td>
+<td>Rp 48.600.000</td>
+</tr>
+<tr>
+<td><strong>Total CapEx 3 cabang</strong></td>
+<td></td>
+<td><strong>±Rp 75.600.000</strong></td>
+</tr>
+<tr>
+<td>OpEx server tahunan</td>
+<td></td>
+<td><strong>±Rp 6.000.000 / tahun</strong></td>
+</tr>
+</tbody></table>
+<h3>5.3 Catatan biaya</h3>
+<ul>
+<li><strong>CapEx</strong> (Capital Expenditure): biaya pembelian satu kali (laptop, HP, aksesori).</li>
+<li><strong>OpEx</strong> (Operating Expenditure): biaya berulang (sewa server, MapTiler tier free 100k tile loads/bulan sudah cukup untuk demo; tier berbayar mulai $25/bulan kalau traffic peta intensif).</li>
+<li>Biaya pengembangan &amp; integrasi software tidak masuk tabel — dijabarkan terpisah pada proposal teknis.</li>
+<li>Biaya pelatihan supervisor + petugas (onboarding + workshop) belum termasuk.</li>
+</ul>
+<hr>
+<h2>6. Pertimbangan Implementasi</h2>
+<h3>6.1 Roll-out bertahap (direkomendasikan)</h3>
+<table>
+<thead>
+<tr>
+<th>Fase</th>
+<th>Durasi</th>
+<th>Lingkup</th>
+<th>Tujuan</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Fase 1 — Pilot</strong></td>
+<td>2 minggu</td>
+<td>1 cabang × 2 petugas</td>
+<td>Uji coba alur, identifikasi bug, training internal</td>
+</tr>
+<tr>
+<td><strong>Fase 2 — Cabang penuh</strong></td>
+<td>1 bulan</td>
+<td>1 cabang × seluruh petugas</td>
+<td>Validasi skala operasional, finalisasi SOP</td>
+</tr>
+<tr>
+<td><strong>Fase 3 — Multi-cabang</strong></td>
+<td>2-3 bulan</td>
+<td>Roll-out cabang per cabang</td>
+<td>Replikasi sukses + iterasi training</td>
+</tr>
+</tbody></table>
+<h3>6.2 SLA &amp; dukungan</h3>
+<ul>
+<li><strong>Backup database</strong>: harian otomatis, retensi 30 hari (sudah terkonfigurasi di systemd timer).</li>
+<li><strong>Monitoring uptime</strong>: tools eksternal (UptimeRobot gratis) cek endpoint <code>/api/health/ready</code> setiap 5 menit.</li>
+<li><strong>Disaster recovery</strong>: dokumentasi prosedur restore dari backup tersedia di <code>OPERATIONS.md</code> repo.</li>
+<li><strong>Update aplikasi</strong>: deploy zero-downtime via Docker compose, auto-update service worker PWA.</li>
+</ul>
+<h3>6.3 Keamanan dasar (sudah terkonfigurasi)</h3>
+<ul>
+<li>TLS 1.3 Let&#39;s Encrypt auto-renew</li>
+<li>JWT signed token dengan refresh rotation</li>
+<li>Bcrypt password hashing (cost 12)</li>
+<li>Audit log untuk semua mutasi data</li>
+<li>Rate limiting pada endpoint login + API</li>
+<li>CSP + HSTS + X-Frame-Options headers</li>
+</ul>
+<hr>
+<h2>Lampiran A: Glosarium</h2>
+<table>
+<thead>
+<tr>
+<th>Istilah</th>
+<th>Definisi</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>PWA</strong></td>
+<td>Progressive Web App — aplikasi web yang bisa di-install seperti aplikasi native ke home screen</td>
+</tr>
+<tr>
+<td><strong>SSE</strong></td>
+<td>Server-Sent Events — channel realtime satu arah dari server ke browser untuk update tracking petugas</td>
+</tr>
+<tr>
+<td><strong>A-GPS</strong></td>
+<td>Assisted GPS — GPS yang mempercepat first-fix dengan bantuan data jaringan seluler</td>
+</tr>
+<tr>
+<td><strong>WebGL2</strong></td>
+<td>Web Graphics Library 2 — API browser untuk render grafis akselerasi GPU, dipakai oleh peta MapLibre</td>
+</tr>
+<tr>
+<td><strong>CapEx / OpEx</strong></td>
+<td>Capital Expenditure (beli satu kali) vs Operating Expenditure (biaya berulang)</td>
+</tr>
+<tr>
+<td><strong>TLS</strong></td>
+<td>Transport Layer Security — enkripsi koneksi HTTPS</td>
+</tr>
+<tr>
+<td><strong>Backend</strong></td>
+<td>Sisi server yang menangani logika bisnis + database</td>
+</tr>
+<tr>
+<td><strong>Frontend</strong></td>
+<td>Sisi browser/aplikasi yang menampilkan UI ke pengguna</td>
+</tr>
+</tbody></table>
+<h2>Lampiran B: Referensi dokumen lain</h2>
+<ul>
+<li><code>README.md</code> — overview proyek dan quick start</li>
+<li><code>DEPLOYMENT.md</code> — runbook deploy production lengkap</li>
+<li><code>OPERATIONS.md</code> — manual operasional on-call &amp; SLA</li>
+<li><code>MANUAL_PENGGUNAAN.md</code> — panduan pengguna supervisor/admin</li>
+<li><code>deploy/domainesia-vps/DEPLOY-domainesia-vps.md</code> — runbook spesifik Domainesia VPS</li>
+</ul>
+<hr>
+<p><em>Dokumen ini di-generate dari sumber Markdown dan dapat diregenerasi
+kapan saja. Versi PDF &amp; HTML otomatis ter-update saat ada perubahan
+spesifikasi.</em></p>
+
+  </div>
+</body>
+</html>

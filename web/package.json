@@ -14,7 +14,8 @@
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium",
     "manual:capture": "CAPTURE_MANUAL=1 playwright test e2e/manual-capture.spec.ts --workers=1",
-    "manual:render": "node scripts/render-manual.mjs"
+    "manual:render": "node scripts/render-manual.mjs",
+    "spek:render": "node scripts/render-spek.mjs"
   },
   "dependencies": {
     "@sentry/react": "^10.58.0",
