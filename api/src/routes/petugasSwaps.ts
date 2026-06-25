@@ -203,13 +203,26 @@ router.patch('/:id/decision', requireRole('SUPERVISOR', 'ADMIN'), async (req, re
 
 router.delete('/:id', async (req, res) => {
   const id = String(req.params.id);
-  const existing = await prisma.petugasSwapRequest.findUnique({ where: { id } });
+  // Include proposer.branchId untuk cross-branch tenant isolation check.
+  // Tanpa ini, SUPERVISOR cabang B bisa CANCEL swap pending milik cabang A
+  // (IDOR — petugas/swap state ditulis dari luar tenant).
+  const existing = await prisma.petugasSwapRequest.findUnique({
+    where: { id },
+    include: { proposer: { select: { branchId: true } } },
+  });
   if (!existing) return res.status(404).json({ error: 'not_found' });
   if (existing.status !== 'PENDING') return res.status(409).json({ error: 'not_pending' });
 
   if (req.user?.role === 'PETUGAS') {
     const me = req.user.petugasId;
     if (existing.proposerId !== me && existing.counterpartId !== me) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+  } else {
+    // SUPERVISOR di-scope ke branch sendiri. ADMIN → scopedBranchId
+    // return null → guard short-circuit, ADMIN tetap bisa cancel any.
+    const branchId = scopedBranchId(req);
+    if (branchId && existing.proposer.branchId !== branchId) {
       return res.status(403).json({ error: 'forbidden' });
     }
   }

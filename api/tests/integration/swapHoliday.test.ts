@@ -126,6 +126,32 @@ d('petugas swap (DT) + holiday-aware reminders (DU)', () => {
     expect(row!.status).toBe('CANCELLED');
   });
 
+  // Regression: SUPERVISOR cabang lain TIDAK boleh cancel swap milik cabang
+  // tetangga (IDOR fix). Sebelumnya DELETE /:id tidak cek branch scope untuk
+  // SUPERVISOR/ADMIN → cross-tenant state mutation.
+  it('cross-branch SUPERVISOR cannot cancel another branch swap (IDOR fix)', async () => {
+    const mine = await prisma.nasabah.findFirst({ where: { petugasId: s.petugasAId } });
+    const theirs = await prisma.nasabah.findFirst({ where: { petugasId: s.otherPetugasAId } });
+    const propose = await request(app).post('/api/petugas-swaps')
+      .set('Authorization', `Bearer ${petATok}`)
+      .send({ proposerNasabahId: mine!.id, counterpartNasabahId: theirs!.id, reason: 'r' });
+    expect(propose.status).toBe(201);
+
+    const supBTok = await login(app, s.supervisorBUsername, s.password);
+    const blocked = await request(app).delete(`/api/petugas-swaps/${propose.body.id}`)
+      .set('Authorization', `Bearer ${supBTok}`);
+    expect(blocked.status).toBe(403);
+
+    // Sanity: row tetap PENDING — tidak ke-CANCEL meskipun ada attempt.
+    const row = await prisma.petugasSwapRequest.findUnique({ where: { id: propose.body.id } });
+    expect(row!.status).toBe('PENDING');
+
+    // Own branch supervisor masih bisa cancel.
+    const allowed = await request(app).delete(`/api/petugas-swaps/${propose.body.id}`)
+      .set('Authorization', `Bearer ${supATok}`);
+    expect(allowed.status).toBe(200);
+  });
+
   // --- DU ---------------------------------------------------------------
 
   it('stale-nasabah sweep skips on national holiday', async () => {
