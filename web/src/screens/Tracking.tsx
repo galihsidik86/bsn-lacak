@@ -83,11 +83,26 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
   // GPS fix, diurutkan kronologis. Off by default supaya map tidak terlalu
   // ramai untuk supervisor yang baru buka layar.
   const [showJejak, setShowJejak] = useState(false);
-  // Toggle "Trail Pergerakan": polyline dari semua PetugasPosition hari
-  // ini (00:00 → sekarang). Beda dari jejak kunjungan — ini path GPS
-  // mentah, bukan titik laporan. Off by default.
+  // Toggle "Trail Pergerakan": polyline dari semua PetugasPosition pada
+  // tanggal yang dipilih (00:00 → 23:59:59 local). Beda dari jejak
+  // kunjungan — ini path GPS mentah, bukan titik laporan. Off by default.
   const [showTrail, setShowTrail] = useState(false);
   const [trail, setTrail] = useState<Array<{ lat: number; lng: number; ts: number }>>([]);
+  // Default trailDate = hari ini (YYYY-MM-DD local timezone). Supervisor
+  // bisa pilih tanggal historis untuk audit pergerakan kemarin / minggu
+  // lalu. Tanggal masa depan diizinkan tapi datanya pasti kosong.
+  const [trailDate, setTrailDate] = useState<string>(() => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
+  const todayKey = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+  const trailIsToday = trailDate === todayKey;
   useEffect(() => { if (!sel && PETUGAS[0]) setSel(PETUGAS[0].id); }, [sel, PETUGAS]);
 
   const p = petugasById(sel);
@@ -121,8 +136,9 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
     return () => { cancelled = true; };
   }, []);
 
-  // Fetch trail pergerakan ketika toggle on + petugas berubah. Auto-refresh
-  // tiap 30 detik supaya path tetap up-to-date saat petugas masih jalan.
+  // Fetch trail pergerakan ketika toggle on + petugas / tanggal berubah.
+  // Auto-refresh tiap 30 detik HANYA saat melihat hari ini — tanggal
+  // historis tidak akan berubah, jadi polling cuma membakar API.
   useEffect(() => {
     if (!showTrail || !sel) { setTrail([]); return; }
     const tok = tokenStore.get();
@@ -131,18 +147,30 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
     const headers: Record<string, string> = { Authorization: `Bearer ${tok}` };
     const override = useAuth.getState().branchOverride;
     if (override) headers['x-branch-id'] = override;
+
+    // Compute since (00:00) dan until (23:59:59.999) local timezone untuk
+    // trailDate. ISO konversi dilakukan via Date constructor + toISOString
+    // supaya backend dapat UTC instant yang sesuai.
+    const [y, m, d] = trailDate.split('-').map(Number);
+    const sinceLocal = new Date(y, m - 1, d, 0, 0, 0, 0);
+    const untilLocal = new Date(y, m - 1, d, 23, 59, 59, 999);
+    const params = {
+      since: sinceLocal.toISOString(),
+      until: untilLocal.toISOString(),
+    };
     const fetchTrail = () => {
       void axios.get<{ points: Array<{ lat: number; lng: number; ts: number }> }>(
         `${BASE}/petugas/${sel}/positions/trail`,
-        { withCredentials: true, headers },
+        { withCredentials: true, headers, params },
       ).then(r => {
         if (!cancelled) setTrail(r.data.points);
       }).catch(() => { if (!cancelled) setTrail([]); });
     };
     fetchTrail();
+    if (!trailIsToday) return () => { cancelled = true; };
     const iv = setInterval(fetchTrail, 30_000);
     return () => { cancelled = true; clearInterval(iv); };
-  }, [showTrail, sel]);
+  }, [showTrail, sel, trailDate, trailIsToday]);
 
   // Routes are rebuilt whenever the petugas's live fix changes so the order
   // updates as they move — same nearest-neighbor algorithm Mobile uses.
@@ -218,6 +246,41 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
             <input type="checkbox" checked={showTrail} onChange={e => setShowTrail(e.target.checked)} />
             Tampilkan trail pergerakan
           </label>
+          {showTrail && (
+            <div style={{ marginTop: 6, marginLeft: 22, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div className="center gap-2" style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>
+                <span>Tanggal:</span>
+                <input
+                  type="date"
+                  value={trailDate}
+                  max={todayKey}
+                  onChange={e => setTrailDate(e.target.value || todayKey)}
+                  aria-label="Pilih tanggal trail pergerakan"
+                  style={{
+                    flex: 1, padding: '4px 6px', fontSize: 12,
+                    border: '1px solid var(--line)', borderRadius: 6,
+                    background: 'var(--surface)', color: 'var(--ink)',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+              <div className="center gap-2" style={{ fontSize: 10.5, color: trailIsToday ? 'var(--accent-ink)' : 'var(--col-dpk)', fontWeight: 700 }}>
+                {trailIsToday ? '🟢 Live — refresh 30 dtk'
+                  : `📅 Historis — ${trail.length} titik`}
+                {!trailIsToday && (
+                  <button type="button"
+                    onClick={() => setTrailDate(todayKey)}
+                    style={{
+                      marginLeft: 'auto', border: 'none', background: 'transparent',
+                      color: 'var(--accent)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                      padding: 0,
+                    }}>
+                    Kembali ke hari ini
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
         <div style={{ overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {PETUGAS.map(pt => {
