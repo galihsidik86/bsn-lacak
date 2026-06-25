@@ -286,6 +286,7 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
           {PETUGAS.map(pt => {
             const active = pt.id === sel;
             const pct = Math.round(pt.terkumpul / pt.target * 100);
+            const live = livePositions[pt.id];
             return (
               <button key={pt.id} onClick={() => setSel(pt.id)}
                 style={{
@@ -306,6 +307,7 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
                     <span className="num" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-3)' }}>{pct}%</span>
                   </div>
                   <div className="muted" style={{ fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pt.wilayah}</div>
+                  <PingFreshness ts={live?.ts} />
                   <div className="progress" style={{ height: 5, marginTop: 6 }}>
                     <span style={{ width: pct + '%', background: `oklch(0.58 0.12 ${pt.hue})` }} />
                   </div>
@@ -387,6 +389,47 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Indicator "kapan ping terakhir" — supervisor langsung tahu kalau trail
+// bolong karena petugas vs karena bug sistem. Re-render tiap 30 detik
+// supaya angka selalu refresh tanpa harus tunggu data baru.
+function PingFreshness({ ts }: { ts: number | undefined }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(iv);
+  }, []);
+  if (!ts) {
+    return (
+      <div style={{ fontSize: 10.5, color: 'var(--ink-4)', fontWeight: 600, marginTop: 3 }}>
+        ⚫ Belum ada ping hari ini
+      </div>
+    );
+  }
+  const ageMin = Math.max(0, Math.round((now - ts) / 60_000));
+  let color = 'var(--col-lancar)';
+  let icon = '🟢';
+  let label: string;
+  if (ageMin < 2) { label = 'Live · baru saja'; }
+  else if (ageMin < 10) { label = `Live · ${ageMin} menit lalu`; }
+  else if (ageMin < 30) {
+    color = 'oklch(0.5 0.14 75)'; icon = '🟡';
+    label = `Update ${ageMin} menit lalu`;
+  } else if (ageMin < 60) {
+    color = 'oklch(0.5 0.14 75)'; icon = '🟡';
+    label = `Stale · ${ageMin} menit lalu`;
+  } else {
+    color = 'var(--col-macet)'; icon = '🔴';
+    const h = Math.floor(ageMin / 60);
+    const m = ageMin % 60;
+    label = `Stale · ${h}j${m > 0 ? ' ' + m + 'mnt' : ''} lalu`;
+  }
+  return (
+    <div style={{ fontSize: 10.5, color, fontWeight: 700, marginTop: 3 }}>
+      {icon} {label}
     </div>
   );
 }

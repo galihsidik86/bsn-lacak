@@ -25,6 +25,36 @@ interface LastSent {
   ts: number;
 }
 
+// Retry queue untuk ping yang gagal POST (offline, network error, timeout).
+// localStorage cukup karena payload kecil + frekuensi tinggi; IDB overkill.
+// Setiap item drop saat sukses replay atau saat >24 jam (basi, supervisor
+// tidak butuh trail GPS hari kemarin yang baru sampai sekarang).
+interface QueuedPing { lat: number; lng: number; accuracy: number | null; ts: number }
+const QUEUE_KEY = 'bsn-lacak:position-queue';
+const QUEUE_MAX = 500; // ±8 jam jam kerja × 60 ping/jam max — cap supaya tidak overflow storage.
+const QUEUE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function loadQueue(): QueuedPing[] {
+  try {
+    const raw = localStorage.getItem(QUEUE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as QueuedPing[];
+    const cutoff = Date.now() - QUEUE_MAX_AGE_MS;
+    return Array.isArray(parsed) ? parsed.filter(p => p.ts >= cutoff) : [];
+  } catch { return []; }
+}
+function saveQueue(q: QueuedPing[]) {
+  try {
+    const trimmed = q.length > QUEUE_MAX ? q.slice(-QUEUE_MAX) : q;
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(trimmed));
+  } catch { /* quota — drop silently, real-time pings prioritas */ }
+}
+function enqueue(p: QueuedPing) {
+  const q = loadQueue();
+  q.push(p);
+  saveQueue(q);
+}
+
 // Equirectangular approximation — accurate enough at metro-scale (~50m).
 function distMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371_000;
@@ -98,10 +128,45 @@ export function useGeolocationStream({
         );
         lastSent.current = { lat, lng, ts: Date.now() };
       } catch {
-        // Swallow — next sample will retry. Avoid burning battery on a tight
-        // failure loop by letting the throttle gate the next attempt.
+        // POST gagal (offline / network error / timeout). Buffer ke
+        // localStorage queue; drain handler bawah akan replay saat
+        // online/focus. Hindari burn battery di tight loop — throttle
+        // ngatur cadence retry berikutnya.
+        enqueue({ lat, lng, accuracy: accuracy ?? null, ts: Date.now() });
       }
     };
+
+    // Drain queue: POST batch ping yang ter-buffer saat offline. Dipanggil
+    // saat mount (kalau ada residu dari sesi sebelumnya), saat online
+    // event fire, dan saat tab regain focus.
+    const drain = async () => {
+      if (USE_MOCK || !petugasId) return;
+      const tok = tokenStore.get();
+      if (!tok) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      let q = loadQueue();
+      if (q.length === 0) return;
+      const remaining: QueuedPing[] = [];
+      for (const p of q) {
+        try {
+          await axios.post(`${BASE}/petugas/${petugasId}/position`,
+            { lat: p.lat, lng: p.lng, accuracy: p.accuracy },
+            { withCredentials: true, headers: { Authorization: `Bearer ${tok}` } },
+          );
+        } catch {
+          // Pertama gagal → stop, simpan sisanya kembali ke queue supaya
+          // attempt selanjutnya tidak hammer endpoint yang lagi error.
+          remaining.push(p, ...q.slice(q.indexOf(p) + 1));
+          break;
+        }
+      }
+      saveQueue(remaining);
+    };
+    void drain();
+    const onlineHandler = () => { void drain(); };
+    const focusHandler = () => { void drain(); };
+    window.addEventListener('online', onlineHandler);
+    window.addEventListener('focus', focusHandler);
 
     const onPosition = (p: GeolocationPosition) => {
       const { latitude: lat, longitude: lng, accuracy } = p.coords;
@@ -131,7 +196,11 @@ export function useGeolocationStream({
       timeout: 20_000,
     });
 
-    return () => navigator.geolocation.clearWatch(id);
+    return () => {
+      navigator.geolocation.clearWatch(id);
+      window.removeEventListener('online', onlineHandler);
+      window.removeEventListener('focus', focusHandler);
+    };
   }, [petugasId, enabled, minDistanceMeters, maxIntervalMs]);
 
   return { latest, status };
