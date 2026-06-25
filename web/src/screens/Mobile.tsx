@@ -152,6 +152,24 @@ export function ScreenMobile() {
   const [tab, setTab] = useState<Tab>(persisted?.tab ?? 'beranda');
   const [reportFor, setReportFor] = useState<Nasabah | null>(null);
 
+  // Onboarding: tampil sekali untuk tiap akun petugas pertama kali login.
+  // Disimpan localStorage supaya tidak ulang setiap reload. Tombol "Lihat
+  // tutorial lagi" di tab Profil unset flag untuk replay manual.
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  useEffect(() => {
+    if (!isPetugasUser || !ME) return;
+    try {
+      const seen = localStorage.getItem(`bsn-lacak:onboarded:${ME.id}`);
+      if (!seen) setShowOnboarding(true);
+    } catch { /* private mode — show every time, no big deal */ }
+  }, [isPetugasUser, ME]);
+  const dismissOnboarding = () => {
+    setShowOnboarding(false);
+    if (ME) {
+      try { localStorage.setItem(`bsn-lacak:onboarded:${ME.id}`, '1'); } catch { /* ignore */ }
+    }
+  };
+
   // Restore the open report form once tasks have loaded.
   useEffect(() => {
     if (reportFor) return;
@@ -225,6 +243,7 @@ export function ScreenMobile() {
     return (
       <div style={{ height: '100%', minHeight: 'calc(100vh - 64px)', background: 'var(--bg)' }}>
         {app}
+        {showOnboarding && <OnboardingTour onClose={dismissOnboarding} />}
       </div>
     );
   }
@@ -297,6 +316,126 @@ function greeting(): string {
 // presisi untuk laporan diterima. Bukan blocker (laporan tetap bisa
 // dikirim), tapi badge merah harus segera dia perbaiki di pengaturan
 // browser/device sebelum naik motor.
+// Onboarding 5-langkah untuk petugas baru. Modal full-screen overlay,
+// progress dots, tombol "Selanjutnya" / "Mulai pakai" di akhir. Dismiss
+// menyimpan flag di localStorage sehingga tidak muncul lagi (kecuali
+// user tap "Lihat tutorial lagi" di tab Profil).
+const ONBOARDING_STEPS = [
+  {
+    icon: 'clock' as const, title: 'Clock-In sekali di awal hari',
+    body: 'Tap tombol Clock-In sebelum berangkat dari kantor. Masukkan KM odometer motor saat itu. Sesi lapangan dimulai dan GPS Anda akan dilacak otomatis.',
+  },
+  {
+    icon: 'pin' as const, title: 'Pastikan GPS presisi',
+    body: 'Cek badge GPS di tab Beranda. Hijau (presisi/standar) artinya siap. Merah artinya izin lokasi atau GPS device perlu diperbaiki sebelum jalan.',
+  },
+  {
+    icon: 'clipboard' as const, title: 'Tap LAPOR per kunjungan',
+    body: 'Di setiap nasabah, gunakan tombol "+" di bawah untuk submit laporan: foto bukti, hasil (bayar / janji / dll), dan nominal. JANGAN clock-in ulang per visit.',
+  },
+  {
+    icon: 'route' as const, title: 'Kunjungi sesuai rute',
+    body: 'Tab Rute menampilkan urutan kunjungan optimal berdasarkan posisi Anda. Boleh diabaikan, tapi mengikuti rute = hemat BBM.',
+  },
+  {
+    icon: 'check' as const, title: 'Clock-Out saat kembali kantor',
+    body: 'Tap Clock-Out di sore hari + masukkan KM akhir. JANGAN clock-out di tengah hari — Anda tidak bisa clock-in lagi sampai supervisor reset.',
+  },
+];
+
+function OnboardingTour({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState(0);
+  const cfg = ONBOARDING_STEPS[step];
+  const Icon = cfg.icon === 'clock' ? Ic.clock
+    : cfg.icon === 'pin' ? Ic.pin
+    : cfg.icon === 'clipboard' ? Ic.clipboard
+    : cfg.icon === 'route' ? Ic.route
+    : Ic.check;
+  const isLast = step === ONBOARDING_STEPS.length - 1;
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Tutorial penggunaan aplikasi"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 50,
+        background: 'rgba(15, 23, 42, 0.66)',
+        display: 'grid', placeItems: 'center', padding: 16,
+      }}>
+      <div style={{
+        background: 'var(--surface)', borderRadius: 22, maxWidth: 380, width: '100%',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }}>
+        {/* Icon hero */}
+        <div style={{
+          background: 'var(--accent-soft)', padding: '32px 16px 28px',
+          display: 'grid', placeItems: 'center',
+        }}>
+          <div style={{
+            width: 72, height: 72, borderRadius: 22,
+            background: 'var(--accent)', color: 'white',
+            display: 'grid', placeItems: 'center',
+            boxShadow: '0 6px 18px oklch(0.55 0.14 156 / 0.45)',
+          }}>
+            <Icon size={36} />
+          </div>
+        </div>
+
+        {/* Title + body */}
+        <div style={{ padding: '22px 24px 8px' }}>
+          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8, color: 'var(--ink)' }}>
+            {cfg.title}
+          </div>
+          <div style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--ink-2)' }}>
+            {cfg.body}
+          </div>
+        </div>
+
+        {/* Progress dots */}
+        <div className="center" style={{ gap: 6, padding: '12px 0 4px' }}>
+          {ONBOARDING_STEPS.map((_, i) => (
+            <span key={i} style={{
+              width: i === step ? 22 : 7, height: 7, borderRadius: 99,
+              background: i === step ? 'var(--accent)' : 'var(--line-2)',
+              transition: 'width .18s',
+            }} />
+          ))}
+        </div>
+
+        {/* Action row */}
+        <div style={{ padding: '16px 18px 18px', display: 'flex', gap: 10 }}>
+          {step > 0 && (
+            <button className="btn" type="button"
+              onClick={() => setStep(s => Math.max(0, s - 1))}
+              style={{ flex: 1 }}>
+              Sebelumnya
+            </button>
+          )}
+          {!isLast ? (
+            <>
+              <button type="button" onClick={onClose}
+                style={{
+                  background: 'transparent', border: 'none', color: 'var(--ink-4)',
+                  fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: '0 6px',
+                }}>
+                Lewati
+              </button>
+              <button className="btn btn-primary" type="button"
+                onClick={() => setStep(s => Math.min(ONBOARDING_STEPS.length - 1, s + 1))}
+                style={{ flex: 2 }}>
+                Selanjutnya
+              </button>
+            </>
+          ) : (
+            <button className="btn btn-primary" type="button" onClick={onClose}
+              style={{ flex: 1 }}>
+              Mulai pakai aplikasi
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GpsStatusBadge({ status, fix }: {
   status: import('../lib/geolocation').GeoStatus;
   fix: { lat: number; lng: number; accuracy: number | null; ts: number } | null;
@@ -1247,6 +1386,17 @@ function MProfil({ me: ME, here, pendingOffline }: { me: Petugas; here: { lat: n
             )}
           </div>
         </div>
+      </div>
+
+      <div style={{ padding: '0 16px 12px' }}>
+        <button type="button" className="btn"
+          onClick={() => {
+            try { localStorage.removeItem(`bsn-lacak:onboarded:${ME.id}`); } catch { /* ignore */ }
+            window.location.reload();
+          }}
+          style={{ width: '100%', padding: 12, fontSize: 13.5, fontWeight: 700 }}>
+          <Ic.eye size={15} />Lihat tutorial lagi
+        </button>
       </div>
 
       <div style={{ padding: '0 16px 28px' }}>
