@@ -1652,17 +1652,19 @@ function MLapor({ n, me: ME, here, onClose, onDone }: {
 
   return (
     <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div className="between" style={{ padding: '8px 16px 12px' }}>
-        <button onClick={handleClose} className="btn btn-ghost btn-sm"><Ic.x size={16} />Batal</button>
-        <div style={{ fontWeight: 800, fontSize: 15 }}>Lapor Kunjungan</div>
+      <div className="m-form-topbar">
+        <button type="button" onClick={handleClose} className="m-form-cancel">Batal</button>
+        <div className="m-form-title">Lapor Kunjungan</div>
         <span style={{ width: 56 }} />
       </div>
-      <div style={{ flex: 1, padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 13 }} className="center gap-3">
-          <div className="stat-ic" style={{ background: KOL[n.kol].soft, color: KOL[n.kol].ink }}><Ic.user size={18} /></div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{n.nama}</div>
-            <div className="muted" style={{ fontSize: 12 }}>{n.alamat}</div>
+      <div className="m-form-body">
+        <div className="m-nasabah-preview">
+          <div className="m-np-ic" style={{ background: KOL[n.kol].soft, color: KOL[n.kol].ink }}>
+            <Ic.user size={20} aria-hidden="true" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="m-np-name">{n.nama}</div>
+            <div className="m-np-addr">{n.alamat}</div>
           </div>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowGallery(true)}>
             <Ic.eye size={14} />Galeri
@@ -1675,74 +1677,62 @@ function MLapor({ n, me: ME, here, onClose, onDone }: {
         )}
 
         <div>
-          <MLabel>Foto Bukti Kunjungan</MLabel>
-          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
+          <div className="m-form-label">Foto Bukti Kunjungan</div>
+          <div className="m-photo-grid">
             {[0, 1, 2].map(i => {
               const file = photos[i];
               if (file) {
-                // previews[i] is a data URL produced by the canvas watermarker;
-                // fall back to the raw object URL while it's still resolving.
                 const src = previews[i] ?? URL.createObjectURL(file);
                 return (
-                  <div key={i} style={{
-                    position: 'relative', height: 76, borderRadius: 12, overflow: 'hidden',
-                    background: 'var(--ink)', boxShadow: 'inset 0 0 0 1.5px var(--accent)',
-                  }}>
-                    <img src={src} alt={`Foto ${i + 1}`}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <div key={i} className="m-photo-slot">
+                    <img src={src} alt={`Foto ${i + 1}`} />
                     <button type="button" onClick={() => removePhoto(i)}
-                      aria-label={`Hapus foto ${i + 1}`}
-                      style={{
-                        position: 'absolute', top: 4, right: 4, width: 22, height: 22,
-                        borderRadius: 99, border: 'none', background: 'rgba(0,0,0,0.6)',
-                        color: 'white', display: 'grid', placeItems: 'center', cursor: 'pointer',
-                      }}>
-                      <Ic.x size={13} />
+                      className="m-photo-rm"
+                      aria-label={`Hapus foto ${i + 1}`}>
+                      <Ic.x size={14} aria-hidden="true" />
                     </button>
                   </div>
                 );
               }
               return (
-                <label key={i} style={{
-                  height: 76, borderRadius: 12, border: '1.5px dashed var(--line-2)',
-                  background: 'var(--surface-2)', color: 'var(--ink-4)', display: 'grid', placeItems: 'center',
-                  cursor: 'pointer',
-                }}>
+                <label key={i} className="m-photo-empty">
                   <input type="file" accept="image/*" capture="environment"
                     style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}
                     onChange={(e) => { const f = e.target.files?.[0]; if (f) addPhoto(f); e.target.value = ''; }}
                     aria-label={`Ambil foto ${i + 1}`} />
-                  <Ic.camera size={20} aria-hidden="true" />
+                  <Ic.camera size={22} aria-hidden="true" />
                 </label>
               );
             })}
           </div>
-          <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
+          <div className="m-photo-hint">
             {foto > 0 ? `${foto} foto siap kirim` : 'Ketuk untuk ambil foto dari kamera'}
           </div>
         </div>
 
         <div>
-          <MLabel>Hasil Kunjungan</MLabel>
-          <div className="grid gap-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <div className="m-form-label">Hasil Kunjungan</div>
+          <div className="m-hasil-grid">
             {(Object.entries(HASIL_KUNJUNGAN) as [HasilKunjungan, typeof HASIL_KUNJUNGAN[HasilKunjungan]][]).map(([k, v]) => (
-              <button key={k} onClick={() => setHasil(k)} style={{
-                padding: '11px 10px', borderRadius: 12, fontWeight: 700, fontSize: 12.5,
-                border: hasil === k ? `1.5px solid ${v.c}` : '1px solid var(--line)',
-                background: hasil === k ? v.soft : 'var(--surface)',
-                color: hasil === k ? v.c : 'var(--ink-2)',
-              }}>{v.label}</button>
+              <button key={k} type="button" onClick={() => setHasil(k)}
+                className={'m-hasil-btn' + (hasil === k ? ' is-on' : '')}
+                style={hasil === k ? {
+                  borderColor: v.c, background: v.soft, color: v.c,
+                } : undefined}>
+                {v.label}
+              </button>
             ))}
           </div>
         </div>
 
         {hasil === 'bayar' && (
           <div>
-            <MLabel>Nominal Pembayaran</MLabel>
-            <div className="search" style={{ background: 'var(--surface)' }}>
-              <span style={{ fontWeight: 800, color: 'var(--ink-3)' }}>Rp</span>
+            <div className="m-form-label">Nominal Pembayaran</div>
+            <div className="m-currency-input">
+              <span className="m-currency-prefix">Rp</span>
               <input value={Number(nominal).toLocaleString('id-ID')} inputMode="numeric"
-                onChange={e => setNominal(e.target.value.replace(/\D/g, ''))} style={{ fontWeight: 700 }} />
+                onChange={e => setNominal(e.target.value.replace(/\D/g, ''))}
+                aria-label="Nominal pembayaran" />
             </div>
             <OcrNominalButton
               photos={photos}
@@ -1753,47 +1743,41 @@ function MLapor({ n, me: ME, here, onClose, onDone }: {
         )}
 
         <div>
-          <MLabel>Tanggal Kunjungan</MLabel>
-          <input className="input" type="date" value={tanggal} min={minDateStr} max={todayKeyStr}
-            onChange={e => setTanggal(e.target.value || todayKeyStr)}
-            style={{ background: 'var(--surface)' }} />
+          <div className="m-form-label">Tanggal Kunjungan</div>
+          <input className="m-form-input" type="date" value={tanggal} min={minDateStr} max={todayKeyStr}
+            onChange={e => setTanggal(e.target.value || todayKeyStr)} />
           {tanggal !== todayKeyStr && (
-            <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+            <div className="m-photo-hint" style={{ marginTop: 4 }}>
               Laporan backdate — pastikan tanggal sesuai kunjungan sebenarnya.
             </div>
           )}
         </div>
 
         <div>
-          <MLabel>Catatan</MLabel>
-          <textarea className="input" rows={3} placeholder="Kondisi usaha, kesepakatan, dll…"
-            value={catatan} onChange={e => setCatatan(e.target.value)}
-            style={{ resize: 'none', background: 'var(--surface)' }} />
+          <div className="m-form-label">Catatan</div>
+          <textarea className="m-form-input" rows={3} placeholder="Kondisi usaha, kesepakatan, dll…"
+            value={catatan} onChange={e => setCatatan(e.target.value)} />
         </div>
 
-        <div className="center gap-3" style={{ background: 'var(--accent-soft)', borderRadius: 12, padding: '11px 13px' }}>
-          <Ic.location size={18} style={{ color: 'var(--accent)', flex: 'none' }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: 12.5, color: 'var(--accent-ink)' }}>Lokasi terdeteksi otomatis</div>
-            <div className="mono" style={{ fontSize: 10.5, color: 'var(--accent-ink)', opacity: 0.8 }}>-6.4823, 106.8541 · akurasi 6m</div>
+        <div className="m-loc-card">
+          <Ic.location size={20} style={{ color: 'var(--accent)', flex: 'none' }} aria-hidden="true" />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="m-loc-title">Lokasi terdeteksi otomatis</div>
+            <div className="m-loc-coord">-6.4823, 106.8541 · akurasi 6m</div>
           </div>
-          <Ic.checkCircle size={18} style={{ color: 'var(--accent)' }} />
+          <Ic.checkCircle size={20} style={{ color: 'var(--accent)' }} aria-hidden="true" />
         </div>
 
         {err && (
-          <div className="center gap-2" style={{
-            background: 'var(--col-macet-soft)', color: 'var(--col-macet)',
-            borderRadius: 10, padding: '10px 12px', fontSize: 12.5, fontWeight: 600,
-          }}>
-            <Ic.alert size={15} />{err}
+          <div className="m-form-error">
+            <Ic.alert size={16} aria-hidden="true" />{err}
           </div>
         )}
       </div>
 
-      <div style={{ padding: 16, borderTop: '1px solid var(--line)', background: 'var(--surface)' }}>
-        <button onClick={submit} disabled={sending || foto === 0} className="btn btn-primary"
-          style={{ width: '100%', padding: 14, fontSize: 15, opacity: foto === 0 ? 0.5 : 1 }}>
-          {sending ? 'Mengirim…' : foto === 0 ? 'Ambil foto dulu' : <><Ic.send size={16} />Kirim Laporan</>}
+      <div className="m-submit-bar">
+        <button type="button" onClick={submit} disabled={sending || foto === 0} className="m-submit-btn">
+          {sending ? 'Mengirim…' : foto === 0 ? 'Ambil foto dulu' : <><Ic.send size={18} aria-hidden="true" />Kirim Laporan</>}
         </button>
       </div>
     </div>
