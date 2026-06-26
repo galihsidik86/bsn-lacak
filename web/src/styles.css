@@ -1065,49 +1065,80 @@ button { font-family: inherit; cursor: pointer; }
    ============================================================ */
 
 .m-app {
-  /* Base font 1rem (= 16px default browser, atau lebih besar kalau
-     user override "Large text" di iOS/Android accessibility). Semua
-     mobile components inherit dari sini.
-     min(...) cap maksimal untuk tablet jangan terlalu besar. */
-  font-size: min(1rem, 18px);
-  line-height: 1.5;
+  /* Bump base font 1.0625rem (17px @ default browser) untuk readability
+     mobile yang setara native iOS/Android. User override "Larger text"
+     di accessibility tetap scale proporsional dari sini.
+     Cap 19px di tablet supaya tidak jadi balon. */
+  font-size: min(1.0625rem, 19px);
+  line-height: 1.45;
 }
 
-/* Override font-size mobile classes ke rem-equivalent (16px base).
-   Kalau user pilih "Larger text" di device, semua scale proporsional. */
-.m-app .m-tab-label { font-size: 0.688rem; }       /* 11px */
-.m-app .m-fab svg { width: 1.5rem; height: 1.5rem; } /* 24px */
+/* Typography scale — native iOS/Android density. All rem-based supaya
+   respect device font-size accessibility. */
+.m-app .m-tab-label { font-size: 0.75rem; font-weight: 600; }     /* 12px */
+.m-app .m-fab svg { width: 1.625rem; height: 1.625rem; }          /* 26px */
 
-.m-app .m-section-title { font-size: 1rem; }         /* 16px */
-.m-app .m-section-meta { font-size: 0.813rem; }      /* 13px */
+.m-app .m-section-title {
+  font-size: 1.25rem; font-weight: 800; letter-spacing: -0.01em;
+}                                                                   /* 20px */
+.m-app .m-section-meta { font-size: 0.875rem; font-weight: 700; } /* 14px */
 
-.m-app .m-task-name { font-size: 0.938rem; }         /* 15px */
-.m-app .m-task-addr { font-size: 0.813rem; }         /* 13px */
-.m-app .m-task-num { font-size: 0.875rem; }          /* 14px */
+.m-app .m-task-name { font-size: 1.0625rem; font-weight: 700; }   /* 17px */
+.m-app .m-task-addr { font-size: 0.875rem; }                      /* 14px */
+.m-app .m-task-num { font-size: 0.938rem; }                       /* 15px */
 
-.m-app .m-empty-title { font-size: 1rem; }           /* 16px */
-.m-app .m-empty-body { font-size: 0.875rem; }        /* 14px */
+.m-app .m-empty-title { font-size: 1.125rem; font-weight: 800; }  /* 18px */
+.m-app .m-empty-body { font-size: 0.9375rem; line-height: 1.5; }  /* 15px */
 
-.m-app .m-stop-card { font-size: 0.938rem; }         /* 15px */
-.m-app .m-stop-num-pill { font-size: 0.75rem; }      /* 12px */
+.m-app .m-stop-card { font-size: 1rem; }                          /* 16px */
+.m-app .m-stop-num-pill { font-size: 0.8125rem; }                 /* 13px */
 
-.m-app .m-session-label { font-size: 0.688rem; }     /* 11px */
-.m-app .m-session-state { font-size: 0.938rem; }     /* 15px */
-.m-app .m-session-meta { font-size: 0.75rem; }       /* 12px */
-.m-app .m-session-cta { font-size: 0.75rem; }        /* 12px */
+.m-app .m-session-label {
+  font-size: 0.6875rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}                                                                   /* 11px uppercase label */
+.m-app .m-session-state {
+  font-size: 1.125rem; font-weight: 800; letter-spacing: -0.01em;
+}                                                                   /* 18px */
+.m-app .m-session-meta { font-size: 0.8125rem; }                  /* 13px */
+.m-app .m-session-cta { font-size: 0.8125rem; font-weight: 800; } /* 13px */
 
-.m-app .m-settings-label { font-size: 0.688rem; }    /* 11px */
-.m-app .m-settings-value { font-size: 0.875rem; }    /* 14px */
+.m-app .m-settings-label {
+  font-size: 0.6875rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}                                                                   /* 11px */
+.m-app .m-settings-value {
+  font-size: 0.9375rem; font-weight: 600;
+}                                                                   /* 15px */
 
-.m-app .m-chip { font-size: 0.875rem; }              /* 14px */
-.m-app .m-visit-body { font-size: 0.938rem; }        /* 15px */
-.m-app .m-action-big { font-size: 0.938rem; }        /* 15px */
+.m-app .m-chip { font-size: 0.9375rem; }                          /* 15px */
+.m-app .m-visit-body { font-size: 1rem; }                         /* 16px */
+.m-app .m-action-big { font-size: 1.0625rem; }                    /* 17px */
 
-/* Touch targets juga rem-aware supaya tetap proporsional saat user
-   bump up text size. Min 44px (2.75rem) untuk WCAG. */
-.m-app .m-tab { min-height: 3rem; }                  /* 48px @ 16px base */
-.m-app .m-chip { min-height: 2.625rem; }             /* 42px */
-.m-app .m-action-big { min-height: 3.25rem; }        /* 52px */
+/* Touch targets ≥ 44px (WCAG) — di bumped base scale up naturally. */
+.m-app .m-tab { min-height: 3.5rem; }                             /* 56px */
+.m-app .m-chip { min-height: 2.875rem; }                          /* 46px */
+.m-app .m-action-big { min-height: 3.5rem; }                      /* 56px */
+
+/* iOS-style large title — section heading lebih dominan, padding generous */
+.m-app .m-section-head { padding: 1.25rem 1.125rem 0.625rem; }
+.m-app .m-task-card { padding: 14px; gap: 14px; border-radius: 18px; }
+.m-app .m-task-num { width: 36px; height: 36px; }
+.m-app .m-stop-card { padding: 14px; gap: 14px; border-radius: 18px; }
+.m-app .m-stop-num-pill { width: 32px; height: 32px; font-weight: 800; }
+.m-app .m-settings-row { padding: 16px 14px; gap: 14px; }
+.m-app .m-settings-row .m-settings-ic { width: 40px; height: 40px; border-radius: 12px; }
+.m-app .m-session-card { padding: 18px 18px; gap: 14px; border-radius: 18px; }
+.m-app .m-session-icon { width: 48px; height: 48px; border-radius: 14px; }
+.m-app .m-session-cta { padding: 8px 16px; }
+.m-app .m-visit-body { padding: 16px; }
+.m-app .m-visit-card img { height: 168px; }
+.m-app .m-empty { padding: 80px 32px 56px; }
+.m-app .m-empty-icon { width: 72px; height: 72px; }
+.m-app .m-fab { width: 60px; height: 60px; margin-top: -26px; }
+
+/* Tab active bar lebih prominent */
+.m-app .m-tab.is-active::after { width: 28px; height: 3.5px; }
 
 /* Small viewport (≤ 360px — iPhone SE, Android entry):
    bump body text +5% supaya readability stays high di layar kecil. */
@@ -1128,10 +1159,20 @@ button { font-family: inherit; cursor: pointer; }
   .m-app .m-session-state { font-size: 1rem; }
 }
 
-/* Safe area inset top untuk iOS notch — biar header tidak ketutup
-   status bar / dynamic island. */
+/* iOS-style large title header — judul besar bold, sub tipis muted. */
 .m-app .m-header {
-  padding-top: max(1rem, env(safe-area-inset-top));
+  padding: max(0.75rem, env(safe-area-inset-top)) 1.125rem 0.875rem;
+}
+.m-app .m-header-title {
+  font-size: 1.875rem; font-weight: 800;
+  letter-spacing: -0.025em; line-height: 1.1;
+  color: var(--ink);
+}
+.m-app .m-header-sub {
+  font-size: 0.9375rem;
+  color: var(--ink-3);
+  margin-top: 4px;
+  font-weight: 600;
 }
 
 /* PWA standalone mode — ketika di-install ke home screen, body

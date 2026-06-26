@@ -316,9 +316,9 @@ export function ScreenMobile() {
 
 function MHeader({ title, sub }: { title: string; sub?: string }) {
   return (
-    <div className="m-header" style={{ padding: '0.5rem 1.25rem 0.875rem' }}>
-      <div style={{ fontSize: '1.625rem', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.15 }}>{title}</div>
-      {sub && <div className="muted" style={{ fontSize: '0.875rem', marginTop: 2 }}>{sub}</div>}
+    <div className="m-header">
+      <div className="m-header-title">{title}</div>
+      {sub && <div className="m-header-sub">{sub}</div>}
     </div>
   );
 }
