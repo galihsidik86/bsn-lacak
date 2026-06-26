@@ -1852,35 +1852,27 @@ function NasabahPhotoGalleryModal({ nasabahId, nasabahNama, onClose }: {
   const fotos = q.data ?? [];
   return (
     <>
-      <div onClick={onClose} style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
-        zIndex: 50, display: 'grid', placeItems: 'center', padding: 16,
-      }}>
-        <div onClick={e => e.stopPropagation()} style={{
-          background: 'var(--surface)', borderRadius: 16, maxWidth: 520,
-          width: '100%', maxHeight: '90vh', overflow: 'auto',
-        }}>
-          <div className="between" style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Galeri Foto</div>
-              <div className="muted" style={{ fontSize: 11 }}>{nasabahNama}</div>
+      <div onClick={onClose} className="m-gallery-backdrop">
+        <div onClick={e => e.stopPropagation()} className="m-gallery-card">
+          <div className="m-gallery-head">
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="m-gallery-title">Galeri Foto</div>
+              <div className="m-gallery-sub">{nasabahNama}</div>
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={onClose}><Ic.x size={16} /></button>
+            <button type="button" className="m-gallery-close" onClick={onClose} aria-label="Tutup galeri">
+              <Ic.x size={18} aria-hidden="true" />
+            </button>
           </div>
-          <div style={{ padding: 12 }}>
+          <div className="m-gallery-body">
             {q.isLoading ? <Skeleton h={200} />
               : q.isError ? <ErrorState onRetry={() => q.refetch()} />
               : fotos.length === 0 ? <EmptyState title="Belum ada foto" />
               : (
-                <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                <div className="m-gallery-grid">
                   {fotos.map(f => (
-                    <button key={f.id} onClick={() => setActive(f)} style={{
-                      padding: 0, border: 'none', borderRadius: 10, overflow: 'hidden',
-                      background: 'var(--ink)', cursor: 'pointer', aspectRatio: '1',
-                    }}>
-                      <img src={`/${f.path}`} alt={`Foto ${f.kunjungan.tanggal}`}
-                        loading="lazy"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    <button key={f.id} type="button" onClick={() => setActive(f)} className="m-gallery-thumb"
+                      aria-label={`Buka foto ${f.kunjungan.tanggal}`}>
+                      <img src={`/${f.path}`} alt={`Foto ${f.kunjungan.tanggal}`} loading="lazy" />
                     </button>
                   ))}
                 </div>
@@ -1889,20 +1881,19 @@ function NasabahPhotoGalleryModal({ nasabahId, nasabahNama, onClose }: {
         </div>
       </div>
       {active && (
-        <div onClick={() => setActive(null)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
-          zIndex: 60, display: 'grid', placeItems: 'center', padding: 16,
-        }}>
-          <div onClick={e => e.stopPropagation()} style={{ display: 'grid', gap: 10, maxWidth: 560, width: '100%' }}>
-            <img src={`/${active.path}`} alt="Foto"
-              style={{ width: '100%', borderRadius: 10, maxHeight: '70vh', objectFit: 'contain' }} />
-            <div style={{ color: '#fff', fontSize: 12.5, padding: '6px 4px' }}>
-              <div style={{ fontWeight: 700 }}>{new Date(active.kunjungan.tanggal).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })} · {active.kunjungan.jam}</div>
-              <div style={{ opacity: 0.8, marginTop: 2 }}>
-                {active.kunjungan.hasil} · {active.kunjungan.petugas.nama} ({active.kunjungan.petugas.kode})
-              </div>
+        <div onClick={() => setActive(null)} className="m-lightbox-backdrop">
+          <button type="button" className="m-lightbox-close" onClick={() => setActive(null)} aria-label="Tutup foto">
+            <Ic.x size={20} aria-hidden="true" />
+          </button>
+          <img src={`/${active.path}`} alt="Foto kunjungan" className="m-lightbox-img"
+            onClick={e => e.stopPropagation()} />
+          <div className="m-lightbox-meta" onClick={e => e.stopPropagation()}>
+            <div className="m-lightbox-date">
+              {new Date(active.kunjungan.tanggal).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })} · {active.kunjungan.jam}
             </div>
-            <button className="btn" onClick={() => setActive(null)}>Tutup</button>
+            <div className="m-lightbox-info">
+              {active.kunjungan.hasil} · {active.kunjungan.petugas.nama} ({active.kunjungan.petugas.kode})
+            </div>
           </div>
         </div>
       )}
