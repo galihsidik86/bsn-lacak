@@ -1145,3 +1145,69 @@ button { font-family: inherit; cursor: pointer; }
 .m-app input,
 .m-app textarea,
 .m-app select { font-size: max(1rem, 16px); }
+
+/* ============================================================
+   Layout shell PWA petugas — auto-size width × height,
+   menu tab bar selalu di paling bawah baik portrait / landscape.
+   Pakai dynamic viewport (dvh) supaya iOS Safari browser-chrome
+   resize tidak bikin overflow.
+   ============================================================ */
+
+.m-shell {
+  /* Dynamic viewport height — iOS Safari URL bar / Chrome toolbar
+     resize tidak bikin layout jumping. Fallback 100vh untuk browser
+     lama (Firefox <122, Samsung Internet). */
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.m-shell-inner {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+}
+.m-scroll {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  /* Padding bottom dipertimbangkan saat ada keyboard / floating button */
+  padding-bottom: 8px;
+}
+
+/* Landscape orientation: shrink tab bar height supaya content area
+   tidak terlalu sempit. iPhone 13 landscape ≈ 390px tinggi — kalau
+   tab bar 70px, content cuma 320px (sangat sempit). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .m-app .m-tab-bar {
+    padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
+  }
+  .m-app .m-tab { min-height: 2.5rem; padding: 4px; }
+  .m-app .m-tab-label { font-size: 0.625rem; } /* 10px */
+  .m-app .m-fab { width: 44px; height: 44px; margin-top: -18px; }
+  .m-app .m-fab svg { width: 18px; height: 18px; }
+  /* Header lebih ringkas di landscape — judul 1 baris saja */
+  .m-app .m-header {
+    padding: 0.375rem 1.25rem 0.5rem;
+    padding-top: max(0.375rem, env(safe-area-inset-top));
+  }
+  .m-app .m-header > div:first-child { font-size: 1.25rem; }
+}
+
+/* Safe area inset left/right untuk landscape iPhone dengan notch
+   (jangan biarkan content masuk ke area notch saat rotate). */
+@media (orientation: landscape) {
+  .m-app {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* Tablet (≥ 768px) — center content max-width 600px supaya tidak
+   stretched terlalu lebar di iPad. PWA tetap mobile-first feel. */
+@media (min-width: 768px) {
+  .m-shell { max-width: 600px; margin: 0 auto; box-shadow: 0 0 0 1px var(--line); }
+}

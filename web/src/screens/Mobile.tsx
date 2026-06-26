@@ -248,8 +248,8 @@ export function ScreenMobile() {
   }
 
   const app = (
-    <div style={{ fontFamily: 'var(--font)', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--ink)' }}>
-      <div style={{ flex: 1, overflowY: 'auto', paddingTop: isPetugasUser ? 12 : 54 }}>
+    <div className="m-shell-inner" style={{ fontFamily: 'var(--font)', background: 'var(--bg)', color: 'var(--ink)' }}>
+      <div className="m-scroll" style={{ paddingTop: isPetugasUser ? 12 : 54 }}>
         {isPetugasUser && <InstallPrompt />}
         {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} here={hereFix} zone={zone} gpsStatus={gpsStatus} wakeLockStatus={wakeLockStatus} isClockedIn={isClockedIn} />}
         {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} here={hereFix} zone={zone} />}
@@ -268,7 +268,7 @@ export function ScreenMobile() {
   // mobile UI flush. Mobile-first stylesheet handles the small viewport.
   if (isPetugasUser) {
     return (
-      <div className="m-app" style={{ height: '100%', minHeight: 'calc(100vh - 64px)', background: 'var(--bg)' }}>
+      <div className="m-app m-shell">
         {app}
         {showOnboarding && <OnboardingTour onClose={dismissOnboarding} />}
       </div>
