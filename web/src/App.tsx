@@ -8,6 +8,7 @@ import { useSegmen } from './data/queries';
 import { doLogout, useAuth } from './lib/auth';
 import { useEventStream } from './lib/useEventStream';
 import { useHeartbeat } from './lib/useHeartbeat';
+import { useChatUnread } from './lib/useChatUnread';
 import { ChangePassword } from './screens/ChangePassword';
 import { Login } from './screens/Login';
 
@@ -72,6 +73,7 @@ interface NavGroup { group: string; items: NavItem[] }
 function useNav(): NavGroup[] {
   const seg = useSegmen();
   const role = useAuth(s => s.user?.role);
+  const chatUnread = useChatUnread();
   const groups: NavGroup[] = [
     { group: 'Monitoring', items: [
       { k: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -100,7 +102,7 @@ function useNav(): NavGroup[] {
       { k: 'attendance-disputes', label: 'Dispute Absensi', icon: 'alert' },
       { k: 'km-report', label: 'Laporan KM', icon: 'map' },
       { k: 'petugas-swap', label: 'Tukar Nasabah', icon: 'users' },
-      { k: 'chat', label: 'Pesan Petugas', icon: 'wa' },
+      { k: 'chat', label: 'Pesan Petugas', icon: 'wa', badge: chatUnread },
     ] },
     { group: 'Lapangan', items: [
       { k: 'wilayah', label: 'Wilayah Binaan', icon: 'map' },

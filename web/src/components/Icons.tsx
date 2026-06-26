@@ -53,6 +53,7 @@ export const Ic = {
   battery: mk(<><rect x="2" y="7" width="18" height="10" rx="2" /><path d="M22 11v2" /></>),
   location: mk(<><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /></>),
   chevR: mk(<><path d="m9 18 6-6-6-6" /></>),
+  arrowLeft: mk(<><path d="M19 12H5M11 18l-6-6 6-6" /></>),
   home: mk(<><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></>),
 } as const;
 

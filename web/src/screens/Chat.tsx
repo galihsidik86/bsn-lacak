@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import axios from 'axios';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ic } from '../components/Icons';
@@ -28,10 +28,37 @@ interface Message {
   id: string; fromId: string; toId: string;
   body: string; readAt: string | null; createdAt: string;
 }
-
 interface Recipient {
   id: string; username: string; nama: string; role: string;
   branch: { kode: string; nama: string } | null;
+}
+
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtRelativeDay(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const day = new Date(d); day.setHours(0, 0, 0, 0);
+  const diff = Math.round((today.getTime() - day.getTime()) / 86400000);
+  if (diff === 0) return 'Hari Ini';
+  if (diff === 1) return 'Kemarin';
+  if (diff < 7) return d.toLocaleDateString('id-ID', { weekday: 'long' });
+  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: today.getFullYear() === d.getFullYear() ? undefined : 'numeric' });
+}
+
+function fmtRowTime(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const day = new Date(d); day.setHours(0, 0, 0, 0);
+  if (day.getTime() === today.getTime()) return fmtTime(iso);
+  const diff = Math.round((today.getTime() - day.getTime()) / 86400000);
+  if (diff === 1) return 'Kemarin';
+  if (diff < 7) return d.toLocaleDateString('id-ID', { weekday: 'short' });
+  return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
 }
 
 export function ScreenChat() {
@@ -47,7 +74,7 @@ export function ScreenChat() {
     refetchInterval: 60_000,
   });
 
-  // SSE: realtime push pesan baru. Invalidate convos + thread bila aktif.
+  // SSE realtime push.
   useEventStream();
   useEffect(() => {
     const onMsg = (e: Event) => {
@@ -55,6 +82,7 @@ export function ScreenChat() {
       const data = ce.detail as { fromId?: string; toId?: string };
       if (data?.toId === me?.id || data?.fromId === me?.id) {
         void qc.invalidateQueries({ queryKey: ['chat-convos'] });
+        void qc.invalidateQueries({ queryKey: ['chat-unread-count'] });
         if (active && (data.fromId === active.otherId || data.toId === active.otherId)) {
           void qc.invalidateQueries({ queryKey: ['chat-thread', active.otherId] });
         }
@@ -70,54 +98,68 @@ export function ScreenChat() {
   const convos = convosQ.data?.conversations ?? [];
 
   return (
-    <div className="content" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 0, height: '100%', overflow: 'hidden', border: '1px solid var(--line)', borderRadius: 14, background: 'var(--surface)' }}>
-      <aside style={{ borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column' }}>
-        <div className="between" style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)' }}>
-          <div style={{ fontWeight: 800, fontSize: 15 }}>Percakapan</div>
+    <div className={'content chat-shell' + (active ? ' is-thread-open' : '')}>
+      <aside className="chat-list">
+        <div className="chat-list-head">
+          <div className="chat-list-title">Percakapan</div>
           <button type="button" className="btn btn-sm btn-primary"
             onClick={() => setPickerOpen(true)}>
             <Ic.plus size={14} />Mulai chat
           </button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div className="chat-list-scroll">
           {convos.length === 0
-            ? <div style={{ padding: 24 }}><EmptyState title="Belum ada percakapan" hint="Mulai dari kartu petugas atau ketuk balas notif chat." /></div>
+            ? (
+              <div className="chat-list-empty">
+                <div style={{ fontWeight: 700, color: 'var(--ink-2)', marginBottom: 6 }}>Belum ada percakapan</div>
+                <div>Mulai dari tombol "Mulai chat" di atas untuk pilih lawan bicara.</div>
+              </div>
+            )
             : convos.map(c => (
               <button key={c.otherId} type="button"
                 onClick={() => setActive(c)}
-                style={{
-                  width: '100%', textAlign: 'left', display: 'flex', gap: 10,
-                  padding: '12px 14px', border: 'none',
-                  background: active?.otherId === c.otherId ? 'var(--accent-soft)' : 'var(--surface)',
-                  borderBottom: '1px solid var(--line)', cursor: 'pointer',
-                }}>
-                <Avatar inisial={c.other.nama.slice(0, 2).toUpperCase()} hue={162} size={36} />
+                className={'chat-row'
+                  + (active?.otherId === c.otherId ? ' is-active' : '')
+                  + (c.unread > 0 ? ' has-unread' : '')}>
+                <Avatar inisial={c.other.nama.slice(0, 2).toUpperCase()} hue={162} size={42} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="between">
-                    <span style={{ fontWeight: 700, fontSize: 13.5 }}>{c.other.nama}</span>
+                  <div className="between" style={{ gap: 6 }}>
+                    <span className="chat-row-name">{c.other.nama}</span>
+                    <span className="chat-row-time">{fmtRowTime(c.lastAt)}</span>
+                  </div>
+                  <div className="between" style={{ gap: 6, marginTop: 2 }}>
+                    <span className="chat-row-preview">{c.lastBody}</span>
                     {c.unread > 0 && (
-                      <span className="badge-count num" style={{ background: 'var(--col-macet)', color: 'white', borderRadius: 99, padding: '1px 7px', fontSize: 11 }}>
-                        {c.unread}
-                      </span>
+                      <span className="chat-row-unread num">{c.unread}</span>
                     )}
                   </div>
-                  <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.lastBody}</div>
                 </div>
               </button>
             ))}
         </div>
       </aside>
-      {active ? <ChatThread otherId={active.otherId} otherName={active.other.nama} />
-              : (
-                <div className="center" style={{ height: '100%', justifyContent: 'center', color: 'var(--ink-4)', flexDirection: 'column', gap: 10 }}>
-                  <Ic.send size={36} />
-                  <div style={{ fontWeight: 700 }}>Pilih percakapan untuk mulai</div>
-                  <button type="button" className="btn btn-primary"
-                    onClick={() => setPickerOpen(true)} style={{ marginTop: 8 }}>
-                    <Ic.plus size={14} />Mulai chat baru
-                  </button>
-                </div>
-              )}
+
+      {active ? (
+        <ChatThread otherId={active.otherId} otherName={active.other.nama}
+          otherRole={active.other.role} onBack={() => setActive(null)} />
+      ) : (
+        <div className="chat-thread">
+          <div className="chat-empty-main">
+            <div className="chat-empty-ic">
+              <Ic.send size={36} aria-hidden="true" />
+            </div>
+            <div className="chat-empty-title">Pilih percakapan</div>
+            <div className="chat-empty-body">
+              Tap salah satu nama di kiri untuk lihat thread, atau klik "Mulai chat" untuk pilih lawan baru.
+            </div>
+            <button type="button" className="btn btn-primary"
+              onClick={() => setPickerOpen(true)} style={{ marginTop: 4 }}>
+              <Ic.plus size={14} />Mulai chat baru
+            </button>
+          </div>
+        </div>
+      )}
+
       {pickerOpen && (
         <RecipientPicker
           onClose={() => setPickerOpen(false)}
@@ -133,6 +175,136 @@ export function ScreenChat() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function ChatThread({ otherId, otherName, otherRole, onBack }: {
+  otherId: string; otherName: string; otherRole: string; onBack: () => void;
+}) {
+  const me = useAuth(s => s.user);
+  const qc = useQueryClient();
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const q = useQuery<{ messages: Message[] }>({
+    queryKey: ['chat-thread', otherId],
+    queryFn: async () => (await axios.get(`${BASE}/chat/with/${otherId}`, {
+      withCredentials: true, headers: headers(),
+    })).data,
+    refetchInterval: 30_000,
+  });
+  const messages = q.data?.messages ?? [];
+
+  // Auto-scroll bottom saat pesan baru muncul.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages.length]);
+
+  // Auto-resize textarea (max-height clamp via CSS).
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [text]);
+
+  // Group messages by date untuk render date separator.
+  const grouped = useMemo(() => {
+    const out: Array<{ kind: 'date'; key: string; label: string } | { kind: 'msg'; key: string; m: Message }> = [];
+    let lastDay = '';
+    for (const m of messages) {
+      const d = new Date(m.createdAt);
+      const dayKey = d.toDateString();
+      if (dayKey !== lastDay) {
+        out.push({ kind: 'date', key: `d-${dayKey}`, label: fmtRelativeDay(m.createdAt) });
+        lastDay = dayKey;
+      }
+      out.push({ kind: 'msg', key: m.id, m });
+    }
+    return out;
+  }, [messages]);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const body = text.trim();
+    if (!body || sending) return;
+    setSending(true);
+    try {
+      await axios.post(`${BASE}/chat/messages`,
+        { toId: otherId, body },
+        { withCredentials: true, headers: headers() });
+      setText('');
+      void qc.invalidateQueries({ queryKey: ['chat-thread', otherId] });
+      void qc.invalidateQueries({ queryKey: ['chat-convos'] });
+    } finally { setSending(false); }
+  };
+
+  // Enter kirim, Shift+Enter baris baru.
+  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void submit(e as unknown as FormEvent);
+    }
+  };
+
+  return (
+    <div className="chat-thread">
+      <div className="chat-thread-head">
+        <button type="button" className="chat-thread-back" onClick={onBack} aria-label="Kembali ke daftar">
+          <Ic.arrowLeft size={18} aria-hidden="true" />
+        </button>
+        <Avatar inisial={otherName.slice(0, 2).toUpperCase()} hue={162} size={42} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="chat-thread-name">{otherName}</div>
+          <div className="chat-thread-sub">{otherRole}</div>
+        </div>
+      </div>
+      <div ref={scrollRef} className="chat-thread-body">
+        {grouped.length === 0
+          ? (
+            <div className="chat-bubble-empty">
+              <Ic.send size={28} aria-hidden="true" />
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink-2)' }}>Belum ada pesan</div>
+              <div style={{ fontSize: 12.5 }}>Mulai dengan menyapa.</div>
+            </div>
+          )
+          : grouped.map(item => {
+            if (item.kind === 'date') {
+              return <div key={item.key} className="chat-date-sep">{item.label}</div>;
+            }
+            const mine = item.m.fromId === me?.id;
+            return (
+              <div key={item.key}
+                className={'chat-bubble ' + (mine ? 'chat-bubble-mine' : 'chat-bubble-theirs')}>
+                {item.m.body}
+                <div className="chat-bubble-meta">
+                  <span>{fmtTime(item.m.createdAt)}</span>
+                  {mine && (
+                    item.m.readAt
+                      ? <Ic.checkCircle size={11} aria-label="Sudah dibaca" />
+                      : <Ic.check size={11} aria-label="Terkirim" />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+      </div>
+      <form onSubmit={submit} className="chat-composer">
+        <textarea ref={textareaRef} value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={onKey}
+          placeholder="Ketik pesan… (Enter kirim · Shift+Enter baris baru)"
+          maxLength={2000}
+          rows={1} />
+        <button type="submit" className="chat-send"
+          disabled={!text.trim() || sending}
+          aria-label="Kirim pesan">
+          <Ic.send size={16} aria-hidden="true" />
+        </button>
+      </form>
     </div>
   );
 }
@@ -167,7 +339,7 @@ function RecipientPicker({ onClose, onPick }: { onClose: () => void; onPick: (u:
           boxShadow: '0 24px 60px rgba(0,0,0,0.35)',
         }}>
         <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
-          <div style={{ fontWeight: 800, fontSize: 15 }}>Mulai Chat Baru</div>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Mulai Chat Baru</div>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Tutup">
             <Ic.x size={16} />
           </button>
@@ -195,8 +367,8 @@ function RecipientPicker({ onClose, onPick }: { onClose: () => void; onPick: (u:
                   }}>
                   <Avatar inisial={u.nama.slice(0, 2).toUpperCase()} hue={162} size={36} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{u.nama}</div>
-                    <div className="muted" style={{ fontSize: 11.5 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{u.nama}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>
                       {u.username} · {u.role}{u.branch ? ` · ${u.branch.kode}` : ''}
                     </div>
                   </div>
@@ -205,83 +377,6 @@ function RecipientPicker({ onClose, onPick }: { onClose: () => void; onPick: (u:
               ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-function ChatThread({ otherId, otherName }: { otherId: string; otherName: string }) {
-  const me = useAuth(s => s.user);
-  const qc = useQueryClient();
-  const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const q = useQuery<{ messages: Message[] }>({
-    queryKey: ['chat-thread', otherId],
-    queryFn: async () => (await axios.get(`${BASE}/chat/with/${otherId}`, {
-      withCredentials: true, headers: headers(),
-    })).data,
-    refetchInterval: 30_000,
-  });
-  const messages = q.data?.messages ?? [];
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages.length]);
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    const body = text.trim();
-    if (!body || sending) return;
-    setSending(true);
-    try {
-      await axios.post(`${BASE}/chat/messages`,
-        { toId: otherId, body },
-        { withCredentials: true, headers: headers() });
-      setText('');
-      void qc.invalidateQueries({ queryKey: ['chat-thread', otherId] });
-      void qc.invalidateQueries({ queryKey: ['chat-convos'] });
-    } finally { setSending(false); }
-  };
-
-  return (
-    <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr auto', overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', fontWeight: 800, fontSize: 14 }}>
-        {otherName}
-      </div>
-      <div ref={scrollRef} style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {messages.length === 0
-          ? <div className="muted" style={{ textAlign: 'center', padding: 30 }}>Belum ada pesan. Mulai dengan menyapa.</div>
-          : messages.map(m => {
-            const mine = m.fromId === me?.id;
-            return (
-              <div key={m.id} style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-                <div style={{
-                  maxWidth: '78%', padding: '8px 12px', borderRadius: 14,
-                  background: mine ? 'var(--accent)' : 'var(--surface-2)',
-                  color: mine ? 'white' : 'var(--ink)',
-                  fontSize: 13.5, lineHeight: 1.45,
-                  borderBottomRightRadius: mine ? 4 : 14,
-                  borderBottomLeftRadius: mine ? 14 : 4,
-                  wordBreak: 'break-word',
-                }}>
-                  {m.body}
-                  <div style={{ fontSize: 10, opacity: 0.65, marginTop: 2, textAlign: 'right' }}>
-                    {new Date(m.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-      </div>
-      <form onSubmit={submit} style={{ display: 'flex', gap: 8, padding: '12px 14px', borderTop: '1px solid var(--line)', background: 'var(--surface)' }}>
-        <input className="input" value={text} onChange={e => setText(e.target.value)}
-          placeholder="Ketik pesan…" maxLength={2000}
-          style={{ flex: 1 }} />
-        <button type="submit" className="btn btn-primary" disabled={!text.trim() || sending}>
-          {sending ? '…' : <><Ic.send size={14} />Kirim</>}
-        </button>
-      </form>
     </div>
   );
 }
