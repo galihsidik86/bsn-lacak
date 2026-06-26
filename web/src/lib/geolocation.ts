@@ -121,18 +121,22 @@ export function useGeolocationStream({
       if (USE_MOCK || !petugasId) return;
       const tok = tokenStore.get();
       if (!tok) return;
+      // clientTs penting supaya kalau request ini sukses dengan delay
+      // (slow network), recordedAt server tetap merefleksikan waktu
+      // capture GPS asli — bukan waktu request diterima.
+      const captureTs = Date.now();
       try {
         await axios.post(`${BASE}/petugas/${petugasId}/position`,
-          { lat, lng, accuracy: accuracy ?? null },
+          { lat, lng, accuracy: accuracy ?? null, clientTs: captureTs },
           { withCredentials: true, headers: { Authorization: `Bearer ${tok}` } },
         );
-        lastSent.current = { lat, lng, ts: Date.now() };
+        lastSent.current = { lat, lng, ts: captureTs };
       } catch {
         // POST gagal (offline / network error / timeout). Buffer ke
         // localStorage queue; drain handler bawah akan replay saat
         // online/focus. Hindari burn battery di tight loop — throttle
         // ngatur cadence retry berikutnya.
-        enqueue({ lat, lng, accuracy: accuracy ?? null, ts: Date.now() });
+        enqueue({ lat, lng, accuracy: accuracy ?? null, ts: captureTs });
       }
     };
 
@@ -149,8 +153,12 @@ export function useGeolocationStream({
       const remaining: QueuedPing[] = [];
       for (const p of q) {
         try {
+          // Forward clientTs supaya server menyimpan recordedAt sesuai
+          // waktu capture asli (saat ping di-enqueue), bukan waktu
+          // drain. Tanpa ini polyline trail menumpuk di 1 menit waktu
+          // drain dan kehilangan timing kronologis.
           await axios.post(`${BASE}/petugas/${petugasId}/position`,
-            { lat: p.lat, lng: p.lng, accuracy: p.accuracy },
+            { lat: p.lat, lng: p.lng, accuracy: p.accuracy, clientTs: p.ts },
             { withCredentials: true, headers: { Authorization: `Bearer ${tok}` } },
           );
         } catch {

@@ -209,10 +209,37 @@ router.get('/:id/profile', async (req, res) => {
 // indoor yang lumayan.
 const MAX_POSITION_ACCURACY_M = 500;
 
+// Window untuk clientTs: 24 jam ke belakang max. Lebih lama dari ini =
+// drain queue yang sudah basi (mis. petugas re-online setelah berhari).
+// Lebih baik server simpan dengan recordedAt = now() supaya tidak
+// merusak chart historis.
+const CLIENT_TS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// Toleransi clock skew client di masa depan — max 5 menit. Lebih dari
+// ini server tolak ke fallback NOW().
+const CLIENT_TS_FUTURE_SKEW_MS = 5 * 60 * 1000;
+
 router.post('/:id/position', async (req, res) => {
-  const { lat, lng, accuracy } = req.body ?? {};
+  const { lat, lng, accuracy, clientTs } = req.body ?? {};
   if (typeof lat !== 'number' || typeof lng !== 'number') {
     return res.status(400).json({ error: 'bad_request' });
+  }
+  // Resolve recordedAt: pakai clientTs (epoch ms atau ISO) kalau valid,
+  // selain itu fallback ke DB default NOW(). Tujuannya: ping yang
+  // di-buffer di retry queue tetap tersimpan dengan waktu capture asli,
+  // bukan waktu drain (yang bisa menumpuk ratusan ping di 1 menit).
+  let recordedAtOverride: Date | null = null;
+  if (clientTs != null) {
+    const parsed = typeof clientTs === 'number' ? new Date(clientTs) : new Date(String(clientTs));
+    const now = Date.now();
+    const ts = parsed.getTime();
+    if (Number.isFinite(ts)
+      && ts <= now + CLIENT_TS_FUTURE_SKEW_MS
+      && ts >= now - CLIENT_TS_MAX_AGE_MS) {
+      recordedAtOverride = parsed;
+    }
+    // clientTs di luar window: silently ignore + pakai NOW(). Tidak return
+    // error supaya tidak break drain loop di sisi client kalau ada satu
+    // ping basi di queue.
   }
   // Reject coarse fixes (IP / cell tower). Audit 1x per session implicit
   // via attendance.id — tapi posisi sendiri tidak punya session id, jadi
@@ -245,7 +272,10 @@ router.post('/:id/position', async (req, res) => {
     select: { lat: true, lng: true, recordedAt: true },
   });
   const pos = await prisma.petugasPosition.create({
-    data: { petugasId: id, lat, lng, accuracy: accuracy ?? null },
+    data: {
+      petugasId: id, lat, lng, accuracy: accuracy ?? null,
+      ...(recordedAtOverride ? { recordedAt: recordedAtOverride } : {}),
+    },
   });
   const speed = evalSpeed({
     prev: prevRow ? { lat: prevRow.lat, lng: prevRow.lng, recordedAt: prevRow.recordedAt } : null,
