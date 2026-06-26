@@ -16,6 +16,7 @@ import {
 } from '../data/queries';
 import { doLogout, useAuth } from '../lib/auth';
 import { useGeolocationStream, type GeoFix } from '../lib/geolocation';
+import { useScreenWakeLock } from '../lib/wakeLock';
 import { distMeters, orderNearest } from '../lib/geo';
 import { makeWatermarkedPreview } from '../lib/watermarkPreview';
 import { clearPhotos, loadPhotos, savePhotos } from '../lib/photoStore';
@@ -193,6 +194,32 @@ export function ScreenMobile() {
     enabled: isPetugasUser && !!ME,
   });
 
+  // Fetch attendance status di level atas supaya wake lock bisa diaktifkan
+  // selama sesi lapangan (clock-in → clock-out). Polling 60 dtk supaya
+  // state sinkron walau petugas clock-out lewat tab Profil. Sederhana —
+  // tidak perlu invalidate cache MProfil yang punya state sendiri.
+  const [isClockedIn, setIsClockedIn] = useState(false);
+  useEffect(() => {
+    if (!isPetugasUser) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const a = await getMyAttendance();
+        if (!cancelled) setIsClockedIn(!!a.current);
+      } catch { /* offline atau session expired — biarkan state lama */ }
+    };
+    void tick();
+    const iv = setInterval(tick, 60_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [isPetugasUser]);
+
+  // Wake lock aktif HANYA saat petugas clocked-in. Mencegah browser
+  // suspend watchPosition saat layar HP idle / lock screen — gap GPS
+  // tracking terbesar yang teridentifikasi (lihat ARCHITECTURE notes).
+  // Tidak meminta wake lock saat di tab Profil/Riwayat juga — overhead
+  // kecil tapi semakin tinggi compliance dengan Wake Lock API contract.
+  const wakeLockStatus = useScreenWakeLock(isPetugasUser && isClockedIn);
+
   // Fetch the petugas's assigned wilayah polygon (if any) so we can draw it
   // on the rute map and surface a live "Anda di luar wilayah" warning.
   const [zone, setZone] = useState<ZoneInfo | null>(null);
@@ -224,7 +251,7 @@ export function ScreenMobile() {
     <div style={{ fontFamily: 'var(--font)', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--ink)' }}>
       <div style={{ flex: 1, overflowY: 'auto', paddingTop: isPetugasUser ? 12 : 54 }}>
         {isPetugasUser && <InstallPrompt />}
-        {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} here={hereFix} zone={zone} gpsStatus={gpsStatus} />}
+        {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} here={hereFix} zone={zone} gpsStatus={gpsStatus} wakeLockStatus={wakeLockStatus} isClockedIn={isClockedIn} />}
         {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} here={hereFix} zone={zone} />}
         {!reportFor && tab === 'riwayat' && <MRiwayat me={ME} onLaporUlang={setReportFor} />}
         {!reportFor && tab === 'profil' && <MProfil me={ME} here={hereFix} pendingOffline={offline.pending} />}
@@ -330,6 +357,10 @@ const ONBOARDING_STEPS = [
     body: 'Cek badge GPS di tab Beranda. Hijau (presisi/standar) artinya siap. Merah artinya izin lokasi atau GPS device perlu diperbaiki sebelum jalan.',
   },
   {
+    icon: 'phone' as const, title: 'Pasang HP di holder motor + colok charger',
+    body: 'Saat berkendara, taruh HP di holder + sambungkan ke charger motor, dan biarkan aplikasi BSN Lacak tetap di depan. Aplikasi otomatis aktifkan "layar tetap nyala" agar GPS terus terlacak — kalau layar mati, jejak Anda bolong.',
+  },
+  {
     icon: 'clipboard' as const, title: 'Tap LAPOR per kunjungan',
     body: 'Di setiap nasabah, gunakan tombol "+" di bawah untuk submit laporan: foto bukti, hasil (bayar / janji / dll), dan nominal. JANGAN clock-in ulang per visit.',
   },
@@ -350,6 +381,7 @@ function OnboardingTour({ onClose }: { onClose: () => void }) {
     : cfg.icon === 'pin' ? Ic.pin
     : cfg.icon === 'clipboard' ? Ic.clipboard
     : cfg.icon === 'route' ? Ic.route
+    : cfg.icon === 'phone' ? Ic.phone
     : Ic.check;
   const isLast = step === ONBOARDING_STEPS.length - 1;
   return (
@@ -474,6 +506,50 @@ function GpsStatusBadge({ status, fix }: {
   );
 }
 
+// Wake Lock badge — surface ke petugas supaya tahu layar HP akan tetap
+// nyala selama sesi lapangan (mencegah watchPosition disuspend browser
+// di background). Tampil HANYA saat sedang clocked-in. Status 'denied'
+// muncul rare (kalau page kehilangan focus context); 'unsupported' di
+// browser lama (iOS Safari pre-16.4 dll).
+function WakeLockBadge({ status, isClockedIn }: {
+  status: import('../lib/wakeLock').WakeLockStatus;
+  isClockedIn: boolean;
+}) {
+  if (!isClockedIn) return null;
+  type Cfg = { bg: string; fg: string; icon: 'check' | 'alert' | 'cross'; label: string; hint: string };
+  const MAP: Record<import('../lib/wakeLock').WakeLockStatus, Cfg> = {
+    idle: {
+      bg: 'oklch(0.93 0.05 75)', fg: 'oklch(0.4 0.13 75)', icon: 'alert',
+      label: 'Layar bisa mati', hint: 'Tap layar untuk aktifkan auto-wake.',
+    },
+    active: {
+      bg: 'var(--col-lancar-soft)', fg: 'var(--col-lancar)', icon: 'check',
+      label: 'Layar tetap nyala', hint: '',
+    },
+    denied: {
+      bg: 'var(--col-macet-soft)', fg: 'var(--col-macet)', icon: 'cross',
+      label: 'Auto-wake diblok', hint: 'Tap layar atau interaksi tombol.',
+    },
+    unsupported: {
+      bg: 'var(--surface-2)', fg: 'var(--ink-3)', icon: 'alert',
+      label: 'Auto-wake tidak didukung', hint: 'Aktifkan "Stay awake" di Settings device.',
+    },
+  };
+  const cfg = MAP[status];
+  const Icon = cfg.icon === 'check' ? Ic.check : cfg.icon === 'alert' ? Ic.alert : Ic.x;
+  return (
+    <div className="center gap-2" style={{
+      margin: '6px 16px 0', padding: '8px 12px', borderRadius: 12,
+      background: cfg.bg, color: cfg.fg,
+      fontSize: 12, fontWeight: 700,
+    }}>
+      <Icon size={14} />
+      <span style={{ flex: 1 }}>{cfg.label}</span>
+      {cfg.hint && <span style={{ fontWeight: 500, opacity: 0.85, fontSize: 11 }}>{cfg.hint}</span>}
+    </div>
+  );
+}
+
 function BriefingCard({ me, doneInTasks, tasksCount }: {
   me: Petugas; doneInTasks: number; tasksCount: number;
 }) {
@@ -557,12 +633,14 @@ function BriefingCard({ me, doneInTasks, tasksCount }: {
   );
 }
 
-function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone, gpsStatus }: {
+function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone, gpsStatus, wakeLockStatus, isClockedIn }: {
   me: Petugas; tasks: Nasabah[]; onReport: (n: Nasabah) => void; doneSet: Set<string>;
   // here memuat full GeoFix (accuracy + ts) supaya GpsStatusBadge bisa
   // tampilkan akurasi & umur fix; field lat/lng tetap dipakai zone check.
   here: GeoFix | null; zone: ZoneInfo | null;
   gpsStatus: import('../lib/geolocation').GeoStatus;
+  wakeLockStatus: import('../lib/wakeLock').WakeLockStatus;
+  isClockedIn: boolean;
 }) {
   const pct = ME.target > 0 ? Math.round(ME.terkumpul / ME.target * 100) : 0;
   // Live "Anda di dalam zona?" computed from the latest GPS fix vs the
@@ -576,6 +654,7 @@ function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone, gpsS
     <div>
       <BriefingCard me={ME} doneInTasks={doneInTasks} tasksCount={MY_TASKS.length} />
       <GpsStatusBadge status={gpsStatus} fix={here} />
+      <WakeLockBadge status={wakeLockStatus} isClockedIn={isClockedIn} />
       {zone && inZone === false && (
         <div className="center gap-2" style={{
           margin: '10px 16px 0', padding: '10px 12px', borderRadius: 12,
