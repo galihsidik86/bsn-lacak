@@ -386,79 +386,44 @@ function OnboardingTour({ onClose }: { onClose: () => void }) {
   const isLast = step === ONBOARDING_STEPS.length - 1;
   return (
     <div role="dialog" aria-modal="true" aria-label="Tutorial penggunaan aplikasi"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 50,
-        background: 'rgba(15, 23, 42, 0.66)',
-        display: 'grid', placeItems: 'center', padding: 16,
-      }}>
-      <div style={{
-        background: 'var(--surface)', borderRadius: 22, maxWidth: 380, width: '100%',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-      }}>
-        {/* Icon hero */}
-        <div style={{
-          background: 'var(--accent-soft)', padding: '32px 16px 28px',
-          display: 'grid', placeItems: 'center',
-        }}>
-          <div style={{
-            width: 72, height: 72, borderRadius: 22,
-            background: 'var(--accent)', color: 'white',
-            display: 'grid', placeItems: 'center',
-            boxShadow: '0 6px 18px oklch(0.55 0.14 156 / 0.45)',
-          }}>
-            <Icon size={36} />
+      className="m-tour-backdrop">
+      <div className="m-tour-card">
+        <div className="m-tour-hero">
+          <div className="m-tour-icon">
+            <Icon size={40} aria-hidden="true" />
           </div>
         </div>
 
-        {/* Title + body */}
-        <div style={{ padding: '22px 24px 8px' }}>
-          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 8, color: 'var(--ink)' }}>
-            {cfg.title}
-          </div>
-          <div style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--ink-2)' }}>
-            {cfg.body}
-          </div>
+        <div className="m-tour-body">
+          <h2 className="m-tour-title">{cfg.title}</h2>
+          <p className="m-tour-text">{cfg.body}</p>
         </div>
 
-        {/* Progress dots */}
-        <div className="center" style={{ gap: 6, padding: '12px 0 4px' }}>
+        <div className="m-tour-dots" aria-label={`Langkah ${step + 1} dari ${ONBOARDING_STEPS.length}`}>
           {ONBOARDING_STEPS.map((_, i) => (
-            <span key={i} style={{
-              width: i === step ? 22 : 7, height: 7, borderRadius: 99,
-              background: i === step ? 'var(--accent)' : 'var(--line-2)',
-              transition: 'width .18s',
-            }} />
+            <span key={i} className={'m-tour-dot' + (i === step ? ' is-active' : '')} aria-hidden="true" />
           ))}
         </div>
 
-        {/* Action row */}
-        <div style={{ padding: '16px 18px 18px', display: 'flex', gap: 10 }}>
+        <div className="m-tour-actions">
           {step > 0 && (
-            <button className="btn" type="button"
-              onClick={() => setStep(s => Math.max(0, s - 1))}
-              style={{ flex: 1 }}>
+            <button type="button" className="m-tour-back"
+              onClick={() => setStep(s => Math.max(0, s - 1))}>
               Sebelumnya
             </button>
           )}
           {!isLast ? (
             <>
-              <button type="button" onClick={onClose}
-                style={{
-                  background: 'transparent', border: 'none', color: 'var(--ink-4)',
-                  fontSize: 12.5, fontWeight: 600, cursor: 'pointer', padding: '0 6px',
-                }}>
+              <button type="button" onClick={onClose} className="m-tour-skip">
                 Lewati
               </button>
-              <button className="btn btn-primary" type="button"
-                onClick={() => setStep(s => Math.min(ONBOARDING_STEPS.length - 1, s + 1))}
-                style={{ flex: 2 }}>
+              <button type="button" className="m-tour-next"
+                onClick={() => setStep(s => Math.min(ONBOARDING_STEPS.length - 1, s + 1))}>
                 Selanjutnya
               </button>
             </>
           ) : (
-            <button className="btn btn-primary" type="button" onClick={onClose}
-              style={{ flex: 1 }}>
+            <button type="button" className="m-tour-finish" onClick={onClose}>
               Mulai pakai aplikasi
             </button>
           )}
