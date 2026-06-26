@@ -234,53 +234,44 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
             <div className="section-title">Petugas Lapangan</div>
             <span className="chip"><span className="dot" style={{ background: 'var(--accent)' }} />{PETUGAS.filter(x => x.status === 'lapangan').length} aktif</span>
           </div>
-          <label className="center gap-2" style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', cursor: 'pointer' }}>
-            <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
-            Tampilkan semua rute di peta
-          </label>
-          <label className="center gap-2" style={{ marginTop: 6, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', cursor: 'pointer' }}>
-            <input type="checkbox" checked={showJejak} onChange={e => setShowJejak(e.target.checked)} />
-            Tampilkan jejak kunjungan
-          </label>
-          <label className="center gap-2" style={{ marginTop: 6, fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', cursor: 'pointer' }}>
-            <input type="checkbox" checked={showTrail} onChange={e => setShowTrail(e.target.checked)} />
-            Tampilkan trail pergerakan
-          </label>
-          {showTrail && (
-            <div style={{ marginTop: 6, marginLeft: 22, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div className="center gap-2" style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>
-                <span>Tanggal:</span>
-                <input
-                  type="date"
-                  value={trailDate}
-                  max={todayKey}
-                  onChange={e => setTrailDate(e.target.value || todayKey)}
-                  aria-label="Pilih tanggal trail pergerakan"
-                  style={{
-                    flex: 1, padding: '4px 6px', fontSize: 12,
-                    border: '1px solid var(--line)', borderRadius: 6,
-                    background: 'var(--surface)', color: 'var(--ink)',
-                    fontFamily: 'inherit',
-                  }}
-                />
+          <div className="tracking-controls">
+            <label className="toggle-row">
+              <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
+              Tampilkan semua rute di peta
+            </label>
+            <label className="toggle-row">
+              <input type="checkbox" checked={showJejak} onChange={e => setShowJejak(e.target.checked)} />
+              Tampilkan jejak kunjungan
+            </label>
+            <label className="toggle-row">
+              <input type="checkbox" checked={showTrail} onChange={e => setShowTrail(e.target.checked)} />
+              Tampilkan trail pergerakan
+            </label>
+            {showTrail && (
+              <div className="trail-detail">
+                <div className="trail-detail-row">
+                  <span>Tanggal:</span>
+                  <input
+                    type="date"
+                    value={trailDate}
+                    max={todayKey}
+                    onChange={e => setTrailDate(e.target.value || todayKey)}
+                    aria-label="Pilih tanggal trail pergerakan"
+                  />
+                </div>
+                <div className={`trail-status ${trailIsToday ? 'is-live' : 'is-historic'}`}>
+                  <span className="trail-status-pill" aria-hidden="true" />
+                  {trailIsToday ? 'Live · refresh 30 dtk' : `Historis · ${trail.length} titik`}
+                  {!trailIsToday && (
+                    <button type="button" className="reset-btn"
+                      onClick={() => setTrailDate(todayKey)}>
+                      Kembali ke hari ini
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="center gap-2" style={{ fontSize: 10.5, color: trailIsToday ? 'var(--accent-ink)' : 'var(--col-dpk)', fontWeight: 700 }}>
-                {trailIsToday ? '🟢 Live — refresh 30 dtk'
-                  : `📅 Historis — ${trail.length} titik`}
-                {!trailIsToday && (
-                  <button type="button"
-                    onClick={() => setTrailDate(todayKey)}
-                    style={{
-                      marginLeft: 'auto', border: 'none', background: 'transparent',
-                      color: 'var(--accent)', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                      padding: 0,
-                    }}>
-                    Kembali ke hari ini
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
         <div style={{ overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {PETUGAS.map(pt => {
@@ -288,12 +279,9 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
             const pct = Math.round(pt.terkumpul / pt.target * 100);
             const live = livePositions[pt.id];
             return (
-              <button key={pt.id} onClick={() => setSel(pt.id)}
-                style={{
-                  textAlign: 'left', border: active ? '1.5px solid var(--accent)' : '1px solid var(--line)',
-                  background: active ? 'var(--accent-soft)' : 'var(--surface)', borderRadius: 14, padding: 12,
-                  display: 'flex', gap: 11, alignItems: 'center', transition: 'all .12s', cursor: 'pointer',
-                }}>
+              <button key={pt.id} type="button" onClick={() => setSel(pt.id)}
+                className={'petugas-card' + (active ? ' is-active' : '')}
+                aria-pressed={active}>
                 <div style={{ position: 'relative' }}>
                   <Avatar inisial={pt.inisial} hue={pt.hue} size={40} />
                   <span style={{
@@ -341,8 +329,12 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
               <MiniKv label="Tertagih" value={RPjt(p.terkumpul)} />
             </div>
             <div className="center gap-2" style={{ marginTop: 12 }}>
-              <button className="btn btn-sm btn-primary" style={{ flex: 1 }}><Ic.phone size={14} />Hubungi</button>
-              <button className="btn btn-sm" onClick={() => go('laporan')}><Ic.clipboard size={14} />Laporan</button>
+              <button className="btn-action is-primary" type="button" style={{ flex: 1 }}>
+                <Ic.phone size={15} aria-hidden="true" />Hubungi
+              </button>
+              <button className="btn-action" type="button" onClick={() => go('laporan')}>
+                <Ic.clipboard size={15} aria-hidden="true" />Laporan
+              </button>
             </div>
           </div>
 
