@@ -920,48 +920,42 @@ function MRute({ me: ME, tasks: MY_TASKS, onReport, here, zone }: {
           <Ic.nav size={12} />{stops.length} stop · {(totalMeters / 1000).toFixed(1)} km
         </div>
       </div>
-      <div style={{ margin: '0 16px 12px', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12 }}>
-        <div className="stat-ic" style={{ width: 30, height: 30, background: 'var(--accent-soft)', color: 'var(--accent)', flex: 'none' }}>
-          <Ic.route size={15} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700 }}>Rute terdekat</div>
-          <div className="muted" style={{ fontSize: 11, marginTop: 1 }}>
-            {here
-              ? 'Urut dari posisi Anda · greedy nearest-neighbor'
-              : 'Menunggu GPS · sementara urut dari stop pertama'}
+      <div style={{ margin: '0 16px 12px' }}>
+        <div className="m-settings-row" style={{ borderBottom: 'none', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14 }}>
+          <div className="m-settings-ic">
+            <Ic.route size={16} aria-hidden="true" />
           </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="m-settings-label">Optimasi Rute</div>
+            <div className="m-settings-value" style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-3)' }}>
+              {here
+                ? 'Urut dari posisi Anda · nearest-neighbor'
+                : 'Menunggu GPS · urut dari stop pertama'}
+            </div>
+          </div>
+          <button type="button"
+            className={'m-switch' + (optimize ? ' is-on' : '')}
+            onClick={() => setOptimize(v => !v)}
+            aria-label={optimize ? 'Matikan optimasi rute' : 'Nyalakan optimasi rute'}
+            aria-pressed={optimize} />
         </div>
-        <button onClick={() => setOptimize(v => !v)}
-          aria-label={optimize ? 'Matikan optimasi rute' : 'Nyalakan optimasi rute'}
-          style={{
-            width: 40, height: 22, borderRadius: 99, border: 'none', cursor: 'pointer', flex: 'none',
-            background: optimize ? 'var(--accent)' : 'var(--line-2)',
-            position: 'relative', transition: 'background 0.15s',
-          }}>
-          <span style={{
-            position: 'absolute', top: 2, left: optimize ? 20 : 2,
-            width: 18, height: 18, borderRadius: 99, background: 'white',
-            boxShadow: '0 1px 2px rgba(0,0,0,0.2)', transition: 'left 0.15s',
-          }} />
-        </button>
       </div>
       <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
         {MY_TASKS.map((n, i) => (
-          <div key={n.id} style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 13, display: 'flex', gap: 12, alignItems: 'center' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-              <span style={{
-                width: 24, height: 24, borderRadius: 99, background: 'var(--accent-soft)',
-                color: 'var(--accent-ink)', display: 'grid', placeItems: 'center',
-                fontWeight: 800, fontSize: 11,
-              }} className="num">{i + 1}</span>
-              {i < MY_TASKS.length - 1 && <span style={{ width: 2, height: 14, background: 'var(--line-2)' }} />}
+          <div key={n.id} className="m-stop-card">
+            <div className="m-stop-num">
+              <span className="m-stop-num-pill num">{i + 1}</span>
+              {i < MY_TASKS.length - 1 && <span className="m-stop-num-line" />}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{n.nama}</div>
-              <div className="muted center gap-2" style={{ fontSize: 12 }}><Ic.pin size={12} />{n.alamat}</div>
+              <div style={{ fontWeight: 700, fontSize: 14.5 }}>{n.nama}</div>
+              <div className="center gap-2" style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 2 }}>
+                <Ic.pin size={12} aria-hidden="true" />{n.alamat}
+              </div>
             </div>
-            <button onClick={() => onReport(n)} className="btn btn-sm btn-primary" style={{ flex: 'none' }}>Lapor</button>
+            <button onClick={() => onReport(n)} className="btn-action is-primary" type="button" style={{ flex: 'none', minHeight: 36, padding: '8px 14px' }}>
+              Lapor
+            </button>
           </div>
         ))}
       </div>
@@ -1003,27 +997,23 @@ function MRiwayat({ me: ME, onLaporUlang }: { me: Petugas; onLaporUlang: (n: Nas
   return (
     <div>
       <MHeader title="Riwayat" sub={`${mine.length} laporan ${scope === 'today' ? 'hari ini' : 'tersimpan'}`} />
-      <div style={{ display: 'flex', gap: 6, padding: '0 16px 14px' }}>
+      <div className="m-chip-group">
         {([
           { k: 'today' as const, label: 'Hari Ini' },
           { k: 'all' as const, label: 'Semua' },
         ]).map(t => (
-          <button key={t.k} onClick={() => setScope(t.k)}
-            style={{
-              flex: 1, padding: '8px 12px', borderRadius: 99, fontWeight: 700, fontSize: 12.5,
-              border: scope === t.k ? '1.5px solid var(--accent)' : '1px solid var(--line)',
-              background: scope === t.k ? 'var(--accent-soft)' : 'var(--surface)',
-              color: scope === t.k ? 'var(--accent-ink)' : 'var(--ink-2)', cursor: 'pointer',
-            }}>{t.label}</button>
+          <button key={t.k} type="button" onClick={() => setScope(t.k)}
+            className={'m-chip' + (scope === t.k ? ' is-on' : '')}
+            aria-pressed={scope === t.k}>{t.label}</button>
         ))}
       </div>
       {mine.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 30px', color: 'var(--ink-4)' }}>
-          <div className="stat-ic" style={{ width: 56, height: 56, margin: '0 auto 14px', background: 'var(--surface-2)', color: 'var(--ink-4)' }}>
-            <Ic.clipboard size={26} />
+        <div className="m-empty">
+          <div className="m-empty-icon">
+            <Ic.clipboard size={28} aria-hidden="true" />
           </div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink-2)' }}>Belum ada laporan</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>Laporan kunjungan yang Anda kirim akan muncul di sini.</div>
+          <div className="m-empty-title">Belum ada laporan</div>
+          <div className="m-empty-body">Laporan kunjungan yang Anda kirim akan muncul di sini.</div>
         </div>
       ) : (
         <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1032,14 +1022,13 @@ function MRiwayat({ me: ME, onLaporUlang }: { me: Petugas; onLaporUlang: (n: Nas
             const meta = HASIL_KUNJUNGAN[k.hasil];
             const photo = k.fotoUrls?.[0];
             return (
-              <div key={k.id} style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, overflow: 'hidden' }}>
+              <div key={k.id} className="m-visit-card">
                 {photo ? (
-                  <img src={photo} alt={`Foto kunjungan ${n?.nama ?? ''}`}
-                    style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block', background: 'var(--ink)' }} />
+                  <img src={photo} alt={`Foto kunjungan ${n?.nama ?? ''}`} />
                 ) : (
                   <ImgPh label={`◦ tanpa foto ◦`} h={88} style={{ borderRadius: 0, border: 'none' }} />
                 )}
-                <div style={{ padding: 12 }}>
+                <div className="m-visit-body">
                   <div className="between" style={{ alignItems: 'flex-start' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 14 }}>{n?.nama ?? '—'}</div>
@@ -1381,85 +1370,61 @@ function MProfil({ me: ME, here, pendingOffline }: { me: Petugas; here: { lat: n
       </div>
 
       <div style={{ padding: '0 16px 12px' }}>
-        <button onClick={toggleAtt} disabled={attBusy}
-          className="card card-pad" style={{
-            width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
-            background: att?.current ? 'linear-gradient(145deg, var(--accent), var(--accent-700))' : 'var(--surface)',
-            color: att?.current ? 'white' : 'var(--ink)',
-            display: 'flex', alignItems: 'center', gap: 12,
-          }}>
-          <div className="stat-ic" style={{
-            background: att?.current ? 'rgba(255,255,255,0.18)' : 'var(--accent-soft)',
-            color: att?.current ? 'white' : 'var(--accent)',
-            flex: 'none', width: 40, height: 40,
-          }}>
-            <Ic.clock size={18} />
+        <button type="button" onClick={toggleAtt} disabled={attBusy}
+          className={'m-session-card' + (att?.current ? '' : ' is-idle')}>
+          <div className="m-session-icon">
+            <Ic.clock size={20} aria-hidden="true" />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', opacity: 0.8 }}>
-              Sesi Lapangan
-            </div>
-            <div style={{ fontWeight: 800, fontSize: 14, marginTop: 2 }}>
+            <div className="m-session-label">Sesi Lapangan</div>
+            <div className="m-session-state">
               {att?.current
                 ? `Aktif sejak ${new Date(att.current.clockInAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`
                 : 'Belum clock-in'}
             </div>
             {att?.current && (
-              <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2 }}>
+              <div className="m-session-meta">
                 {fmtElapsed(Date.now() - new Date(att.current.clockInAt).getTime())} di lapangan
               </div>
             )}
           </div>
-          <div style={{
-            padding: '6px 12px', borderRadius: 99, fontSize: 12, fontWeight: 700,
-            background: att?.current ? 'rgba(255,255,255,0.18)' : 'var(--accent)',
-            color: 'white',
-          }}>
+          <span className="m-session-cta">
             {att?.current ? 'Selesai' : 'Mulai'}
-          </div>
+          </span>
         </button>
       </div>
 
       <div style={{ padding: '0 16px 16px' }}>
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div className="center gap-3" style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)' }}>
-            <div className="stat-ic" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', flex: 'none', width: 32, height: 32 }}>
-              <Ic.send size={15} />
+        <div className="m-card">
+          <div className="m-settings-row">
+            <div className="m-settings-ic">
+              <Ic.send size={17} aria-hidden="true" />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>Antrian Offline</div>
-              <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 1 }}>
+              <div className="m-settings-label">Antrian Offline</div>
+              <div className="m-settings-value">
                 {pendingOffline === 0 ? 'Tidak ada laporan tertunda' : `${pendingOffline} laporan menunggu kirim`}
               </div>
             </div>
           </div>
-          <div className="center gap-3" style={{ padding: '12px 14px' }}>
-            <div className="stat-ic" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', flex: 'none', width: 32, height: 32 }}>
-              <Ic.bell size={15} />
+          <div className="m-settings-row">
+            <div className="m-settings-ic">
+              <Ic.bell size={17} aria-hidden="true" />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>Notifikasi Push</div>
-              <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 1 }}>
+              <div className="m-settings-label">Notifikasi Push</div>
+              <div className="m-settings-value">
                 {!push?.supported ? 'Tidak didukung di browser ini'
-                  : push.subscribed ? 'Aktif — Anda akan dapat alert OS'
+                  : push.subscribed ? 'Aktif — alert OS aktif'
                   : push.permission === 'denied' ? 'Diblokir — buka pengaturan browser'
-                  : 'Nyalakan untuk dapat notifikasi review/assignment'}
+                  : 'Nyalakan untuk notifikasi review/assignment'}
               </div>
             </div>
             {push?.supported && push.permission !== 'denied' && (
-              <button onClick={togglePush} disabled={pushBusy}
+              <button type="button" onClick={togglePush} disabled={pushBusy}
+                className={'m-switch' + (push.subscribed ? ' is-on' : '')}
                 aria-label={push.subscribed ? 'Matikan notifikasi push' : 'Nyalakan notifikasi push'}
-                style={{
-                  width: 40, height: 22, borderRadius: 99, border: 'none', cursor: 'pointer', flex: 'none',
-                  background: push.subscribed ? 'var(--accent)' : 'var(--line-2)',
-                  position: 'relative', transition: 'background 0.15s',
-                }}>
-                <span style={{
-                  position: 'absolute', top: 2, left: push.subscribed ? 20 : 2,
-                  width: 18, height: 18, borderRadius: 99, background: 'white',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.2)', transition: 'left 0.15s',
-                }} />
-              </button>
+                aria-pressed={push.subscribed} />
             )}
           </div>
         </div>
