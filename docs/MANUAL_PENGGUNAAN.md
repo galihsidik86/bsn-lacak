@@ -160,6 +160,43 @@ Kegunaan praktis:
 > laporannya dari area tanpa sinyal). Pilih petugas lain dari sidebar
 > kiri.
 
+### 5b. Trail Pergerakan GPS (history perjalanan)
+
+Toggle **"Tampilkan trail pergerakan"** menambahkan overlay polyline yang
+menelusuri **path GPS petugas terpilih** selama satu hari. Beda dari
+jejak kunjungan — ini ping GPS mentah dari mobile petugas, bukan titik
+laporan.
+
+![Tracking dengan trail pergerakan GPS](manual/screenshots/06c-tracking-trail.png)
+
+Yang ditampilkan:
+
+- **Polyline biru cyan solid** menyambung semua titik GPS — menggambarkan
+  rute aktual yang dilewati.
+- **Marker biru kecil** di posisi start (clock-in pertama hari itu) dan
+  end (posisi terakhir / clock-out).
+- **Date picker** di sidebar — pilih tanggal historis untuk audit
+  pergerakan kemarin / minggu lalu. Max = hari ini.
+- **Status label** di bawah date picker:
+  - 🟢 *Live · refresh 30 dtk* — sedang lihat hari ini, polling otomatis
+  - 📅 *Historis · N titik* — tanggal lain, fetch sekali, tombol
+    "Kembali ke hari ini"
+
+Kegunaan praktis:
+
+- **Verifikasi kepatuhan rute**: bandingkan trail biru (path nyata)
+  dengan rute terencana (garis hijau) dan jejak kunjungan. Apakah
+  petugas melewati seluruh nasabah binaan atau ada yang di-skip?
+- **Audit klaim BBM**: estimasi jarak tempuh dari panjang polyline
+  (tidak menggantikan KM odometer, tapi sebagai cross-check).
+- **Deteksi false positives**: laporan kunjungan ber-GPS tapi trail
+  GPS tidak pernah lewat lokasi nasabah = indikasi false reporting.
+
+> Catatan teknis: trail butuh petugas pakai aplikasi mobile dengan GPS
+> aktif + tab BSN Lacak foreground (Wake Lock auto-aktif saat
+> clock-in). Kalau ada gap di trail (jeda panjang antar titik), itu
+> tanda petugas pindah ke aplikasi lain atau layar mati.
+
 ---
 
 ## 6. Pencarian global (Ctrl+K)

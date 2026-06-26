@@ -84,6 +84,42 @@ test.describe('manual capture', () => {
     await shot(page, '06b-tracking-jejak.png', false);
   });
 
+  test('05c tracking dengan trail pergerakan GPS', async ({ page }) => {
+    // Mock endpoint trail — capture spec jalan dalam mode VITE_USE_MOCK=true
+    // (no backend), jadi endpoint /positions/trail real tidak ke-fetch.
+    // Inject fake trail (40 titik di area Cibinong, polyline winding
+    // motor) untuk demonstrasikan overlay visual.
+    await page.route('**/api/petugas/*/positions/trail*', async route => {
+      const start = { lat: -6.4820, lng: 106.8530 };
+      const points = Array.from({ length: 40 }, (_, i) => {
+        const t = i / 40;
+        return {
+          lat: start.lat + Math.sin(t * Math.PI * 2) * 0.008 + t * 0.004,
+          lng: start.lng + Math.cos(t * Math.PI * 2) * 0.012 + t * 0.006,
+          accuracy: 8 + (i % 5),
+          ts: Date.now() - (40 - i) * 60_000,
+        };
+      });
+      await route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          petugasId: 'mock', count: points.length,
+          sinceIso: new Date(Date.now() - 40 * 60_000).toISOString(),
+          untilIso: new Date().toISOString(),
+          points,
+        }),
+      });
+    });
+
+    await login(page);
+    await page.getByRole('button', { name: /tracking petugas/i }).click();
+    await expect(page.getByText(/petugas lapangan/i).first()).toBeVisible();
+    await page.getByLabel(/tampilkan trail pergerakan/i).check();
+    // Tunggu fetch + render polyline + start/end marker.
+    await page.waitForTimeout(1500);
+    await shot(page, '06c-tracking-trail.png', false);
+  });
+
   test('06 global search (Ctrl+K)', async ({ page }) => {
     await login(page);
     await page.keyboard.press('Control+K');
