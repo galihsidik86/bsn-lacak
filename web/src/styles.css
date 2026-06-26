@@ -121,10 +121,21 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 
+html {
+  /* Respect user's browser/OS font-size accessibility setting.
+     Default browser = 16px; user yang set "Large" di Settings/Display
+     override otomatis lewat rem-based sizing di komponen mobile. */
+  font-size: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -1045,3 +1056,92 @@ button { font-family: inherit; cursor: pointer; }
   .m-chip:active,
   .m-session-card:active { transform: none; }
 }
+
+/* ============================================================
+   Mobile responsive sizing — rem-based supaya respect user's
+   font-size accessibility setting di browser/OS.
+   .m-app scope memastikan hanya berlaku di PWA petugas, tidak
+   ganggu desktop supervisor.
+   ============================================================ */
+
+.m-app {
+  /* Base font 1rem (= 16px default browser, atau lebih besar kalau
+     user override "Large text" di iOS/Android accessibility). Semua
+     mobile components inherit dari sini.
+     min(...) cap maksimal untuk tablet jangan terlalu besar. */
+  font-size: min(1rem, 18px);
+  line-height: 1.5;
+}
+
+/* Override font-size mobile classes ke rem-equivalent (16px base).
+   Kalau user pilih "Larger text" di device, semua scale proporsional. */
+.m-app .m-tab-label { font-size: 0.688rem; }       /* 11px */
+.m-app .m-fab svg { width: 1.5rem; height: 1.5rem; } /* 24px */
+
+.m-app .m-section-title { font-size: 1rem; }         /* 16px */
+.m-app .m-section-meta { font-size: 0.813rem; }      /* 13px */
+
+.m-app .m-task-name { font-size: 0.938rem; }         /* 15px */
+.m-app .m-task-addr { font-size: 0.813rem; }         /* 13px */
+.m-app .m-task-num { font-size: 0.875rem; }          /* 14px */
+
+.m-app .m-empty-title { font-size: 1rem; }           /* 16px */
+.m-app .m-empty-body { font-size: 0.875rem; }        /* 14px */
+
+.m-app .m-stop-card { font-size: 0.938rem; }         /* 15px */
+.m-app .m-stop-num-pill { font-size: 0.75rem; }      /* 12px */
+
+.m-app .m-session-label { font-size: 0.688rem; }     /* 11px */
+.m-app .m-session-state { font-size: 0.938rem; }     /* 15px */
+.m-app .m-session-meta { font-size: 0.75rem; }       /* 12px */
+.m-app .m-session-cta { font-size: 0.75rem; }        /* 12px */
+
+.m-app .m-settings-label { font-size: 0.688rem; }    /* 11px */
+.m-app .m-settings-value { font-size: 0.875rem; }    /* 14px */
+
+.m-app .m-chip { font-size: 0.875rem; }              /* 14px */
+.m-app .m-visit-body { font-size: 0.938rem; }        /* 15px */
+.m-app .m-action-big { font-size: 0.938rem; }        /* 15px */
+
+/* Touch targets juga rem-aware supaya tetap proporsional saat user
+   bump up text size. Min 44px (2.75rem) untuk WCAG. */
+.m-app .m-tab { min-height: 3rem; }                  /* 48px @ 16px base */
+.m-app .m-chip { min-height: 2.625rem; }             /* 42px */
+.m-app .m-action-big { min-height: 3.25rem; }        /* 52px */
+
+/* Small viewport (≤ 360px — iPhone SE, Android entry):
+   bump body text +5% supaya readability stays high di layar kecil. */
+@media (max-width: 360px) {
+  .m-app .m-task-name,
+  .m-app .m-stop-card,
+  .m-app .m-visit-body,
+  .m-app .m-section-title { font-size: 1rem; }
+  .m-app .m-task-addr,
+  .m-app .m-section-meta { font-size: 0.875rem; }
+}
+
+/* Larger phone / phablet (≥ 414px): allow heading scale slightly
+   untuk visual hierarchy yang lebih jelas. */
+@media (min-width: 414px) {
+  .m-app .m-section-title { font-size: 1.063rem; }   /* 17px */
+  .m-app .m-task-name { font-size: 1rem; }
+  .m-app .m-session-state { font-size: 1rem; }
+}
+
+/* Safe area inset top untuk iOS notch — biar header tidak ketutup
+   status bar / dynamic island. */
+.m-app .m-header {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+
+/* PWA standalone mode — ketika di-install ke home screen, body
+   sudah fullscreen tanpa browser chrome. Padding bottom safe area
+   sudah di .m-tab-bar; di sini make sure root container respect inset. */
+@media (display-mode: standalone) {
+  .m-app { padding-top: env(safe-area-inset-top); }
+}
+
+/* Prevent zoom Safari iOS saat input focus (font < 16px trigger zoom) */
+.m-app input,
+.m-app textarea,
+.m-app select { font-size: max(1rem, 16px); }
