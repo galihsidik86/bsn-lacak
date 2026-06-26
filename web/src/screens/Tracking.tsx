@@ -527,19 +527,53 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail }: {
     }],
   }), [jejak]);
 
-  // Trail polyline dari ping GPS petugas — solid biru cyan agar visually
-  // beda dari rute terencana (accent hijau) dan jejak kunjungan (dashed).
-  const trailLineGeo = useMemo(() => ({
-    type: 'FeatureCollection' as const,
-    features: trail.length < 2 ? [] : [{
-      type: 'Feature' as const,
-      properties: {},
-      geometry: {
-        type: 'LineString' as const,
-        coordinates: trail.map(t => [t.lng, t.lat] as [number, number]),
-      },
-    }],
-  }), [trail]);
+  // Trail polyline dari ping GPS petugas — split menjadi beberapa
+  // LineString saat ada gap > 5 menit antar ping berurutan. Tanpa split,
+  // dua segmen ter-track dipisahkan gap besar akan tersambung straight
+  // line yang menyesatkan (cuts through area yang tidak benar-benar
+  // dilewati). Kind: 'solid' = path ter-track sebenarnya, 'gap' = jeda
+  // coverage yang di-render dashed untuk menunjukkan ketidakpastian.
+  const GAP_THRESHOLD_MS = 5 * 60 * 1000;
+  const trailLineGeo = useMemo(() => {
+    if (trail.length < 2) return { type: 'FeatureCollection' as const, features: [] };
+    const features: any[] = [];
+    let segStart = 0;
+    for (let i = 1; i <= trail.length; i++) {
+      const isLast = i === trail.length;
+      const gap = !isLast && (trail[i].ts - trail[i - 1].ts) > GAP_THRESHOLD_MS;
+      if (gap || isLast) {
+        // Solid segment dari segStart ke i-1.
+        if (i - 1 > segStart) {
+          features.push({
+            type: 'Feature' as const,
+            properties: { kind: 'solid' },
+            geometry: {
+              type: 'LineString' as const,
+              coordinates: trail.slice(segStart, i).map(t => [t.lng, t.lat] as [number, number]),
+            },
+          });
+        }
+        // Dashed gap line dari titik akhir segmen ke titik awal segmen
+        // berikut — menandakan "coverage hilang" tanpa menyangka itu path
+        // sebenarnya.
+        if (gap) {
+          features.push({
+            type: 'Feature' as const,
+            properties: { kind: 'gap' },
+            geometry: {
+              type: 'LineString' as const,
+              coordinates: [
+                [trail[i - 1].lng, trail[i - 1].lat] as [number, number],
+                [trail[i].lng, trail[i].lat] as [number, number],
+              ],
+            },
+          });
+          segStart = i;
+        }
+      }
+    }
+    return { type: 'FeatureCollection' as const, features };
+  }, [trail]);
 
   return (
     <MlMap
@@ -602,11 +636,25 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail }: {
           : []
       )}
 
-      {/* Trail pergerakan GPS — polyline solid + marker start/end */}
+      {/* Trail pergerakan GPS — solid biru untuk segmen ter-track,
+          dashed abu untuk gap >5 menit (coverage hilang). */}
       <Source id="bsn-trail" type="geojson" data={trailLineGeo}>
+        <Layer
+          id="bsn-trail-line-gap"
+          type="line"
+          filter={['==', ['get', 'kind'], 'gap']}
+          paint={{
+            'line-color': '#9ca3af', // abu medium — tidak salah-arti sebagai path nyata
+            'line-width': 2,
+            'line-opacity': 0.6,
+            'line-dasharray': [2, 3],
+          }}
+          layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+        />
         <Layer
           id="bsn-trail-line"
           type="line"
+          filter={['==', ['get', 'kind'], 'solid']}
           paint={{
             'line-color': '#1e88e5', // biru cyan, beda dari accent hijau
             'line-width': 4,
