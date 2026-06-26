@@ -642,7 +642,7 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail }: {
         <Layer
           id="bsn-trail-line-gap"
           type="line"
-          filter={['==', ['get', 'kind'], 'gap']}
+          filter={['==', 'kind', 'gap']}
           paint={{
             'line-color': '#9ca3af', // abu medium — tidak salah-arti sebagai path nyata
             'line-width': 2,
@@ -654,7 +654,7 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail }: {
         <Layer
           id="bsn-trail-line"
           type="line"
-          filter={['==', ['get', 'kind'], 'solid']}
+          filter={['==', 'kind', 'solid']}
           paint={{
             'line-color': '#1e88e5', // biru cyan, beda dari accent hijau
             'line-width': 4,
