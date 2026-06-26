@@ -77,6 +77,36 @@ router.get('/conversations', async (req, res) => {
   res.json({ conversations: [...map.values()].sort((a, b) => b.lastAt.getTime() - a.lastAt.getTime()) });
 });
 
+// Daftar user yang boleh saya chat-i — dipakai untuk picker "Mulai chat".
+// Aturan sama dengan canCommunicate(): petugas tidak boleh chat ke
+// petugas lain; sisanya bebas same-branch (admin cross-branch).
+router.get('/recipients', async (req, res) => {
+  const meId = req.user!.sub;
+  const me = await prisma.user.findUnique({
+    where: { id: meId }, select: { role: true, branchId: true },
+  });
+  if (!me) return res.status(404).json({ error: 'not_found' });
+
+  // ADMIN bisa chat siapa saja (any branch, any role).
+  // Lainnya: same branch + filter petugas-petugas combo.
+  const where: any = { active: true, id: { not: meId } };
+  if (me.role !== 'ADMIN') {
+    where.branchId = me.branchId;
+    if (me.role === 'PETUGAS') {
+      // PETUGAS hanya boleh chat SUPERVISOR/ADMIN — bukan sesama petugas.
+      where.role = { in: ['SUPERVISOR', 'ADMIN'] };
+    }
+  }
+  const users = await prisma.user.findMany({
+    where,
+    select: { id: true, username: true, nama: true, role: true,
+      branch: { select: { kode: true, nama: true } } },
+    orderBy: [{ role: 'asc' }, { nama: 'asc' }],
+    take: 200,
+  });
+  res.json({ users });
+});
+
 // Total unread count — badge di nav.
 router.get('/unread-count', async (req, res) => {
   const meId = req.user!.sub;

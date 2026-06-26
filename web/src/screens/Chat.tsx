@@ -29,10 +29,16 @@ interface Message {
   body: string; readAt: string | null; createdAt: string;
 }
 
+interface Recipient {
+  id: string; username: string; nama: string; role: string;
+  branch: { kode: string; nama: string } | null;
+}
+
 export function ScreenChat() {
   const me = useAuth(s => s.user);
   const qc = useQueryClient();
   const [active, setActive] = useState<Convo | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const convosQ = useQuery<{ conversations: Convo[] }>({
     queryKey: ['chat-convos'],
     queryFn: async () => (await axios.get(`${BASE}/chat/conversations`, {
@@ -66,8 +72,12 @@ export function ScreenChat() {
   return (
     <div className="content" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 0, height: '100%', overflow: 'hidden', border: '1px solid var(--line)', borderRadius: 14, background: 'var(--surface)' }}>
       <aside style={{ borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)', fontWeight: 800, fontSize: 15 }}>
-          Percakapan
+        <div className="between" style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)' }}>
+          <div style={{ fontWeight: 800, fontSize: 15 }}>Percakapan</div>
+          <button type="button" className="btn btn-sm btn-primary"
+            onClick={() => setPickerOpen(true)}>
+            <Ic.plus size={14} />Mulai chat
+          </button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {convos.length === 0
@@ -102,8 +112,99 @@ export function ScreenChat() {
                 <div className="center" style={{ height: '100%', justifyContent: 'center', color: 'var(--ink-4)', flexDirection: 'column', gap: 10 }}>
                   <Ic.send size={36} />
                   <div style={{ fontWeight: 700 }}>Pilih percakapan untuk mulai</div>
+                  <button type="button" className="btn btn-primary"
+                    onClick={() => setPickerOpen(true)} style={{ marginTop: 8 }}>
+                    <Ic.plus size={14} />Mulai chat baru
+                  </button>
                 </div>
               )}
+      {pickerOpen && (
+        <RecipientPicker
+          onClose={() => setPickerOpen(false)}
+          onPick={(u) => {
+            setPickerOpen(false);
+            setActive({
+              otherId: u.id,
+              other: { id: u.id, nama: u.nama, username: u.username, role: u.role },
+              lastBody: '',
+              lastAt: new Date().toISOString(),
+              unread: 0,
+            });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function RecipientPicker({ onClose, onPick }: { onClose: () => void; onPick: (u: Recipient) => void }) {
+  const [q, setQ] = useState('');
+  const recQ = useQuery<{ users: Recipient[] }>({
+    queryKey: ['chat-recipients'],
+    queryFn: async () => (await axios.get(`${BASE}/chat/recipients`, {
+      withCredentials: true, headers: headers(),
+    })).data,
+  });
+  const users = recQ.data?.users ?? [];
+  const filtered = q.trim() === ''
+    ? users
+    : users.filter(u =>
+        u.nama.toLowerCase().includes(q.toLowerCase())
+        || u.username.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Pilih lawan chat"
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 50,
+        background: 'rgba(15, 23, 42, 0.55)',
+        display: 'grid', placeItems: 'center', padding: 16,
+      }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--surface)', borderRadius: 16,
+          maxWidth: 480, width: '100%', maxHeight: '80vh',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          boxShadow: '0 24px 60px rgba(0,0,0,0.35)',
+        }}>
+        <div className="between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
+          <div style={{ fontWeight: 800, fontSize: 15 }}>Mulai Chat Baru</div>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Tutup">
+            <Ic.x size={16} />
+          </button>
+        </div>
+        <div style={{ padding: 12, borderBottom: '1px solid var(--line)' }}>
+          <div className="search">
+            <Ic.search size={16} />
+            <input value={q} onChange={e => setQ(e.target.value)}
+              placeholder="Cari nama atau username…" autoFocus />
+          </div>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {recQ.isPending ? <Skeleton h={200} />
+            : recQ.isError ? <ErrorState onRetry={() => recQ.refetch()} />
+            : filtered.length === 0
+              ? <EmptyState title="Tidak ada user yang cocok"
+                  hint={q.trim() ? `Tidak ada hasil untuk "${q}".` : 'Belum ada user yang bisa dichat.'} />
+              : filtered.map(u => (
+                <button key={u.id} type="button" onClick={() => onPick(u)}
+                  style={{
+                    width: '100%', display: 'flex', gap: 12, alignItems: 'center',
+                    padding: '12px 16px', textAlign: 'left',
+                    border: 'none', background: 'var(--surface)',
+                    borderBottom: '1px solid var(--line)', cursor: 'pointer',
+                  }}>
+                  <Avatar inisial={u.nama.slice(0, 2).toUpperCase()} hue={162} size={36} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{u.nama}</div>
+                    <div className="muted" style={{ fontSize: 11.5 }}>
+                      {u.username} · {u.role}{u.branch ? ` · ${u.branch.kode}` : ''}
+                    </div>
+                  </div>
+                  <Ic.arrowRight size={16} style={{ color: 'var(--ink-4)' }} />
+                </button>
+              ))}
+        </div>
+      </div>
     </div>
   );
 }
