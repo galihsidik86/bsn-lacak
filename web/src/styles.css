@@ -672,3 +672,183 @@ button { font-family: inherit; cursor: pointer; }
   }
   .btn-action:hover { transform: none; }
 }
+
+/* ============================================================
+   Mobile Petugas PWA polish
+   Refinement untuk experience harian petugas lapangan: touch
+   target 44px+, active state instead of hover, safe-area aware,
+   visual hierarchy yang lebih jelas. Existing accent hijau dipertahankan.
+   ============================================================ */
+
+/* Smooth scroll + tap highlight neutralized (kita pakai active state custom). */
+.m-app, .m-app * { -webkit-tap-highlight-color: transparent; }
+
+/* Bottom tab bar — safe-area inset untuk iOS notch + home indicator,
+   active dot indicator, smoother transition. */
+.m-tab-bar {
+  border-top: 1px solid var(--line);
+  background: color-mix(in oklch, var(--surface) 92%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  align-items: center;
+  position: relative;
+}
+.m-tab-bar::before {
+  content: '';
+  position: absolute; left: 0; right: 0; top: -8px; height: 16px;
+  background: linear-gradient(180deg, transparent, color-mix(in oklch, var(--bg) 50%, transparent));
+  pointer-events: none;
+}
+.m-tab {
+  flex: 1; background: none; border: none;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 4px;
+  color: var(--ink-4);
+  font-family: inherit; cursor: pointer;
+  min-height: 48px;
+  position: relative;
+  transition: color .15s;
+}
+.m-tab:active { transform: scale(0.95); transition: transform .08s; }
+.m-tab .m-tab-label {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.01em;
+}
+.m-tab.is-active { color: var(--accent); }
+.m-tab.is-active::after {
+  content: '';
+  position: absolute; top: 2px;
+  width: 22px; height: 3px; border-radius: 99px;
+  background: var(--accent);
+}
+
+/* FAB tombol "+" tengah — gradient subtle + active scale. */
+.m-fab-slot { flex: 1; display: grid; place-items: center; }
+.m-fab {
+  width: 54px; height: 54px; border-radius: 50%;
+  border: none; cursor: pointer; margin-top: -22px;
+  background: linear-gradient(145deg, var(--accent), var(--accent-700));
+  color: white;
+  display: grid; place-items: center;
+  box-shadow: 0 8px 22px oklch(0.55 0.14 156 / 0.45),
+              inset 0 0 0 1px oklch(0.85 0.1 84 / 0.25);
+  transition: transform .14s, box-shadow .14s;
+}
+.m-fab:active {
+  transform: scale(0.93);
+  box-shadow: 0 4px 12px oklch(0.55 0.14 156 / 0.3);
+}
+.m-fab:focus-visible {
+  outline: none;
+  box-shadow: 0 8px 22px oklch(0.55 0.14 156 / 0.45),
+              0 0 0 4px oklch(0.55 0.14 156 / 0.3);
+}
+
+/* Section header di mobile body — judul + meta info di kanan. */
+.m-section-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 20px 20px 10px;
+}
+.m-section-head .m-section-title {
+  font-weight: 800; font-size: 15.5px; letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.m-section-head .m-section-meta {
+  font-size: 12.5px; font-weight: 700;
+  color: var(--ink-3);
+}
+
+/* Task card (nasabah list item) — active state pakai inset shadow
+   + scale subtle untuk tactile feedback. Done state visually muted. */
+.m-task-card {
+  display: flex; gap: 12px; align-items: center;
+  padding: 13px; border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink);
+  text-align: left; cursor: pointer;
+  font: inherit;
+  transition: transform .14s, box-shadow .14s, border-color .14s;
+  -webkit-user-select: none; user-select: none;
+}
+.m-task-card:active {
+  transform: scale(0.985);
+  box-shadow: inset 0 0 0 2px var(--accent-soft);
+  border-color: var(--accent);
+}
+.m-task-card.is-done {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.m-task-card .m-task-num {
+  width: 32px; height: 32px; border-radius: 50%; flex: none;
+  display: grid; place-items: center;
+  background: var(--surface-2); color: var(--ink-3);
+  font-weight: 800; font-size: 13px;
+}
+.m-task-card.is-done .m-task-num {
+  background: var(--accent); color: white;
+}
+.m-task-card .m-task-name { font-weight: 700; font-size: 14.5px; }
+.m-task-card .m-task-addr {
+  font-size: 12.5px; color: var(--ink-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Status stack — group GPS/Wake Lock badges, smaller margin,
+   gap consistent supaya tidak terlihat berdesak. */
+.m-status-stack { display: flex; flex-direction: column; gap: 6px; margin: 10px 16px 0; }
+.m-status-stack > * { margin: 0 !important; }
+
+/* Big primary action button — clock-in/out, jadwal. 52px height
+   memenuhi standard 44px+ touch target ramah jempol. */
+.m-action-big {
+  width: 100%; min-height: 52px; padding: 0 18px;
+  border-radius: 14px; border: none; cursor: pointer;
+  background: linear-gradient(145deg, var(--accent), var(--accent-700));
+  color: white;
+  font-family: inherit; font-weight: 800; font-size: 15px;
+  letter-spacing: 0.01em;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  box-shadow: 0 6px 18px oklch(0.55 0.14 156 / 0.35);
+  transition: transform .12s, box-shadow .12s;
+}
+.m-action-big:active {
+  transform: translateY(1px) scale(0.99);
+  box-shadow: 0 3px 10px oklch(0.55 0.14 156 / 0.25);
+}
+.m-action-big.is-secondary {
+  background: var(--surface);
+  color: var(--col-macet);
+  border: 1.5px solid var(--col-macet-soft);
+  box-shadow: none;
+}
+.m-action-big.is-secondary:active {
+  background: var(--col-macet-soft);
+}
+.m-action-big:focus-visible {
+  outline: none;
+  box-shadow: 0 6px 18px oklch(0.55 0.14 156 / 0.35),
+              0 0 0 4px oklch(0.55 0.14 156 / 0.3);
+}
+
+/* Card di mobile body — soft shadow, no border, layered hierarchy. */
+.m-card {
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: 0 1px 0 var(--line), 0 4px 14px oklch(0.5 0.02 250 / 0.06);
+  overflow: hidden;
+}
+.m-card-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.m-card-row:last-child { border-bottom: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .m-tab:active,
+  .m-fab:active,
+  .m-task-card:active,
+  .m-action-big:active { transform: none; }
+}

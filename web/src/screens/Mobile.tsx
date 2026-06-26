@@ -268,7 +268,7 @@ export function ScreenMobile() {
   // mobile UI flush. Mobile-first stylesheet handles the small viewport.
   if (isPetugasUser) {
     return (
-      <div style={{ height: '100%', minHeight: 'calc(100vh - 64px)', background: 'var(--bg)' }}>
+      <div className="m-app" style={{ height: '100%', minHeight: 'calc(100vh - 64px)', background: 'var(--bg)' }}>
         {app}
         {showOnboarding && <OnboardingTour onClose={dismissOnboarding} />}
       </div>
@@ -653,8 +653,10 @@ function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone, gpsS
   return (
     <div>
       <BriefingCard me={ME} doneInTasks={doneInTasks} tasksCount={MY_TASKS.length} />
-      <GpsStatusBadge status={gpsStatus} fix={here} />
-      <WakeLockBadge status={wakeLockStatus} isClockedIn={isClockedIn} />
+      <div className="m-status-stack">
+        <GpsStatusBadge status={gpsStatus} fix={here} />
+        <WakeLockBadge status={wakeLockStatus} isClockedIn={isClockedIn} />
+      </div>
       {zone && inZone === false && (
         <div className="center gap-2" style={{
           margin: '10px 16px 0', padding: '10px 12px', borderRadius: 12,
@@ -711,32 +713,28 @@ function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone, gpsS
         </div>
       </div>
 
-      <div className="between" style={{ padding: '22px 20px 10px' }}>
-        <div style={{ fontWeight: 800, fontSize: 15 }}>Jadwal Hari Ini</div>
-        <span className="muted" style={{ fontSize: 12.5, fontWeight: 700 }}>{doneInTasks}/{MY_TASKS.length} selesai</span>
+      <div className="m-section-head">
+        <div className="m-section-title">Jadwal Hari Ini</div>
+        <span className="m-section-meta">{doneInTasks}/{MY_TASKS.length} selesai</span>
       </div>
       <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
         {MY_TASKS.map((n, i) => {
           const isDone = doneSet.has(n.id);
           return (
-            <button key={n.id} onClick={() => !isDone && onReport(n)} disabled={isDone}
-              style={{
-                background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 16, padding: 13,
-                display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', opacity: isDone ? 0.55 : 1,
-              }}>
-              <div style={{
-                width: 30, height: 30, borderRadius: 99, flex: 'none', display: 'grid', placeItems: 'center',
-                background: isDone ? 'var(--accent)' : 'var(--surface-2)',
-                color: isDone ? 'white' : 'var(--ink-3)', fontWeight: 800, fontSize: 13,
-              }} className="num">{isDone ? <Ic.check size={16} /> : i + 1}</div>
+            <button key={n.id} type="button" onClick={() => !isDone && onReport(n)}
+              disabled={isDone}
+              className={'m-task-card' + (isDone ? ' is-done' : '')}>
+              <div className="m-task-num num">
+                {isDone ? <Ic.check size={16} aria-hidden="true" /> : i + 1}
+              </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{n.nama}</div>
-                <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.alamat}</div>
+                <div className="m-task-name">{n.nama}</div>
+                <div className="m-task-addr">{n.alamat}</div>
                 {n.nextVisitAt && (
                   <div className="center gap-2" style={{
                     marginTop: 4, fontSize: 10.5, fontWeight: 700, color: nextVisitTint(n.nextVisitAt),
                   }}>
-                    <Ic.clock size={10} />Jadwal {nextVisitLabel(n.nextVisitAt)}
+                    <Ic.clock size={10} aria-hidden="true" />Jadwal {nextVisitLabel(n.nextVisitAt)}
                   </div>
                 )}
               </div>
@@ -1889,30 +1887,24 @@ function MTabBar({ tab, setTab, onReport }: { tab: Tab; setTab: (t: Tab) => void
     { k: 'profil', ic: 'user', label: 'Profil' },
   ];
   return (
-    <div style={{
-      borderTop: '1px solid var(--line)',
-      background: 'color-mix(in oklch, var(--surface) 90%, transparent)',
-      backdropFilter: 'blur(10px)',
-      display: 'flex', padding: '8px 8px 26px', alignItems: 'center',
-    }}>
+    <div className="m-tab-bar">
       {tabs.map(t => {
         if (t.k === '_add') return (
-          <div key="add" style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
-            <button onClick={onReport} style={{
-              width: 50, height: 50, borderRadius: 99, border: 'none', background: 'var(--accent)', color: 'white',
-              display: 'grid', placeItems: 'center', boxShadow: '0 6px 16px oklch(0.55 0.14 156 / 0.4)', marginTop: -24,
-            }}><Ic.plus size={24} /></button>
+          <div key="add" className="m-fab-slot">
+            <button type="button" onClick={onReport} className="m-fab"
+              aria-label="Laporkan kunjungan baru">
+              <Ic.plus size={24} aria-hidden="true" />
+            </button>
           </div>
         );
         const Icon = Ic[t.ic];
         const on = tab === t.k;
         return (
-          <button key={t.k} onClick={() => setTab(t.k)} style={{
-            flex: 1, background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-            color: on ? 'var(--accent)' : 'var(--ink-4)',
-          }}>
-            <Icon size={21} />
-            <span style={{ fontSize: 10, fontWeight: 700 }}>{t.label}</span>
+          <button key={t.k} type="button" onClick={() => setTab(t.k)}
+            className={'m-tab' + (on ? ' is-active' : '')}
+            aria-current={on ? 'page' : undefined}>
+            <Icon size={22} aria-hidden="true" />
+            <span className="m-tab-label">{t.label}</span>
           </button>
         );
       })}
