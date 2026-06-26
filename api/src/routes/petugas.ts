@@ -7,6 +7,7 @@ import { bus } from '../lib/events.js';
 import { computeStatsFor } from '../lib/petugasStats.js';
 import { computePetugasPerformance } from '../lib/petugasPerformance.js';
 import { evalSpeed } from '../lib/antiFraud.js';
+import { checkPetugasGeofence, notifyGeofenceViolation } from '../lib/geofence.js';
 
 const router = Router();
 
@@ -287,6 +288,18 @@ router.post('/:id/position', async (req, res) => {
       meta: { flags: speed.flags },
     });
   }
+  // Geofence — fire-and-forget supaya tidak block response. Petugas
+  // tetap mendapat 201 walau notif lambat / gagal. Cek silently di
+  // background; kalau out of zone + belum dialerted sesi ini → audit
+  // + notif supervisor.
+  void (async () => {
+    try {
+      const geo = await checkPetugasGeofence({ petugasId: id, lat, lng });
+      if (geo.hasZone && !geo.inside) {
+        await notifyGeofenceViolation({ petugasId: id, lat, lng });
+      }
+    } catch { /* silently swallow — pings high-frequency, jangan spam logs */ }
+  })();
   bus.publish('petugas.position', { petugasId: id, lat, lng, accuracy, ts: pos.recordedAt });
   res.status(201).json(pos);
 });

@@ -79,6 +79,10 @@ const schema = z.object({
   // CO — inactivity detector. Daily at the configured hour; threshold in days.
   INACTIVITY_DAYS: z.coerce.number().int().min(1).max(60).default(3),
   INACTIVITY_CHECK_HOUR: z.coerce.number().int().min(0).max(23).default(8),
+  // Real-time inactivity (liveInactivityWorker) — petugas clocked-in
+  // tapi tidak ping lebih dari threshold menit.
+  LIVE_INACTIVITY_THRESHOLD_MIN: z.coerce.number().int().min(5).max(180).default(30),
+  LIVE_INACTIVITY_CHECK_INTERVAL_MIN: z.coerce.number().int().min(1).max(60).default(5),
   // DG — leave auto-reassign sweep. Every 30 min covers same-day starts
   // without churning the DB.
   LEAVE_REASSIGN_POLL_MS: z.coerce.number().int().positive().default(30 * 60 * 1000),
