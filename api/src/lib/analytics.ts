@@ -1402,3 +1402,40 @@ export async function kmReportForMonth(opts: {
     rows: [...byPetugas.values()].sort((a, b) => b.totalKm - a.totalKm),
   };
 }
+
+// Visit heatmap — aggregate Kunjungan dengan GPS fix ke grid 0.001° cells
+// (~110m di equator) supaya supervisor bisa lihat hotspot kunjungan vs
+// area under-served. Kunjungan tanpa lat/lng di-skip.
+export interface VisitHeatmapPoint {
+  lat: number; lng: number; count: number;
+}
+
+export async function visitHeatmap(opts: {
+  branchId: string | null | undefined;
+  since: Date; until: Date;
+}): Promise<{ points: VisitHeatmapPoint[]; total: number }> {
+  const branchClause = opts.branchId ? { branchId: opts.branchId } : {};
+  const rows = await prisma.kunjungan.findMany({
+    where: {
+      ...branchClause,
+      tanggal: { gte: opts.since, lte: opts.until },
+      lat: { not: null }, lng: { not: null },
+      archivedAt: null,
+    },
+    select: { lat: true, lng: true },
+  });
+  // Grid bucket — round to 0.001° (~110 m). Cukup detil untuk visualize
+  // density per blok rumah tanpa expose lokasi exact.
+  const PRECISION = 1000;
+  const buckets = new Map<string, VisitHeatmapPoint>();
+  for (const r of rows) {
+    if (r.lat == null || r.lng == null) continue;
+    const lat = Math.round(r.lat * PRECISION) / PRECISION;
+    const lng = Math.round(r.lng * PRECISION) / PRECISION;
+    const key = `${lat},${lng}`;
+    const existing = buckets.get(key);
+    if (existing) existing.count++;
+    else buckets.set(key, { lat, lng, count: 1 });
+  }
+  return { points: [...buckets.values()], total: rows.length };
+}

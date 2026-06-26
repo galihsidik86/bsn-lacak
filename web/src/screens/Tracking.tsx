@@ -88,6 +88,11 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
   // kunjungan — ini path GPS mentah, bukan titik laporan. Off by default.
   const [showTrail, setShowTrail] = useState(false);
   const [trail, setTrail] = useState<Array<{ lat: number; lng: number; ts: number }>>([]);
+  // Toggle "Heatmap Kunjungan": geographic density semua laporan
+  // kunjungan ber-GPS dalam window 7 hari. Cross-petugas / cross-zone —
+  // untuk supervisor identifikasi hotspot vs under-served area.
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [heatmap, setHeatmap] = useState<Array<{ lat: number; lng: number; count: number }>>([]);
   // Default trailDate = hari ini (YYYY-MM-DD local timezone). Supervisor
   // bisa pilih tanggal historis untuk audit pergerakan kemarin / minggu
   // lalu. Tanggal masa depan diizinkan tapi datanya pasti kosong.
@@ -172,6 +177,30 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
     return () => { cancelled = true; clearInterval(iv); };
   }, [showTrail, sel, trailDate, trailIsToday]);
 
+  // Fetch heatmap saat toggle on (semua kunjungan ber-GPS dalam 7 hari).
+  // Tidak per-petugas — heat map cross-cabang scope di backend pakai
+  // scopedBranchId. Re-fetch tiap 5 menit.
+  useEffect(() => {
+    if (!showHeatmap) { setHeatmap([]); return; }
+    const tok = tokenStore.get();
+    if (!tok) return;
+    let cancelled = false;
+    const headers: Record<string, string> = { Authorization: `Bearer ${tok}` };
+    const override = useAuth.getState().branchOverride;
+    if (override) headers['x-branch-id'] = override;
+    const fetchHeat = () => {
+      void axios.get<{ points: Array<{ lat: number; lng: number; count: number }> }>(
+        `${BASE}/analytics/visit-heatmap`,
+        { withCredentials: true, headers },
+      ).then(r => {
+        if (!cancelled) setHeatmap(r.data.points);
+      }).catch(() => { if (!cancelled) setHeatmap([]); });
+    };
+    fetchHeat();
+    const iv = setInterval(fetchHeat, 5 * 60_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [showHeatmap]);
+
   // Routes are rebuilt whenever the petugas's live fix changes so the order
   // updates as they move — same nearest-neighbor algorithm Mobile uses.
   const routes = useMemo(
@@ -247,6 +276,10 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
               <input type="checkbox" checked={showTrail} onChange={e => setShowTrail(e.target.checked)} />
               Tampilkan trail pergerakan
             </label>
+            <label className="toggle-row">
+              <input type="checkbox" checked={showHeatmap} onChange={e => setShowHeatmap(e.target.checked)} />
+              Tampilkan heatmap kunjungan
+            </label>
             {showTrail && (
               <div className="trail-detail">
                 <div className="trail-detail-row">
@@ -309,7 +342,7 @@ export function ScreenTracking({ go }: { go: (k: string) => void }) {
       <div style={{ display: 'grid', gridTemplateRows: '1fr auto', overflow: 'hidden', position: 'relative' }}>
         <div style={{ position: 'relative', overflow: 'hidden', background: 'var(--surface-2)' }}>
           {MAPTILER_KEY ? (
-            <MapTilerMap routes={routes} sel={sel} showAll={showAll} setSel={setSel} live={livePositions} jejak={jejak} trail={trail} />
+            <MapTilerMap routes={routes} sel={sel} showAll={showAll} setSel={setSel} live={livePositions} jejak={jejak} trail={trail} heatmap={heatmap} />
           ) : (
             <MapStylized routes={routes} sel={sel} showAll={showAll} setSel={setSel} myRoute={myRoute} jejak={jejak} trail={trail} />
           )}
@@ -454,11 +487,12 @@ const JEJAK_COLOR: Record<JejakStop['hasil'], string> = {
 };
 
 // MapTiler basemap + route lines + petugas markers via MapLibre GL.
-function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail }: {
+function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail, heatmap }: {
   routes: Route[]; sel: string; showAll: boolean; setSel: (s: string) => void;
   live: Record<string, { lat: number; lng: number; ts: number }>;
   jejak: JejakStop[];
   trail: Array<{ lat: number; lng: number; ts: number }>;
+  heatmap: Array<{ lat: number; lng: number; count: number }>;
 }) {
   const accent = cssVar('--accent') || '#1f8a5b';
   const styleUrl = `https://api.maptiler.com/maps/${MAPTILER_STYLE}/style.json?key=${MAPTILER_KEY}`;
@@ -504,6 +538,23 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail }: {
         },
       })),
   }), [routes, sel, showAll, accent]);
+
+  // Heatmap GeoJSON — point feature collection dengan property weight
+  // untuk maplibre heatmap-weight expression. Max count untuk normalisasi
+  // di heatmap-intensity. 0 fallback supaya layer tidak crash saat data
+  // belum tiba.
+  const heatmapGeo = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: heatmap.map(h => ({
+      type: 'Feature' as const,
+      properties: { count: h.count },
+      geometry: { type: 'Point' as const, coordinates: [h.lng, h.lat] as [number, number] },
+    })),
+  }), [heatmap]);
+  const heatmapMaxCount = useMemo(
+    () => heatmap.reduce((m, h) => Math.max(m, h.count), 1),
+    [heatmap],
+  );
 
   // Polyline kronologis dari jejak — opacity rendah agar tidak dominasi
   // garis rute terencana.
@@ -574,6 +625,29 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail }: {
       style={{ width: '100%', height: '100%' }}
       mapStyle={styleUrl}
       attributionControl={{ compact: true }}>
+      {/* Visit heatmap — paling bawah supaya routes/trail tetap visible. */}
+      <Source id="bsn-heatmap" type="geojson" data={heatmapGeo}>
+        <Layer
+          id="bsn-heatmap-layer"
+          type="heatmap"
+          paint={{
+            'heatmap-weight': ['interpolate', ['linear'], ['get', 'count'], 0, 0, heatmapMaxCount, 1],
+            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 9, 1, 15, 3],
+            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 9, 16, 15, 40],
+            'heatmap-opacity': 0.65,
+            'heatmap-color': [
+              'interpolate', ['linear'], ['heatmap-density'],
+              0, 'rgba(33, 102, 172, 0)',
+              0.2, 'rgb(103, 169, 207)',
+              0.4, 'rgb(209, 229, 240)',
+              0.6, 'rgb(253, 219, 199)',
+              0.8, 'rgb(239, 138, 98)',
+              1, 'rgb(178, 24, 43)',
+            ],
+          }}
+        />
+      </Source>
+
       <Source id="bsn-routes" type="geojson" data={routesGeo}>
         <Layer
           id="bsn-routes-line"

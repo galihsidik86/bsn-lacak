@@ -159,6 +159,8 @@ model User {
   uploadedNasabahDocuments  NasabahDocument[]      @relation("NasabahDocumentUploader")
   decidedAttendanceDisputes AttendanceDispute[]    @relation("AttendanceDisputeDecider")
   decidedPetugasSwaps       PetugasSwapRequest[]   @relation("SwapDecider")
+  chatSent                  ChatMessage[]          @relation("ChatSender")
+  chatReceived              ChatMessage[]          @relation("ChatRecipient")
   createdAt                 DateTime               @default(now())
   updatedAt                 DateTime               @updatedAt
 
@@ -969,4 +971,22 @@ model NasabahRestructure {
 
   @@index([nasabahId, createdAt])
   @@index([status])
+}
+
+// Direct messaging antara petugas <-> supervisor (atau admin). MVP:
+// text-only, 1:1 conversation. Branch isolation via sender.branchId
+// (server-side check di route). Tidak ada concept "ChatRoom" — message
+// punya fromId + toId. List conversation = group by other party.
+model ChatMessage {
+  id          String   @id @default(cuid())
+  from        User     @relation("ChatSender",    fields: [fromId], references: [id])
+  fromId      String
+  to          User     @relation("ChatRecipient", fields: [toId],   references: [id])
+  toId        String
+  body        String
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([fromId, toId, createdAt])
+  @@index([toId, readAt])
 }

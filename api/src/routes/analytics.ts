@@ -8,7 +8,7 @@ import {
   pendingAgingReport, petugasRace, churnRiskList, branchRadar,
   monthlyLeaderboard, supervisorSlaStats, commissionForMonth, periodDelta,
   branchBudgetForMonth, petugasScorecard, janjiTracker,
-  kmReportForMonth,
+  kmReportForMonth, visitHeatmap,
 } from '../lib/analytics.js';
 
 const router = Router();
@@ -250,6 +250,29 @@ router.get('/heatmap', async (req, res) => {
   if (!g.ok) return;
   const cells = await portfolioHeatmap(g.branchId);
   res.json({ cells });
+});
+
+// Geographic visit heatmap — kunjungan dengan GPS di-aggregate ke grid
+// 110m supaya supervisor lihat hotspot/under-served wilayah binaan.
+// Window default 7 hari ke belakang; override via ?since=ISO&until=ISO.
+router.get('/visit-heatmap', async (req, res) => {
+  const g = gate(req, res);
+  if (!g.ok) return;
+  const sinceParam = String(req.query.since ?? '');
+  const untilParam = String(req.query.until ?? '');
+  const sinceDt = sinceParam ? new Date(sinceParam) : new Date(Date.now() - 7 * 24 * 3600 * 1000);
+  const untilDt = untilParam ? new Date(untilParam) : new Date();
+  if (Number.isNaN(sinceDt.getTime()) || Number.isNaN(untilDt.getTime())) {
+    return res.status(400).json({ error: 'bad_request' });
+  }
+  const data = await visitHeatmap({
+    branchId: g.branchId, since: sinceDt, until: untilDt,
+  });
+  res.json({
+    sinceIso: sinceDt.toISOString(),
+    untilIso: untilDt.toISOString(),
+    ...data,
+  });
 });
 
 export default router;

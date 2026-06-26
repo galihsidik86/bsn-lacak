@@ -13,7 +13,8 @@ type EventTopic =
   | 'kunjungan.reviewed'
   | 'nasabah.reassign'
   | 'blast.completed'
-  | 'notification.new';
+  | 'notification.new'
+  | 'chat.message';
 
 type Handler = (data: any) => void;
 const handlers = new Map<EventTopic, Set<Handler>>();
@@ -39,7 +40,7 @@ async function connect(): Promise<void> {
 
     const topics: EventTopic[] = [
       'ready', 'petugas.position', 'kunjungan.created', 'kunjungan.reviewed',
-      'nasabah.reassign', 'blast.completed', 'notification.new',
+      'nasabah.reassign', 'blast.completed', 'notification.new', 'chat.message',
     ];
     for (const t of topics) {
       es.addEventListener(t, (ev) => {

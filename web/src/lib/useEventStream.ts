@@ -30,6 +30,13 @@ export function useEventStream() {
       subscribe('notification.new', () => {
         qc.invalidateQueries({ queryKey: ['notifications'] });
       }),
+      subscribe('chat.message', (data) => {
+        qc.invalidateQueries({ queryKey: ['chat-convos'] });
+        qc.invalidateQueries({ queryKey: ['chat-unread-count'] });
+        // Dispatch DOM event supaya ScreenChat (kalau open) bisa
+        // refresh thread aktif tanpa memburuhkan query key sharing.
+        window.dispatchEvent(new CustomEvent('bsn:chat.message', { detail: data }));
+      }),
     ];
     return () => { unsubs.forEach(fn => fn()); };
   }, [qc]);

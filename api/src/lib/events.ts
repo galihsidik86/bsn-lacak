@@ -10,7 +10,8 @@ export type EventTopic =
   | 'kunjungan.reviewed'    // { kunjunganId, status, by }
   | 'nasabah.reassign'      // { nasabahId, from, to }
   | 'blast.completed'       // { blastId, terkirim, gagal }
-  | 'notification.new';     // { id, type, title, body, severity }
+  | 'notification.new'      // { id, type, title, body, severity }
+  | 'chat.message';         // { id, fromId, toId, body, createdAt }
 
 export interface BsnEvent {
   id: string;

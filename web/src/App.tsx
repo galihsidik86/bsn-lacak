@@ -51,6 +51,7 @@ const ScreenPromiseTracker = lazy(() => import('./screens/PromiseTracker').then(
 const ScreenAttendanceDisputes = lazy(() => import('./screens/AttendanceDisputes').then(m => ({ default: m.ScreenAttendanceDisputes })));
 const ScreenKmReport = lazy(() => import('./screens/KmReport').then(m => ({ default: m.ScreenKmReport })));
 const ScreenPetugasSwap = lazy(() => import('./screens/PetugasSwap').then(m => ({ default: m.ScreenPetugasSwap })));
+const ScreenChat = lazy(() => import('./screens/Chat').then(m => ({ default: m.ScreenChat })));
 
 function ScreenFallback() {
   return (
@@ -63,7 +64,7 @@ function ScreenFallback() {
 type PageKey =
   | 'dashboard' | 'tracking' | 'kolektabilitas' | 'angsuran'
   | 'blast' | 'laporan' | 'distribusi' | 'mobile'
-  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'churn' | 'activity' | 'leaderboard' | 'system-health' | 'commission' | 'escalation' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks' | 'leave-calendar' | 'promise-tracker' | 'attendance-disputes' | 'km-report' | 'petugas-swap';
+  | 'branch' | 'audit' | 'settings' | 'users' | 'petugas' | 'nasabah' | 'performa' | 'analytics' | 'scorecard' | 'aging' | 'attendance-map' | 'churn' | 'activity' | 'leaderboard' | 'system-health' | 'commission' | 'escalation' | 'notifikasi' | 'pengumuman' | 'wilayah' | 'feedback' | 'backup' | 'apikeys' | 'webhooks' | 'leave-calendar' | 'promise-tracker' | 'attendance-disputes' | 'km-report' | 'petugas-swap' | 'chat';
 
 interface NavItem { k: PageKey; label: string; icon: IconKey; badge?: number }
 interface NavGroup { group: string; items: NavItem[] }
@@ -99,6 +100,7 @@ function useNav(): NavGroup[] {
       { k: 'attendance-disputes', label: 'Dispute Absensi', icon: 'alert' },
       { k: 'km-report', label: 'Laporan KM', icon: 'map' },
       { k: 'petugas-swap', label: 'Tukar Nasabah', icon: 'users' },
+      { k: 'chat', label: 'Pesan Petugas', icon: 'wa' },
     ] },
     { group: 'Lapangan', items: [
       { k: 'wilayah', label: 'Wilayah Binaan', icon: 'map' },
@@ -163,6 +165,7 @@ const TITLES: Record<PageKey, [string, string]> = {
   'attendance-disputes': ['Dispute Absensi', 'Antrian dispute clock-in / clock-out petugas; supervisor approve/reject'],
   'km-report': ['Laporan KM Petugas', 'Total kilometer ditempuh per petugas dari odometer clock-in/out — basis klaim BBM'],
   'petugas-swap': ['Tukar Nasabah', 'Pengajuan tukar nasabah antar petugas dalam cabang yang sama'],
+  chat: ['Pesan Petugas', 'Direct message dengan petugas lapangan — text-only, realtime via SSE'],
 };
 
 const TWEAK_DEFAULTS = {
@@ -524,6 +527,7 @@ export function App() {
             {page === 'attendance-disputes' && <ScreenAttendanceDisputes />}
             {page === 'km-report' && <ScreenKmReport />}
             {page === 'petugas-swap' && <ScreenPetugasSwap />}
+            {page === 'chat' && <ScreenChat />}
           </Suspense>
         </main>
       </div>
