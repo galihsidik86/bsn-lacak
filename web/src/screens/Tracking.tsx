@@ -608,7 +608,7 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail }: {
           id="bsn-trail-line"
           type="line"
           paint={{
-            'line-color': 'oklch(0.55 0.15 230)', // biru cyan, beda dari accent hijau
+            'line-color': '#1e88e5', // biru cyan, beda dari accent hijau
             'line-width': 4,
             'line-opacity': 0.75,
           }}
@@ -621,7 +621,7 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail }: {
             <div title={`Awal trail · ${new Date(trail[0].ts).toLocaleTimeString('id-ID')}`}
               style={{
                 width: 14, height: 14, borderRadius: 99,
-                background: 'oklch(0.55 0.15 230)', border: '2.5px solid white',
+                background: '#1e88e5', border: '2.5px solid white',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
               }} />
           </Marker>
@@ -629,7 +629,7 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail }: {
             <div title={`Posisi terakhir · ${new Date(trail[trail.length - 1].ts).toLocaleTimeString('id-ID')}`}
               style={{
                 width: 14, height: 14, borderRadius: 99,
-                background: 'oklch(0.55 0.15 230)', border: '2.5px solid white',
+                background: '#1e88e5', border: '2.5px solid white',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
               }} />
           </Marker>
@@ -714,7 +714,7 @@ function MapStylized({ routes, sel, showAll, setSel, myRoute, jejak, trail }: {
         {trailXY.length >= 2 && (
           <path
             d={trailXY.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join(' ')}
-            fill="none" stroke="oklch(0.55 0.15 230)" strokeWidth="3.5"
+            fill="none" stroke="#1e88e5" strokeWidth="3.5"
             strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
         )}
         {/* Jejak kunjungan — polyline dashed + marker bernomor per hasil */}
