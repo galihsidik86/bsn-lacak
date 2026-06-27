@@ -25,6 +25,18 @@ const USE_MOCK = (import.meta.env.VITE_USE_MOCK ?? 'true') !== 'false';
 const BgGeo = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
 const isNative = Capacitor.isNativePlatform();
 
+// Surface ke UI supaya komponen petugas bisa tampilkan banner upgrade
+// izin lokasi (Android 11+ tidak izinkan runtime dialog "sepanjang waktu",
+// harus manual via Settings).
+export const isNativeRuntime = isNative;
+
+// Buka halaman izin aplikasi di Settings — dipakai banner "Buka Pengaturan"
+// supaya petugas tidak perlu nyari sendiri menu izin lokasi.
+export async function openNativeAppSettings(): Promise<void> {
+  if (!isNative) return;
+  try { await BgGeo.openSettings(); } catch { /* user batalkan / OS tolak — ignore */ }
+}
+
 interface Options {
   petugasId: string | null | undefined;
   enabled?: boolean;

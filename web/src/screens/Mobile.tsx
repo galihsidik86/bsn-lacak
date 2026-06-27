@@ -15,7 +15,7 @@ import {
   useKunjunganList, useNasabahList, usePetugasList,
 } from '../data/queries';
 import { doLogout, useAuth } from '../lib/auth';
-import { useGeolocationStream, type GeoFix } from '../lib/geolocation';
+import { useGeolocationStream, isNativeRuntime, openNativeAppSettings, type GeoFix } from '../lib/geolocation';
 import { useScreenWakeLock } from '../lib/wakeLock';
 import { distMeters, orderNearest } from '../lib/geo';
 import { makeWatermarkedPreview } from '../lib/watermarkPreview';
@@ -515,6 +515,65 @@ function WakeLockBadge({ status, isClockedIn }: {
   );
 }
 
+// Banner di MBeranda saat petugas pakai APK native + clocked-in. Android
+// 11+ tidak izinkan runtime dialog "Sepanjang waktu" untuk lokasi —
+// harus upgrade manual via Settings. Banner ini ngasih shortcut 1-tap ke
+// halaman izin lewat plugin openSettings(). Dismissable per device supaya
+// tidak ganggu petugas yang sudah benar setup-nya.
+const NATIVE_BG_PERM_KEY = 'bsn-lacak:native-bg-perm-dismissed';
+function NativeBgPermBanner({ isClockedIn }: { isClockedIn: boolean }) {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem(NATIVE_BG_PERM_KEY) === '1'; }
+    catch { return false; }
+  });
+  // Gating: hanya tampil di APK native + sedang clock-in. Di browser PWA
+  // banner tidak relevan (tidak ada konsep "selalu izinkan" di web geo).
+  if (!isNativeRuntime || !isClockedIn || dismissed) return null;
+  const handleOpen = () => { void openNativeAppSettings(); };
+  const handleDismiss = () => {
+    try { localStorage.setItem(NATIVE_BG_PERM_KEY, '1'); } catch { /* ignore */ }
+    setDismissed(true);
+  };
+  return (
+    <div style={{
+      margin: '10px 16px 0', padding: '12px 14px', borderRadius: 14,
+      background: 'oklch(0.96 0.05 75)', color: 'oklch(0.32 0.13 75)',
+      border: '1px solid oklch(0.85 0.10 75)',
+    }}>
+      <div className="center gap-2" style={{ marginBottom: 6 }}>
+        <Ic.alert size={15} />
+        <strong style={{ fontSize: 13 }}>Aktifkan lokasi "Sepanjang waktu"</strong>
+      </div>
+      <div style={{ fontSize: 12.5, lineHeight: 1.5, marginBottom: 10 }}>
+        Supaya GPS terus tercatat saat aplikasi tertutup, ubah izin lokasi
+        dari "Saat aplikasi digunakan" ke <strong>Sepanjang waktu</strong>.
+      </div>
+      <div className="center gap-2">
+        <button
+          type="button"
+          onClick={handleOpen}
+          className="cursor-pointer"
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 10, border: 0,
+            background: 'oklch(0.50 0.14 75)', color: 'white',
+            fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+          }}
+        >Buka Pengaturan</button>
+        <button
+          type="button"
+          onClick={handleDismiss}
+          style={{
+            padding: '9px 12px', borderRadius: 10,
+            border: '1px solid oklch(0.80 0.08 75)',
+            background: 'transparent', color: 'oklch(0.32 0.13 75)',
+            fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+          }}
+        >Saya sudah atur</button>
+      </div>
+    </div>
+  );
+}
+
 function BriefingCard({ me, doneInTasks, tasksCount }: {
   me: Petugas; doneInTasks: number; tasksCount: number;
 }) {
@@ -622,6 +681,7 @@ function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone, gpsS
         <GpsStatusBadge status={gpsStatus} fix={here} />
         <WakeLockBadge status={wakeLockStatus} isClockedIn={isClockedIn} />
       </div>
+      <NativeBgPermBanner isClockedIn={isClockedIn} />
       {zone && inZone === false && (
         <div className="center gap-2" style={{
           margin: '10px 16px 0', padding: '10px 12px', borderRadius: 12,
