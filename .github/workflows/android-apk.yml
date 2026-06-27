@@ -1,0 +1,66 @@
+name: Android · build debug APK
+
+# Manual trigger (workflow_dispatch) + tag trigger. Build APK debug yang
+# bisa sideload langsung di HP petugas. Tidak auto-jalankan per push supaya
+# tidak buang quota Actions — Capacitor server mode artinya update fitur
+# tetap lewat deploy SPA, APK cuma butuh rebuild kalau ubah plugin /
+# permission / icon / config Capacitor.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'android-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build BSN Lacak APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      # Server mode: APK shell tetap butuh dist/ untuk halaman fallback
+      # offline. Build pakai VITE_USE_MOCK=false supaya bundle production
+      # (sama dengan yang di-host di lacak.sosmartpro.com).
+      - name: Build web bundle
+        run: npx vite build
+        env:
+          VITE_USE_MOCK: 'false'
+          VITE_API_URL: 'https://lacak.sosmartpro.com/api'
+
+      - name: Capacitor sync
+        run: npx cap sync android
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+        working-directory: web/android
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+        working-directory: web/android
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: bsn-lacak-debug-apk
+          path: web/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
