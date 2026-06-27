@@ -16,6 +16,8 @@ import {
 } from '../data/queries';
 import { doLogout, useAuth } from '../lib/auth';
 import { useGeolocationStream, isNativeRuntime, openNativeAppSettings, type GeoFix } from '../lib/geolocation';
+import { MobileChat, MobileChatFab } from './MobileChat';
+import { useChatUnread } from '../lib/useChatUnread';
 import { useScreenWakeLock } from '../lib/wakeLock';
 import { distMeters, orderNearest } from '../lib/geo';
 import { makeWatermarkedPreview } from '../lib/watermarkPreview';
@@ -220,6 +222,12 @@ export function ScreenMobile() {
   // kecil tapi semakin tinggi compliance dengan Wake Lock API contract.
   const wakeLockStatus = useScreenWakeLock(isPetugasUser && isClockedIn);
 
+  // Chat overlay state — FAB di MBeranda buka full-screen MobileChat.
+  // Badge unread di FAB pakai hook yang sudah ada (di-share dengan
+  // supervisor nav badge).
+  const [chatOpen, setChatOpen] = useState(false);
+  const chatUnread = useChatUnread();
+
   // Fetch the petugas's assigned wilayah polygon (if any) so we can draw it
   // on the rute map and surface a live "Anda di luar wilayah" warning.
   const [zone, setZone] = useState<ZoneInfo | null>(null);
@@ -251,7 +259,7 @@ export function ScreenMobile() {
     <div className="m-shell-inner" style={{ fontFamily: 'var(--font)', background: 'var(--bg)', color: 'var(--ink)' }}>
       <div className="m-scroll" style={{ paddingTop: isPetugasUser ? 12 : 54 }}>
         {isPetugasUser && <InstallPrompt />}
-        {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} here={hereFix} zone={zone} gpsStatus={gpsStatus} wakeLockStatus={wakeLockStatus} isClockedIn={isClockedIn} />}
+        {!reportFor && tab === 'beranda' && <MBeranda me={ME} tasks={MY_TASKS} onReport={setReportFor} doneSet={doneSet} here={hereFix} zone={zone} gpsStatus={gpsStatus} wakeLockStatus={wakeLockStatus} isClockedIn={isClockedIn} onOpenChat={() => setChatOpen(true)} chatUnread={chatUnread} />}
         {!reportFor && tab === 'rute' && <MRute me={ME} tasks={MY_TASKS} onReport={setReportFor} here={hereFix} zone={zone} />}
         {!reportFor && tab === 'riwayat' && <MRiwayat me={ME} onLaporUlang={setReportFor} />}
         {!reportFor && tab === 'profil' && <MProfil me={ME} here={hereFix} pendingOffline={offline.pending} />}
@@ -271,6 +279,7 @@ export function ScreenMobile() {
       <div className="m-app m-shell">
         {app}
         {showOnboarding && <OnboardingTour onClose={dismissOnboarding} />}
+        {chatOpen && <MobileChat onClose={() => setChatOpen(false)} />}
       </div>
     );
   }
@@ -657,7 +666,7 @@ function BriefingCard({ me, doneInTasks, tasksCount }: {
   );
 }
 
-function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone, gpsStatus, wakeLockStatus, isClockedIn }: {
+function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone, gpsStatus, wakeLockStatus, isClockedIn, onOpenChat, chatUnread }: {
   me: Petugas; tasks: Nasabah[]; onReport: (n: Nasabah) => void; doneSet: Set<string>;
   // here memuat full GeoFix (accuracy + ts) supaya GpsStatusBadge bisa
   // tampilkan akurasi & umur fix; field lat/lng tetap dipakai zone check.
@@ -665,6 +674,8 @@ function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone, gpsS
   gpsStatus: import('../lib/geolocation').GeoStatus;
   wakeLockStatus: import('../lib/wakeLock').WakeLockStatus;
   isClockedIn: boolean;
+  onOpenChat: () => void;
+  chatUnread: number;
 }) {
   const pct = ME.target > 0 ? Math.round(ME.terkumpul / ME.target * 100) : 0;
   // Live "Anda di dalam zona?" computed from the latest GPS fix vs the
@@ -771,6 +782,7 @@ function MBeranda({ me: ME, tasks: MY_TASKS, onReport, doneSet, here, zone, gpsS
           );
         })}
       </div>
+      <MobileChatFab onClick={onOpenChat} unread={chatUnread} />
     </div>
   );
 }
