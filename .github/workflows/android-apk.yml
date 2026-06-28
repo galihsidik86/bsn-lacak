@@ -47,6 +47,18 @@ jobs:
           VITE_USE_MOCK: 'false'
           VITE_API_URL: 'https://lacak.sosmartpro.com/api'
 
+      # Inject google-services.json dari repo secret sebelum cap sync,
+      # supaya FCM plugin terpasang di APK. Kalau secret kosong, skip
+      # — build tetap jalan tanpa push (chat realtime via SSE saja).
+      - name: Inject google-services.json (kalau secret ada)
+        if: env.GOOGLE_SERVICES_JSON != ''
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          mkdir -p android/app
+          echo "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          echo "google-services.json injected ($(wc -c < android/app/google-services.json) bytes)"
+
       - name: Capacitor sync
         run: npx cap sync android
 

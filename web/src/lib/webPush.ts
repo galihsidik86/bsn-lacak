@@ -1,11 +1,16 @@
-// Web Push subscriber. Drives the petugas Profil tab toggle: ask for
-// permission, subscribe via the active service worker, and POST the
-// subscription up to the api so the server can fan out via web-push.
+// Push subscriber — drives the petugas Profil tab toggle. Dual runtime:
+//   - Browser PWA: Web Push API (VAPID + service worker pushManager).
+//   - Capacitor APK native: @capacitor/push-notifications plugin (FCM).
+// Backend tabel PushSubscription menyimpan keduanya, disambiguate via
+// kolom `kind` ('vapid' vs 'fcm').
 
 import axios from 'axios';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { tokenStore } from './api';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
+const isNative = Capacitor.isNativePlatform();
 
 // PushManager.subscribe wants a BufferSource with ArrayBuffer backing.
 // Build the Uint8Array on top of a fresh ArrayBuffer to satisfy strict types.
@@ -39,7 +44,31 @@ export interface PushState {
   subscribed: boolean;
 }
 
+// Cache FCM token saat register sukses supaya unsubscribe bisa POST
+// endpoint yang sama tanpa harus re-register dulu.
+const FCM_TOKEN_KEY = 'bsn-lacak:fcm-token';
+
 export async function pushState(): Promise<PushState> {
+  // --- Native (FCM) ---
+  if (isNative) {
+    try {
+      const perm = await PushNotifications.checkPermissions();
+      // 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale'
+      const granted = perm.receive === 'granted';
+      const stored = (() => {
+        try { return localStorage.getItem(FCM_TOKEN_KEY); } catch { return null; }
+      })();
+      return {
+        supported: true,
+        permission: granted ? 'granted' : (perm.receive === 'denied' ? 'denied' : 'default'),
+        subscribed: granted && !!stored,
+      };
+    } catch {
+      return { supported: false, permission: 'denied', subscribed: false };
+    }
+  }
+
+  // --- Web (VAPID) ---
   const supported = typeof navigator !== 'undefined'
     && 'serviceWorker' in navigator
     && 'PushManager' in window;
@@ -50,6 +79,43 @@ export async function pushState(): Promise<PushState> {
 }
 
 export async function subscribePush(): Promise<{ ok: boolean; reason?: string }> {
+  // --- Native (FCM) ---
+  if (isNative) {
+    try {
+      let perm = await PushNotifications.checkPermissions();
+      if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
+        perm = await PushNotifications.requestPermissions();
+      }
+      if (perm.receive !== 'granted') return { ok: false, reason: 'permission' };
+
+      // Listener register SEKALI per page load — plugin spawn ulang
+      // OK tapi callback double. Use Promise yang resolve di registration.
+      const token = await new Promise<string>((resolve, reject) => {
+        const ok = PushNotifications.addListener('registration', (t) => {
+          void ok.then(h => h.remove());
+          void err.then(h => h.remove());
+          resolve(t.value);
+        });
+        const err = PushNotifications.addListener('registrationError', (e) => {
+          void ok.then(h => h.remove());
+          void err.then(h => h.remove());
+          reject(new Error(String(e.error)));
+        });
+        void PushNotifications.register();
+      });
+
+      try { localStorage.setItem(FCM_TOKEN_KEY, token); } catch { /* ignore */ }
+      await axios.post(`${BASE}/push/subscribe`,
+        { kind: 'fcm', fcmToken: token },
+        { withCredentials: true, headers: authHeaders() },
+      );
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, reason: e instanceof Error ? e.message : 'fcm_register_failed' };
+    }
+  }
+
+  // --- Web (VAPID) ---
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
     return { ok: false, reason: 'unsupported' };
   }
@@ -78,6 +144,22 @@ export async function subscribePush(): Promise<{ ok: boolean; reason?: string }>
 }
 
 export async function unsubscribePush(): Promise<void> {
+  // --- Native (FCM) ---
+  if (isNative) {
+    const token = (() => { try { return localStorage.getItem(FCM_TOKEN_KEY); } catch { return null; } })();
+    if (token) {
+      await axios.post(`${BASE}/push/unsubscribe`,
+        { endpoint: token },
+        { withCredentials: true, headers: authHeaders() },
+      ).catch(() => undefined);
+      try { localStorage.removeItem(FCM_TOKEN_KEY); } catch { /* ignore */ }
+    }
+    // Plugin tidak punya 'unregister' eksplisit — device tetap punya
+    // token, kita cukup hapus dari server supaya fan-out skip.
+    return;
+  }
+
+  // --- Web (VAPID) ---
   const reg = await navigator.serviceWorker.getRegistration();
   if (!reg) return;
   const sub = await reg.pushManager.getSubscription();

@@ -523,19 +523,25 @@ enum ReviewStatus {
   REJECTED
 }
 
-// Web Push subscription per user/browser. One user can have multiple
-// devices, so we de-dupe on endpoint (unique across users).
+// Push subscription per user/device. Mendukung 2 jalur:
+//   kind=vapid → Web Push browser (PWA). endpoint = FCM/Mozilla URL,
+//                p256dh + authKey wajib untuk enkripsi payload.
+//   kind=fcm   → Capacitor APK native via Firebase Cloud Messaging.
+//                endpoint menampung FCM device token, keys nullable.
+// De-dupe tetap di endpoint supaya 1 device tidak double-subscribe.
 model PushSubscription {
   id        String   @id @default(cuid())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
   endpoint  String   @unique
-  p256dh    String
-  authKey   String
+  kind      String   @default("vapid")
+  p256dh    String?
+  authKey   String?
   userAgent String?
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([kind])
 }
 
 model Foto {

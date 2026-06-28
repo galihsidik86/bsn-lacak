@@ -45,6 +45,22 @@ if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
   });
 }
 
+// Native APK: terjemahkan tap notif FCM ke hash route, sama spirit
+// dengan SW message di atas. Plugin fire 'pushNotificationActionPerformed'
+// dengan data payload yang server kirim di field `data.link`.
+void (async () => {
+  const { Capacitor } = await import('@capacitor/core');
+  if (!Capacitor.isNativePlatform()) return;
+  const { PushNotifications } = await import('@capacitor/push-notifications');
+  void PushNotifications.addListener('pushNotificationActionPerformed', (ev) => {
+    const link = (ev.notification.data as { link?: string } | undefined)?.link;
+    if (typeof link === 'string' && link) {
+      const clean = link.replace(/^\/?#?/, '');
+      if (clean) window.location.hash = clean;
+    }
+  });
+})();
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

@@ -1451,10 +1451,10 @@ function MProfil({ me: ME, here, pendingOffline }: { me: Petugas; here: { lat: n
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="m-settings-label">Notifikasi Push</div>
               <div className="m-settings-value">
-                {!push?.supported ? 'Tidak didukung di browser ini'
+                {!push?.supported ? (isNativeRuntime ? 'Tidak didukung di WebView ini' : 'Tidak didukung di browser ini')
                   : push.subscribed ? 'Aktif — alert OS aktif'
-                  : push.permission === 'denied' ? 'Diblokir — buka pengaturan browser'
-                  : 'Nyalakan untuk notifikasi review/assignment'}
+                  : push.permission === 'denied' ? (isNativeRuntime ? 'Diblokir — buka pengaturan aplikasi' : 'Diblokir — buka pengaturan browser')
+                  : 'Nyalakan untuk notifikasi chat/assignment'}
               </div>
             </div>
             {push?.supported && push.permission !== 'denied' && (

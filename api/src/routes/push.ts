@@ -15,30 +15,59 @@ router.get('/vapid-public', (_req, res) => {
 
 router.use(requireAuth);
 
-const subSchema = z.object({
+// Dua bentuk subscription body:
+//   VAPID (web browser): { endpoint, keys: { p256dh, auth } }
+//   FCM (Capacitor APK):  { kind: 'fcm', fcmToken }
+// Validasi terpisah supaya field tidak campur aduk; endpoint dipakai
+// sebagai unique key apapun jalurnya (FCM token cukup unik per device).
+const vapidSubSchema = z.object({
   endpoint: z.string().url().max(2048),
   keys: z.object({
     p256dh: z.string().max(255),
     auth: z.string().max(255),
   }),
 });
+const fcmSubSchema = z.object({
+  kind: z.literal('fcm'),
+  fcmToken: z.string().min(20).max(2048),
+});
 
 router.post('/subscribe', async (req, res) => {
-  const parsed = subSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'bad_request' });
-  const { endpoint, keys } = parsed.data;
   const ua = String(req.headers['user-agent'] ?? '').slice(0, 255);
 
+  // Coba parse sebagai FCM dulu (lebih distinctive — punya kind literal).
+  const fcm = fcmSubSchema.safeParse(req.body);
+  if (fcm.success) {
+    const { fcmToken } = fcm.data;
+    await prisma.pushSubscription.upsert({
+      where: { endpoint: fcmToken },
+      create: {
+        endpoint: fcmToken, kind: 'fcm',
+        userId: req.user!.sub, userAgent: ua,
+      },
+      update: {
+        userId: req.user!.sub, userAgent: ua, kind: 'fcm',
+        p256dh: null, authKey: null,
+      },
+    });
+    await audit({ action: 'push.subscribe', actorId: req.user!.sub, ...fromReq(req) });
+    return res.json({ ok: true });
+  }
+
+  const vapid = vapidSubSchema.safeParse(req.body);
+  if (!vapid.success) return res.status(400).json({ error: 'bad_request' });
+  const { endpoint, keys } = vapid.data;
   await prisma.pushSubscription.upsert({
     where: { endpoint },
     create: {
-      endpoint, p256dh: keys.p256dh, authKey: keys.auth,
+      endpoint, kind: 'vapid', p256dh: keys.p256dh, authKey: keys.auth,
       userId: req.user!.sub, userAgent: ua,
     },
     update: {
       // Re-bind endpoint to this user (handles a device shared between
       // accounts — old user loses the device, new user owns it).
-      userId: req.user!.sub, userAgent: ua, p256dh: keys.p256dh, authKey: keys.auth,
+      userId: req.user!.sub, userAgent: ua, kind: 'vapid',
+      p256dh: keys.p256dh, authKey: keys.auth,
     },
   });
   await audit({ action: 'push.subscribe', actorId: req.user!.sub, ...fromReq(req) });
