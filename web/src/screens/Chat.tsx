@@ -198,6 +198,15 @@ function ChatThread({ otherId, otherName, otherRole, onBack }: {
   });
   const messages = q.data?.messages ?? [];
 
+  // Backend auto-mark read tiap fetch thread, tapi unread-count + convos
+  // query tidak refetch otomatis (SSE 'chat.message' cuma fire untuk
+  // pesan baru, bukan read). Invalidate manual supaya badge nav refresh.
+  useEffect(() => {
+    if (!q.dataUpdatedAt) return;
+    void qc.invalidateQueries({ queryKey: ['chat-unread-count'] });
+    void qc.invalidateQueries({ queryKey: ['chat-convos'] });
+  }, [q.dataUpdatedAt, qc]);
+
   // Auto-scroll bottom saat pesan baru muncul.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });

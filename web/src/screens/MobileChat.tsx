@@ -200,6 +200,16 @@ function MobileChatThread({ otherId, otherName, otherRole, onBack }: {
   });
   const messages = q.data?.messages ?? [];
 
+  // Backend `/chat/with/:userId` auto-mark pesan sebagai read tiap call.
+  // Tapi `chat-unread-count` query tidak tau ada perubahan — SSE
+  // 'chat.message' hanya fire saat pesan BARU, bukan saat read. Invalidate
+  // manual tiap kali thread berhasil fetch supaya badge FAB hilang.
+  useEffect(() => {
+    if (!q.dataUpdatedAt) return;
+    void qc.invalidateQueries({ queryKey: ['chat-unread-count'] });
+    void qc.invalidateQueries({ queryKey: ['chat-convos'] });
+  }, [q.dataUpdatedAt, qc]);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages.length]);
