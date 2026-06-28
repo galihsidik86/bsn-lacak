@@ -52,7 +52,7 @@ void (async () => {
   const { Capacitor } = await import('@capacitor/core');
   if (!Capacitor.isNativePlatform()) return;
   const { PushNotifications } = await import('@capacitor/push-notifications');
-  void PushNotifications.addListener('pushNotificationActionPerformed', (ev) => {
+  void PushNotifications.addListener('pushNotificationActionPerformed', (ev: { notification: { data?: Record<string, unknown> } }) => {
     const link = (ev.notification.data as { link?: string } | undefined)?.link;
     if (typeof link === 'string' && link) {
       const clean = link.replace(/^\/?#?/, '');

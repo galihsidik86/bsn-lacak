@@ -6,7 +6,8 @@
 
 import axios from 'axios';
 import { Capacitor } from '@capacitor/core';
-import { PushNotifications } from '@capacitor/push-notifications';
+import { PushNotifications, type Token, type RegistrationError } from '@capacitor/push-notifications';
+import type { PluginListenerHandle } from '@capacitor/core';
 import { tokenStore } from './api';
 
 const BASE = import.meta.env.VITE_API_URL || '/api';
@@ -90,18 +91,23 @@ export async function subscribePush(): Promise<{ ok: boolean; reason?: string }>
 
       // Listener register SEKALI per page load — plugin spawn ulang
       // OK tapi callback double. Use Promise yang resolve di registration.
+      let okHandle: PluginListenerHandle | undefined;
+      let errHandle: PluginListenerHandle | undefined;
+      const cleanup = () => { okHandle?.remove(); errHandle?.remove(); };
       const token = await new Promise<string>((resolve, reject) => {
-        const ok = PushNotifications.addListener('registration', (t) => {
-          void ok.then(h => h.remove());
-          void err.then(h => h.remove());
-          resolve(t.value);
-        });
-        const err = PushNotifications.addListener('registrationError', (e) => {
-          void ok.then(h => h.remove());
-          void err.then(h => h.remove());
-          reject(new Error(String(e.error)));
-        });
-        void PushNotifications.register();
+        void (async () => {
+          try {
+            okHandle = await PushNotifications.addListener('registration', (t: Token) => {
+              cleanup();
+              resolve(t.value);
+            });
+            errHandle = await PushNotifications.addListener('registrationError', (e: RegistrationError) => {
+              cleanup();
+              reject(new Error(String(e.error)));
+            });
+            await PushNotifications.register();
+          } catch (e) { cleanup(); reject(e); }
+        })();
       });
 
       try { localStorage.setItem(FCM_TOKEN_KEY, token); } catch { /* ignore */ }
