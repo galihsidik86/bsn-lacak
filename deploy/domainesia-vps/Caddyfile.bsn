@@ -45,6 +45,13 @@ lacak.sosmartpro.com {
 		reverse_proxy 127.0.0.1:4001
 	}
 
+	# ---- Static uploads — proxy ke API container yang serve via Express
+	# static dari volume /app/uploads. Tanpa block ini, request /uploads/foo.jpg
+	# jatuh ke SPA handler (try_files) → return index.html → <img> rusak. ----
+	handle /uploads/* {
+		reverse_proxy 127.0.0.1:4001
+	}
+
 	# ---- SPA: serve build statis dari host ----
 	# `npm run build` di web/ menghasilkan web/dist/. Sync ke
 	# /srv/bsn-lacak/web/dist/ tiap deploy (lihat DEPLOY-domainesia-vps.md).
