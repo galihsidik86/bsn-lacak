@@ -21,24 +21,48 @@ DST = Path(r"C:/Users/Galih Sidik/BSN/docs/BSN-Lacak-ArtiVisi.pptx")  # overwrit
 
 
 def duplicate_slide(prs, source_idx: int):
-    """Duplicate slide by deep-copying all shapes + relationships.
-    Idiom python-pptx standar (belum ada API native slide.copy)."""
+    """Duplicate slide by deep-copying shapes + relationships.
+    Key trick: rels di source pakai rId tertentu (mis. rId10 untuk image),
+    tapi `get_or_add` di dest assign rId berbeda (mis. rId2). Kalau kita
+    tidak remap rId di shape XML, PowerPoint deteksi corruption karena
+    XML reference rId10 sementara rels declare rId2. Solusinya: build
+    mapping (source_rid → new_rid), lalu rewrite semua rId reference
+    di deep-copied XML."""
+    import re
     source = prs.slides[source_idx]
-    # Bikin slide baru pakai layout yang sama
     dest = prs.slides.add_slide(source.slide_layout)
-    # Buang shape default dari layout (biasanya cuma placeholder title)
     for shape in list(dest.shapes):
         sp = shape._element
         sp.getparent().remove(sp)
-    # Deepcopy tiap shape dari source → dest
-    for shape in source.shapes:
-        new_el = deepcopy(shape._element)
-        dest.shapes._spTree.insert_element_before(new_el, 'p:extLst')
-    # Copy relationships (untuk gambar, hyperlink, dll)
-    for _, rel in source.part.rels.items():
+
+    # Bangun mapping rId source → rId dest sambil re-add relationships.
+    rid_map: dict[str, str] = {}
+    for src_rid, rel in source.part.rels.items():
         if "notesSlide" in rel.reltype:
             continue
-        dest.part.rels.get_or_add(rel.reltype, rel.target_part)
+        # get_or_add akan return existing rId kalau reltype+target sudah ada,
+        # atau assign rId baru. Ambil rId hasilnya untuk mapping.
+        # get_or_add return string rId (not relationship object) di
+        # python-pptx recent versions.
+        new_rid = dest.part.rels.get_or_add(rel.reltype, rel.target_part)
+        rid_map[src_rid] = new_rid
+
+    # Deep copy shapes lalu rewrite rId reference di XML pakai mapping.
+    RID_ATTR_RE = re.compile(r'((?:r:embed|r:link|r:id)=")(rId\d+)(")')
+    for shape in source.shapes:
+        new_el = deepcopy(shape._element)
+        # Serialize → rewrite → parse ulang. Cara paling aman untuk hit
+        # semua atribut namespace r: yang mungkin (r:embed untuk pic,
+        # r:link untuk hyperlink, r:id untuk ole/chart, dll).
+        from lxml import etree
+        xml_str = etree.tostring(new_el, encoding='unicode')
+        def sub(m):
+            old_rid = m.group(2)
+            return m.group(1) + rid_map.get(old_rid, old_rid) + m.group(3)
+        new_xml = RID_ATTR_RE.sub(sub, xml_str)
+        new_el2 = etree.fromstring(new_xml)
+        dest.shapes._spTree.insert_element_before(new_el2, 'p:extLst')
+
     return dest
 
 
@@ -96,9 +120,12 @@ def patch_new_slide(slide):
         # Header
         "Domain Model Sistem":
             "Spesifikasi Infrastruktur Sistem",
-        "14 ENTITAS DATA":
+        # Source pptx sudah pernah di-update di sesi sebelumnya:
+        # "14 ENTITAS DATA" jadi "35+ ENTITAS DATA", dan intro paragraph
+        # juga direwrite. Kita match state sekarang, bukan aslinya.
+        "35+ ENTITAS DATA":
             "DEPLOYMENT & PERANGKAT",
-        "Database BSN Lacak terdiri":
+        "Database BSN Lacak terdiri dari 35+ entitas data terintegrasi (Branch, User, Petugas, Nasabah, Angsuran, Kunjungan, Attendance, ChatMessage, PushSubscription, Audit, dll). Berikut 8 entitas inti.":
             "Tiga komponen perangkat menopang BSN Lacak: server backend, workstation supervisor, dan device petugas lapangan. Deployment on-premise di DC BSN dengan footprint minimal 2 GB VPS untuk pilot, scaling jelas hingga skala enterprise multi-cabang.",
 
         # 8 Cards (map dari 8 entitas ke 8 komponen infra)
@@ -142,13 +169,17 @@ def patch_new_slide(slide):
         "Log immutable: actor, action, IP, requestId, meta(JSONB). Tidak dapat dimodifikasi.":
             "Docker Compose · Caddy TLS 1.3 + HTTP/3 · PostgreSQL 16 · Backup harian retensi 30 hari · TLS 1.3 Let's Encrypt auto-renew.",
 
-        # 4 Bottom stats — ganti ke CapEx figures
-        "14":
+        # 4 Bottom stats — ganti ke CapEx figures. Angka bawah ini
+        # standalone di shape terpisah, tidak akan bentrok dengan
+        # "35+" di eyebrow (yang sudah kita replace di atas jadi
+        # "DEPLOYMENT & PERANGKAT" — jadi replacement "35+" berikutnya
+        # aman hanya match bottom stat).
+        "35+":
             "Rp 25 jt",
         "Entitas Total":
             "CapEx 1 Cabang (6 petugas)",
 
-        "60+":
+        "190+":
             "Rp 3,6 jt",
         "REST API Endpoints":
             "OpEx Server / Tahun",
