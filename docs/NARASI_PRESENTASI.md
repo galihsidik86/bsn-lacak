@@ -1,4 +1,4 @@
-# BSN Lacak — Narasi Presentasi 14 Slide
+# BSN Lacak — Narasi Presentasi 15 Slide
 
 > Panduan berbicara per slide. Durasi target: **30–45 menit** (rata-rata 2–3 menit/slide + Q&A).
 > Bahasa: semi-formal, sopan, gunakan istilah Islami yang akrab dengan audiens BSN.
@@ -253,11 +253,45 @@
 >
 > Penting dicatat: **mayoritas fitur sudah jalan di staging hari ini**. Bukan janji 14 minggu dari nol. 14 minggu adalah waktu integrasi, hardening, dan onboarding di lingkungan BSN.
 
-**Transisi:** *"Kenapa harus PT ArtiVisi?"*
+**Transisi:** *"Sebelum bicara siapa yang akan bangun, mari lihat apa saja perangkat yang dibutuhkan."*
 
 ---
 
-## Slide 12 — Kredensial PT ArtiVisi (±2.5 menit)
+## Slide 12 — Spesifikasi Infrastruktur (±3 menit)
+
+**Tampilan:** 8 kotak (4 tier server + 3 kategori device + deployment) + 4 stat bawah (CapEx, OpEx, Data Center, Backup).
+
+**Narasi:**
+
+> Sistem ini dirancang **hemat infrastruktur**. Bapak/Ibu tidak perlu invest server data center kelas atas untuk mulai — dan bisa scale bertahap sesuai pertumbuhan.
+>
+> Untuk **server backend**, kami sediakan 4 tier:
+>
+> - **Demo/Pilot** — VPS 2 GB RAM, 30 GB SSD. Cukup untuk POC dengan ≤ 10 petugas aktif, 1 cabang, kurang dari 500 nasabah. Biayanya sekitar Rp 100-200 ribu per bulan di cloud provider Indonesia.
+> - **Operasional Kecil** — 4 GB RAM. Sweet spot untuk 1 kantor cabang penuh dengan 10-50 petugas dan 500-2.000 nasabah. Ini yang kami rekomendasikan untuk pilot production.
+> - **Skala Menengah** — 8 GB RAM. Untuk multi-cabang 50-200 petugas.
+> - **Enterprise** — 16+ GB dengan database dan object storage terpisah. Untuk skala 200+ petugas.
+>
+> Migrasi antar tier **non-disruptif**. Mulai dari tier kecil, upgrade saat butuh — cukup pg_dump + docker compose redeploy dalam window maintenance.
+>
+> Untuk **workstation supervisor**, cukup laptop biasa: RAM 4 GB minimum, 8 GB direkomendasikan, browser modern Chrome/Edge/Firefox. Tidak perlu install client software khusus — semua lewat web.
+>
+> Untuk **device petugas**, ada dua pilihan sesuai HP yang mereka pakai:
+>
+> - **PWA (browser)** — RAM 2 GB cukup, Android 8+ atau iOS 14+. Untuk HP lama atau iPhone.
+> - **APK Android Native** — RAM 3+ GB, wajib Google Play Services untuk push notification. Cakupan tracking naik dari ~70-85% ke ~95-99% karena foreground service GPS tetap jalan walau HP di-lock.
+>
+> Rekomendasi model HP: Samsung Galaxy A15 atau Xiaomi Redmi 13 di kisaran Rp 2-2.5 juta — sweet spot untuk APK dengan baterai 5.000 mAh cukup shift 8 jam.
+>
+> **Deployment** pakai Docker Compose + Caddy dengan TLS 1.3 Let's Encrypt otomatis. PostgreSQL 16 dengan backup harian retensi 30 hari. Yang penting: **on-premise di Data Center BSN** — data nasabah tidak transit ke cloud asing manapun.
+>
+> Angka konkret untuk 1 cabang dengan 6 petugas: **CapEx sekitar Rp 25 juta** (laptop supervisor + 6 HP + aksesori) plus **OpEx server Rp 3,6 juta per tahun**. Detail lengkap ada di dokumen `Spesifikasi Kebutuhan Infrastruktur` yang kami lampirkan terpisah untuk tim procurement.
+
+**Transisi:** *"Sekarang, kenapa PT ArtiVisi yang tepat?"*
+
+---
+
+## Slide 13 — Kredensial PT ArtiVisi (±2.5 menit)
 
 **Tampilan:** Klien Tier-1 + statistik + keahlian inti.
 
@@ -284,7 +318,7 @@
 
 ---
 
-## Slide 13 — Spesifikasi API (±2 menit, lebih cepat — slide teknis)
+## Slide 14 — Spesifikasi API (±2 menit, lebih cepat — slide teknis)
 
 **Tampilan:** Sample endpoint per kategori + standard auth, pagination, rate limit.
 
@@ -312,7 +346,7 @@
 
 ---
 
-## Slide 14 — Penutup (±1 menit)
+## Slide 15 — Penutup (±1 menit)
 
 **Tampilan:** "Jazakumullah Khairan Khasiran" + closing statement.
 
@@ -353,11 +387,12 @@
 
 ### Aturan Praktis Saat Presentasi
 
-1. **Slide 1, 4, 14** — pelan, kontak mata, suara tegas.
+1. **Slide 1, 4, 15** — pelan, kontak mata, suara tegas.
 2. **Slide 2** — bangun urgency, tapi jangan menggurui. Audiens BSN tahu masalah ini lebih baik dari kita.
-3. **Slide 5, 13** — slide teknis. Kalau audiens non-teknis, tipiskan; kalau ada CTO/IT Head, perlambat dan biarkan mereka bertanya detail.
+3. **Slide 5, 12, 14** — slide teknis (arsitektur, infra, API). Kalau audiens non-teknis, tipiskan; kalau ada CTO/IT Head, perlambat.
 4. **Slide 9** — bagian paling persuasif untuk decision maker non-IT. Jangan terburu.
 5. **Slide 11** — tekankan "**sebagian besar sudah berjalan**" supaya tidak kelihatan jadwal ambisius.
+6. **Slide 12 (infra)** — kalau ada tim procurement/keuangan hadir, perlambat di angka CapEx/OpEx supaya sempat dicatat.
 6. **Hindari klaim yang tidak yakin**. Lebih baik bilang "sedang dievaluasi" daripada "siap".
 7. **Siapkan demo live** sebagai cadangan — bila ada pertanyaan tentang feature spesifik, bilang "izin kami tunjukkan langsung" lebih impactful daripada deskripsi.
 
@@ -369,13 +404,13 @@
 | Solusi + Pilar (3-4) | ~6 menit |
 | Arsitektur + Domain (5-6) | ~6 menit |
 | Modul Detail (7-10) | ~12 menit |
-| Roadmap + Kredensial (11-12) | ~5 menit |
-| Spec API + Penutup (13-14) | ~3 menit |
-| **Subtotal presentasi** | **~37 menit** |
+| Roadmap + Infra + Kredensial (11-13) | ~8 menit |
+| Spec API + Penutup (14-15) | ~3 menit |
+| **Subtotal presentasi** | **~40 menit** |
 | Q&A | 15–30 menit |
-| **Total sesi** | **~55–67 menit** |
+| **Total sesi** | **~55–70 menit** |
 
-Kalau diminta versi ringkas 15 menit: skip slide 6, 12, 13 — fokus pada 1, 2, 3, 4, 7, 8, 9, 14.
+Kalau diminta versi ringkas 15 menit: skip slide 6, 13, 14 — fokus pada 1, 2, 3, 4, 7, 8, 9, 12, 15.
 
 ---
 
@@ -508,7 +543,7 @@ Baca ruangan sebelum memilih closing. Kalau audience sudah "buy in", pakai closi
 
 **Closing Standar (safe default):**
 
-> Sudah ditulis di narasi Slide 14. Fokus terima kasih + kesediaan diskusi lanjut.
+> Sudah ditulis di narasi Slide 15. Fokus terima kasih + kesediaan diskusi lanjut.
 
 **Closing Pilot Proposal (kalau audience terlihat tertarik & siap decide):**
 

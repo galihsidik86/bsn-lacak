@@ -398,9 +398,34 @@ Tip: jangan baca slide kata-per-kata — slide jadi backdrop, narasi jadi konten
 </ul>
 <p>Penting dicatat: <strong>mayoritas fitur sudah jalan di staging hari ini</strong>. Bukan janji 14 minggu dari nol. 14 minggu adalah waktu integrasi, hardening, dan onboarding di lingkungan BSN.</p>
 </blockquote>
-<p><strong>Transisi:</strong> <em>&quot;Kenapa harus PT ArtiVisi?&quot;</em></p>
+<p><strong>Transisi:</strong> <em>&quot;Sebelum bicara siapa yang akan bangun, mari lihat apa saja perangkat yang dibutuhkan.&quot;</em></p>
 <hr>
-<h2>Slide 12 — Kredensial PT ArtiVisi (±2.5 menit)</h2>
+<h2>Slide 12 — Spesifikasi Infrastruktur (±3 menit)</h2>
+<p><strong>Tampilan:</strong> 8 kotak (4 tier server + 3 kategori device + deployment) + 4 stat bawah (CapEx, OpEx, Data Center, Backup).</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Sistem ini dirancang <strong>hemat infrastruktur</strong>. Bapak/Ibu tidak perlu invest server data center kelas atas untuk mulai — dan bisa scale bertahap sesuai pertumbuhan.</p>
+<p>Untuk <strong>server backend</strong>, kami sediakan 4 tier:</p>
+<ul>
+<li><strong>Demo/Pilot</strong> — VPS 2 GB RAM, 30 GB SSD. Cukup untuk POC dengan ≤ 10 petugas aktif, 1 cabang, kurang dari 500 nasabah. Biayanya sekitar Rp 100-200 ribu per bulan di cloud provider Indonesia.</li>
+<li><strong>Operasional Kecil</strong> — 4 GB RAM. Sweet spot untuk 1 kantor cabang penuh dengan 10-50 petugas dan 500-2.000 nasabah. Ini yang kami rekomendasikan untuk pilot production.</li>
+<li><strong>Skala Menengah</strong> — 8 GB RAM. Untuk multi-cabang 50-200 petugas.</li>
+<li><strong>Enterprise</strong> — 16+ GB dengan database dan object storage terpisah. Untuk skala 200+ petugas.</li>
+</ul>
+<p>Migrasi antar tier <strong>non-disruptif</strong>. Mulai dari tier kecil, upgrade saat butuh — cukup pg_dump + docker compose redeploy dalam window maintenance.</p>
+<p>Untuk <strong>workstation supervisor</strong>, cukup laptop biasa: RAM 4 GB minimum, 8 GB direkomendasikan, browser modern Chrome/Edge/Firefox. Tidak perlu install client software khusus — semua lewat web.</p>
+<p>Untuk <strong>device petugas</strong>, ada dua pilihan sesuai HP yang mereka pakai:</p>
+<ul>
+<li><strong>PWA (browser)</strong> — RAM 2 GB cukup, Android 8+ atau iOS 14+. Untuk HP lama atau iPhone.</li>
+<li><strong>APK Android Native</strong> — RAM 3+ GB, wajib Google Play Services untuk push notification. Cakupan tracking naik dari ~70-85% ke ~95-99% karena foreground service GPS tetap jalan walau HP di-lock.</li>
+</ul>
+<p>Rekomendasi model HP: Samsung Galaxy A15 atau Xiaomi Redmi 13 di kisaran Rp 2-2.5 juta — sweet spot untuk APK dengan baterai 5.000 mAh cukup shift 8 jam.</p>
+<p><strong>Deployment</strong> pakai Docker Compose + Caddy dengan TLS 1.3 Let&#39;s Encrypt otomatis. PostgreSQL 16 dengan backup harian retensi 30 hari. Yang penting: <strong>on-premise di Data Center BSN</strong> — data nasabah tidak transit ke cloud asing manapun.</p>
+<p>Angka konkret untuk 1 cabang dengan 6 petugas: <strong>CapEx sekitar Rp 25 juta</strong> (laptop supervisor + 6 HP + aksesori) plus <strong>OpEx server Rp 3,6 juta per tahun</strong>. Detail lengkap ada di dokumen <code>Spesifikasi Kebutuhan Infrastruktur</code> yang kami lampirkan terpisah untuk tim procurement.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Sekarang, kenapa PT ArtiVisi yang tepat?&quot;</em></p>
+<hr>
+<h2>Slide 13 — Kredensial PT ArtiVisi (±2.5 menit)</h2>
 <p><strong>Tampilan:</strong> Klien Tier-1 + statistik + keahlian inti.</p>
 <p><strong>Narasi:</strong></p>
 <blockquote>
@@ -419,7 +444,7 @@ Tip: jangan baca slide kata-per-kata — slide jadi backdrop, narasi jadi konten
 </blockquote>
 <p><strong>Transisi:</strong> <em>&quot;Untuk tim teknis BSN, kami siapkan spec API.&quot;</em></p>
 <hr>
-<h2>Slide 13 — Spesifikasi API (±2 menit, lebih cepat — slide teknis)</h2>
+<h2>Slide 14 — Spesifikasi API (±2 menit, lebih cepat — slide teknis)</h2>
 <p><strong>Tampilan:</strong> Sample endpoint per kategori + standard auth, pagination, rate limit.</p>
 <p><strong>Narasi:</strong></p>
 <blockquote>
@@ -441,7 +466,7 @@ Tip: jangan baca slide kata-per-kata — slide jadi backdrop, narasi jadi konten
 </blockquote>
 <p><strong>Transisi:</strong> <em>&quot;Sebagai penutup...&quot;</em></p>
 <hr>
-<h2>Slide 14 — Penutup (±1 menit)</h2>
+<h2>Slide 15 — Penutup (±1 menit)</h2>
 <p><strong>Tampilan:</strong> &quot;Jazakumullah Khairan Khasiran&quot; + closing statement.</p>
 <p><strong>Narasi:</strong></p>
 <blockquote>
@@ -477,11 +502,12 @@ Tip: jangan baca slide kata-per-kata — slide jadi backdrop, narasi jadi konten
 </blockquote>
 <h3>Aturan Praktis Saat Presentasi</h3>
 <ol>
-<li><strong>Slide 1, 4, 14</strong> — pelan, kontak mata, suara tegas.</li>
+<li><strong>Slide 1, 4, 15</strong> — pelan, kontak mata, suara tegas.</li>
 <li><strong>Slide 2</strong> — bangun urgency, tapi jangan menggurui. Audiens BSN tahu masalah ini lebih baik dari kita.</li>
-<li><strong>Slide 5, 13</strong> — slide teknis. Kalau audiens non-teknis, tipiskan; kalau ada CTO/IT Head, perlambat dan biarkan mereka bertanya detail.</li>
+<li><strong>Slide 5, 12, 14</strong> — slide teknis (arsitektur, infra, API). Kalau audiens non-teknis, tipiskan; kalau ada CTO/IT Head, perlambat.</li>
 <li><strong>Slide 9</strong> — bagian paling persuasif untuk decision maker non-IT. Jangan terburu.</li>
 <li><strong>Slide 11</strong> — tekankan &quot;<strong>sebagian besar sudah berjalan</strong>&quot; supaya tidak kelihatan jadwal ambisius.</li>
+<li><strong>Slide 12 (infra)</strong> — kalau ada tim procurement/keuangan hadir, perlambat di angka CapEx/OpEx supaya sempat dicatat.</li>
 <li><strong>Hindari klaim yang tidak yakin</strong>. Lebih baik bilang &quot;sedang dievaluasi&quot; daripada &quot;siap&quot;.</li>
 <li><strong>Siapkan demo live</strong> sebagai cadangan — bila ada pertanyaan tentang feature spesifik, bilang &quot;izin kami tunjukkan langsung&quot; lebih impactful daripada deskripsi.</li>
 </ol>
@@ -510,16 +536,16 @@ Tip: jangan baca slide kata-per-kata — slide jadi backdrop, narasi jadi konten
 <td>~12 menit</td>
 </tr>
 <tr>
-<td>Roadmap + Kredensial (11-12)</td>
-<td>~5 menit</td>
+<td>Roadmap + Infra + Kredensial (11-13)</td>
+<td>~8 menit</td>
 </tr>
 <tr>
-<td>Spec API + Penutup (13-14)</td>
+<td>Spec API + Penutup (14-15)</td>
 <td>~3 menit</td>
 </tr>
 <tr>
 <td><strong>Subtotal presentasi</strong></td>
-<td><strong>~37 menit</strong></td>
+<td><strong>~40 menit</strong></td>
 </tr>
 <tr>
 <td>Q&amp;A</td>
@@ -527,10 +553,10 @@ Tip: jangan baca slide kata-per-kata — slide jadi backdrop, narasi jadi konten
 </tr>
 <tr>
 <td><strong>Total sesi</strong></td>
-<td><strong>~55–67 menit</strong></td>
+<td><strong>~55–70 menit</strong></td>
 </tr>
 </tbody></table>
-<p>Kalau diminta versi ringkas 15 menit: skip slide 6, 12, 13 — fokus pada 1, 2, 3, 4, 7, 8, 9, 14.</p>
+<p>Kalau diminta versi ringkas 15 menit: skip slide 6, 13, 14 — fokus pada 1, 2, 3, 4, 7, 8, 9, 12, 15.</p>
 <hr>
 <h2>Skenario Demo Live (Bonus — Kalau Waktu Cukup)</h2>
 <p>Sesudah 14 slide selesai, biasanya audience ingin melihat &quot;bukti&quot;. Demo live 10 menit ini menampilkan alur ujung-ke-ujung: petugas clock-in → tugas → laporan → supervisor review → chat. Jauh lebih persuasif daripada slide static.</p>
@@ -667,7 +693,7 @@ Tip: jangan baca slide kata-per-kata — slide jadi backdrop, narasi jadi konten
 <p>Baca ruangan sebelum memilih closing. Kalau audience sudah &quot;buy in&quot;, pakai closing pilot proposal. Kalau masih evaluatif, pakai closing terbuka.</p>
 <p><strong>Closing Standar (safe default):</strong></p>
 <blockquote>
-<p>Sudah ditulis di narasi Slide 14. Fokus terima kasih + kesediaan diskusi lanjut.</p>
+<p>Sudah ditulis di narasi Slide 15. Fokus terima kasih + kesediaan diskusi lanjut.</p>
 </blockquote>
 <p><strong>Closing Pilot Proposal (kalau audience terlihat tertarik &amp; siap decide):</strong></p>
 <blockquote>
