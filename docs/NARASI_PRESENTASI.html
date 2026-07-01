@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <title>Narasi Presentasi — BSN Lacak</title>
+  <style>
+  :root {
+    --ink: #1c2620;
+    --ink-2: #4a5a52;
+    --ink-3: #7a8a82;
+    --muted: #7a8a82;
+    --accent: #1f8a5b;
+    --accent-2: #0e5746;
+    --accent-soft: #e6f4ee;
+    --gold: #c79a3a;
+    --gold-soft: #fbf2dc;
+    --line: #dfe7e2;
+    --line-2: #c9d4cd;
+    --code-bg: #f3f4f6;
+    --quote-bg: #fafaf6;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+    color: var(--ink);
+    line-height: 1.6;
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 0;
+    background: #fff;
+    font-size: 13.5px;
+  }
+  h1, h2, h3, h4 { color: var(--ink); line-height: 1.25; }
+  h1 {
+    font-size: 24px;
+    margin: 0 0 8px;
+    padding-bottom: 12px;
+    border-bottom: 3px solid var(--accent);
+    color: var(--accent);
+  }
+  /* Setiap h2 = slide baru → page break supaya tidak ada slide yang
+     dipotong di tengah saat print. */
+  h2 {
+    font-size: 19px;
+    margin: 28px 0 10px;
+    padding: 12px 0 8px;
+    color: var(--accent-2);
+    page-break-before: always;
+    border-bottom: 1px solid var(--accent-soft);
+  }
+  h2:first-of-type, .body > h2:first-of-type { page-break-before: avoid; }
+  h3 {
+    font-size: 14.5px;
+    margin: 20px 0 6px;
+    color: var(--ink);
+    font-weight: 700;
+  }
+  h4 {
+    font-size: 13px;
+    margin: 14px 0 4px;
+    color: var(--ink-2);
+  }
+  p { margin: 7px 0; }
+  ul, ol { padding-left: 22px; margin: 7px 0; }
+  li { margin: 3px 0; }
+  a { color: var(--accent); text-decoration: none; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
+
+  /* Narasi block (blockquote) — bagian yang paling sering dibaca saat
+     presentasi. Visual menonjol supaya gampang lock-on di tengah panik. */
+  blockquote {
+    margin: 10px 0;
+    padding: 12px 16px;
+    border-left: 4px solid var(--accent);
+    background: var(--quote-bg);
+    color: var(--ink);
+    border-radius: 0 6px 6px 0;
+    font-size: 13.5px;
+    line-height: 1.65;
+    page-break-inside: avoid;
+  }
+  blockquote p { margin: 6px 0; }
+  blockquote strong { color: var(--accent-2); }
+
+  code {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size: 0.85em;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--accent-2);
+  }
+  pre {
+    background: var(--code-bg);
+    border-radius: 6px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    page-break-inside: avoid;
+    font-size: 11.5px;
+  }
+  pre code { background: none; padding: 0; }
+
+  table {
+    border-collapse: collapse;
+    margin: 12px 0 16px;
+    width: 100%;
+    page-break-inside: avoid;
+    font-size: 12.5px;
+  }
+  th, td {
+    border: 1px solid var(--line);
+    padding: 7px 9px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--accent-soft);
+    color: var(--accent-2);
+    font-weight: 700;
+  }
+  tbody tr:nth-child(2n) { background: #fafbfa; }
+  strong { color: var(--ink); }
+  em { color: var(--ink-2); }
+
+  /* Cover page */
+  .cover {
+    page-break-after: always;
+    padding: 120px 60px 60px;
+    text-align: center;
+    background: linear-gradient(180deg, var(--accent-soft) 0%, #fff 100%);
+    min-height: 90vh;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: space-between;
+  }
+  .cover-top { width: 100%; }
+  .cover .logo {
+    display: inline-block;
+    width: 76px; height: 76px;
+    background: var(--accent);
+    border-radius: 18px;
+    margin-bottom: 28px;
+    position: relative;
+  }
+  .cover .logo::before {
+    content: '';
+    position: absolute;
+    inset: 16px;
+    border: 3px solid #fff;
+    border-radius: 6px;
+    transform: rotate(45deg);
+  }
+  .cover .logo::after {
+    content: '';
+    position: absolute;
+    inset: 28px;
+    background: var(--gold);
+    border-radius: 50%;
+  }
+  .cover .title {
+    font-size: 30px;
+    font-weight: 800;
+    margin: 0 0 12px;
+    color: var(--accent-2);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  .cover .sub {
+    font-size: 16px;
+    color: var(--ink-2);
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+  .cover .org {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0;
+  }
+  .cover .meta {
+    margin-top: 22px;
+    padding: 14px 22px;
+    background: white;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    display: inline-block;
+    text-align: left;
+    font-size: 12px;
+    color: var(--ink-2);
+    line-height: 1.7;
+  }
+  .cover .meta strong { color: var(--ink); display: inline-block; min-width: 110px; }
+  .cover-footer {
+    width: 100%;
+    border-top: 2px solid var(--accent);
+    padding-top: 14px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .body { padding: 32px 56px 60px; }
+
+  /* PDF page setup */
+  @page { size: A4; margin: 18mm 16mm 22mm; }
+  @media print {
+    body { padding: 0; max-width: none; }
+    .body { padding: 24px 0 0; }
+    .cover { min-height: 95vh; }
+  }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <div class="cover-top">
+      <div class="logo"></div>
+      <div class="title">Narasi Presentasi<br>BSN Lacak</div>
+      <div class="sub">Panduan Berbicara 14 Slide — Cue Card Presenter</div>
+      <div class="org">PT ArtiVisi Intermedia · untuk Bank Syariah Nasional</div>
+      <div class="meta">
+        <div><strong>Dokumen</strong> NARASI_PRESENTASI v1.0</div>
+        <div><strong>Versi</strong> 1.0</div>
+        <div><strong>Tanggal</strong> 30 Juni 2026</div>
+        <div><strong>Klasifikasi</strong> Internal — Speaker Notes</div>
+      </div>
+    </div>
+    <div class="cover-footer">
+      Panduan berbicara per slide untuk presentasi BSN Lacak.
+      Durasi target ~37 menit + 15–30 menit Q&amp;A.
+      Slide jadi backdrop, narasi jadi konten — jangan dibaca kata-per-kata.
+    </div>
+  </div>
+
+  <div class="body">
+    <blockquote>
+<p>Bahasa: semi-formal, sopan, gunakan istilah Islami yang akrab dengan audiens BSN.
+Tip: jangan baca slide kata-per-kata — slide jadi backdrop, narasi jadi konten.</p>
+</blockquote>
+<hr>
+<h2>Slide 1 — Cover (Pembukaan, ±1.5 menit)</h2>
+<p><strong>Tampilan:</strong> Logo BSN Lacak + judul &quot;Transformasi Digital Pengawasan Kredit &amp; Field Collection Syariah&quot;.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Assalamu&#39;alaikum warahmatullahi wabarakatuh. Bapak/Ibu pimpinan Bank Syariah Nasional yang kami hormati, terima kasih atas kesempatan yang diberikan kepada PT ArtiVisi Intermedia untuk mempresentasikan <strong>BSN Lacak</strong> — solusi terintegrasi untuk mitigasi risiko NPF dan modernisasi pengelolaan field collection.</p>
+<p>Presentasi ini akan membahas tiga hal: pertama, <strong>tantangan industri</strong> perbankan syariah dalam pengelolaan kredit bermasalah; kedua, <strong>arsitektur sistem</strong> yang sudah kami bangun dan kini berjalan di lingkungan staging; dan ketiga, <strong>roadmap</strong> menuju go-live di lingkungan produksi BSN.</p>
+<p>Estimasi waktu sekitar 30 menit, lalu dilanjutkan diskusi. Mohon dapat menginterupsi kapan saja bila ada pertanyaan.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Mari kita mulai dari konteks masalahnya.&quot;</em></p>
+<hr>
+<h2>Slide 2 — Latar Belakang &amp; 5 Akar Masalah (±3 menit)</h2>
+<p><strong>Tampilan:</strong> Angka besar &quot;<strong>&gt;5% NPF</strong>&quot; + 5 kelemahan operasional.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Industri perbankan syariah hari ini menghadapi tekanan yang semakin nyata. Otoritas Jasa Keuangan menetapkan ambang batas Non-Performing Financing sebesar 5%. Di atas angka itu, bank masuk zona perhatian regulator: ekspansi pembiayaan dibatasi, profitabilitas tertekan, dan reputasi institusi terganggu.</p>
+<p>Yang menarik, kalau kita telaah, tingginya NPF jarang disebabkan oleh satu hal tunggal. Biasanya akar masalahnya bertumpuk di sisi <strong>operasional collection</strong>. Kami identifikasi lima yang paling sering muncul:</p>
+<ol>
+<li><strong>Visibilitas rendah</strong> — supervisor tidak tahu petugas lapangan sedang di mana, sedang apa, sudah ke nasabah mana saja hari ini.</li>
+<li><strong>Moral hazard</strong> — laporan kunjungan bisa difiksi tanpa cara membuktikan. Petugas duduk di warung sambil mengisi formulir.</li>
+<li><strong>Kompilasi manual</strong> — data masih disusun di Excel, rekap mingguan, keputusan baru bisa diambil 3 hari kemudian, saat masalahnya sudah membesar.</li>
+<li><strong>Distribusi tidak merata</strong> — penugasan nasabah dibagi manual, sering kali timpang. Petugas A pegang 200 nasabah, petugas B cuma 80.</li>
+<li><strong>Komunikasi tidak efektif</strong> — pengingat angsuran masih lewat surat fisik atau telepon manual. Tingkat respons nasabah rendah.</li>
+</ol>
+<p>Lima poin ini saling memperkuat. Memperbaiki satu tanpa yang lain tidak menyelesaikan apapun. Solusinya harus <strong>terintegrasi</strong>.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Di sinilah BSN Lacak hadir.&quot;</em></p>
+<hr>
+<h2>Slide 3 — Solusi: 3 Modul Terpadu (±3 menit)</h2>
+<p><strong>Tampilan:</strong> 3 modul — Web Admin Dashboard, Mobile PWA Petugas, Customer Engagement Engine.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>BSN Lacak bukan satu aplikasi tunggal, tapi <strong>ekosistem tertutup</strong> yang menghubungkan tiga pemangku kepentingan: manajemen back-office, petugas lapangan, dan nasabah.</p>
+<p><strong>Modul pertama — Web Admin Dashboard.</strong> Ini adalah pusat kendali untuk Supervisor cabang dan Manajemen Senior di kantor pusat. Mereka melihat posisi petugas secara real-time lewat protokol Server-Sent Events. Distribusi nasabah ke petugas dilakukan oleh Smart Allocation Engine otomatis. Setiap aksi penting tercatat di Audit Trail yang tidak dapat dimodifikasi — penting untuk audit OJK.</p>
+<p><strong>Modul kedua — Mobile Aplikasi Petugas.</strong> Ada dua bentuk: pertama, <strong>PWA browser</strong> yang bisa langsung diakses petugas lewat Chrome di HP-nya tanpa install apapun. Kedua, <strong>APK Android native</strong> yang dibangun dengan teknologi Capacitor. Bedanya: APK punya <strong>foreground service</strong> untuk GPS, artinya pelacakan tetap berjalan walaupun layar HP mati atau aplikasi tertutup di latar belakang. Cakupan tracking-nya naik dari 70% di PWA menjadi 95–99% di APK.</p>
+<p><strong>Modul ketiga — Customer Engagement Engine.</strong> Bagian otomatisasi komunikasi ke nasabah. Saat ini sudah terintegrasi dengan Twilio untuk SMS. Slot untuk WhatsApp Business Cloud API resmi Meta sudah disiapkan, tinggal aktivasi saat BSN sudah punya akun bisnis Meta. Filosofinya: komunikasi tetap <strong>santun</strong>, mengikuti etika muamalah, tanpa intimidasi.</p>
+<p>Ketiga modul ini terhubung lewat satu database dan satu API. Bukan tiga sistem terpisah yang nanti pusing integrasinya.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Apa yang membuat BSN Lacak berbeda? Mari lihat empat pilarnya.&quot;</em></p>
+<hr>
+<h2>Slide 4 — 4 Pilar Keunggulan (±3 menit)</h2>
+<p><strong>Tampilan:</strong> 4 pilar — Efisiensi, Integritas, Transparansi, Kepatuhan Syariah.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Kami menyusun proposisi nilai BSN Lacak ke dalam empat pilar.</p>
+<p><strong>Pilar 1 — Efisiensi Operasional.</strong> Distribusi nasabah ke petugas tidak lagi manual. Smart Allocation Engine mempertimbangkan tiga parameter sekaligus: <strong>zonasi GPS</strong> dengan algoritma Haversine, <strong>tingkat urgensi</strong> berdasarkan Days Past Due, dan <strong>load balancing</strong> antar petugas. Supervisor tidak perlu lagi duduk berjam-jam membagi nasabah di Excel. Sistem yang melakukan, supervisor cukup approve atau override.</p>
+<p><strong>Pilar 2 — Integritas dan Akuntabilitas.</strong> Ini bagian yang langsung menjawab kekhawatiran <em>moral hazard</em> yang kita bahas tadi. Sistem punya beberapa lapis proteksi: <strong>geo-fencing</strong> menolak laporan kalau petugas berada lebih dari 50 meter dari koordinat nasabah; <strong>kamera in-app</strong> memastikan foto bukti diambil saat itu juga, bukan dari galeri; <strong>server-side watermark</strong> menanam GPS dan timestamp permanen ke metadata foto; <strong>EXIF freshness check</strong> menolak foto yang lebih dari 1 jam; <strong>speed-jump detection</strong> menandai perpindahan tidak wajar di atas 150 km/jam yang mengindikasikan GPS spoofing.</p>
+<p><strong>Pilar 3 — Transparansi Real-Time.</strong> Dashboard hidup, bukan halaman static yang di-refresh manual. Posisi petugas, postur kolektabilitas Kol 1 sampai Kol 5, tren pembayaran 14 hari, leaderboard kolektor — semuanya update otomatis lewat SSE.</p>
+<p><strong>Pilar 4 — Kepatuhan Syariah.</strong> Ini yang sering dilupakan vendor non-syariah. Sistem otomasi komunikasi yang santun, tanpa nada intimidasi, sesuai etika muamalah. Template pesan dirancang dengan nada hormat. Privasi nasabah dijaga: data tidak dishare ke pihak ketiga, deployment on-premise di Data Center BSN.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Sekarang mari masuk ke sisi teknisnya.&quot;</em></p>
+<hr>
+<h2>Slide 5 — Arsitektur Layered &amp; Keamanan (±4 menit)</h2>
+<p><strong>Tampilan:</strong> 3 layer arsitektur + bullet keamanan &amp; deployment.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Kami merancang BSN Lacak dengan arsitektur <strong>3 layer</strong> klasik perbankan enterprise: presentation, business logic, dan data infrastructure.</p>
+<p><strong>Layer 1 — Presentation.</strong> Front-end dibangun dengan Vite dan React 18, TypeScript end-to-end. Mode PWA untuk browser, dan APK Capacitor untuk Android native. Peta menggunakan MapLibre dengan basemap MapTiler. Offline queue di localStorage — supaya petugas di area blank spot tetap bisa lapor, datanya nyusul saat online.</p>
+<p><strong>Layer 2 — Business Logic.</strong> Backend Node.js 22 dengan framework Express, TypeScript dan Zod untuk validasi input strict. Autentikasi pakai JWT dengan masa berlaku 15 menit dan refresh token 7 hari yang disimpan di httpOnly cookie. Untuk akun yang sensitif, ada lapis TOTP 2FA — kompatibel Google Authenticator. ORM-nya Prisma, type-safe. Sistem RBAC tiga tingkat: Admin HQ, Supervisor per cabang, Petugas per binaan. Setiap query otomatis di-scope ke cabang user. Total endpoint REST yang sudah dibangun: <strong>lebih dari 190</strong>.</p>
+<p><strong>Layer 3 — Data dan Infrastructure.</strong> Database PostgreSQL 16. Realtime via SSE. Push notification dua jalur: <strong>VAPID Web Push</strong> untuk PWA browser, dan <strong>FCM via Firebase</strong> untuk APK Android. BlastGateway untuk SMS via Twilio. Logging structured dengan pino.</p>
+<p>Soal <strong>keamanan dan kedaulatan data</strong>: ini poin penting. Sistem ini bisa di-deploy on-premise di DC BSN — artinya data nasabah tidak transit ke pihak ketiga manapun. Komunikasi pakai TLS 1.3 dan HTTP/3 lewat Caddy. Audit trail tidak dapat dimodifikasi — log immutable, sesuai persyaratan OJK terkait manajemen risiko teknologi informasi.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Yang penting juga, model data harus rapi sejak awal.&quot;</em></p>
+<hr>
+<h2>Slide 6 — Domain Model (±2 menit)</h2>
+<p><strong>Tampilan:</strong> 8 entitas utama + stat 35+ entitas, 190+ endpoint.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Database BSN Lacak terdiri dari <strong>lebih dari 35 entitas data</strong> yang terintegrasi. Di slide ini kami tampilkan 8 yang paling sering dirujuk:</p>
+<ul>
+<li><strong>Branch</strong> adalah root entity. Multi-tenancy di BSN Lacak tidak pakai database terpisah per cabang, tapi semua data di-tag dengan branchId — supaya supervisor cabang X tidak bisa melihat data cabang Y, walaupun teknisnya di server yang sama.</li>
+<li><strong>User</strong> untuk autentikasi: username, password yang di-hash bcrypt cost 12, role, TOTP secret, lockout otomatis setelah 5 kali gagal login.</li>
+<li><strong>Petugas</strong> adalah profil field collector. Terhubung 1:1 ke User. Punya field <code>lastPosition</code> yang di-update setiap ping GPS — jadi posisi terakhir selalu fresh tanpa harus query history.</li>
+<li><strong>Nasabah</strong> menyimpan data pembiayaan: NIK, akad, kolektabilitas 1–5, outstanding, koordinat alamat, Days Past Due.</li>
+<li><strong>Angsuran</strong> ledger pembayaran — setiap transaksi tercatat lengkap.</li>
+<li><strong>Kunjungan</strong> adalah laporan harian dari petugas. Setiap kunjungan punya <code>riskScore</code> dan <code>riskFlags</code> array — dari anti-fraud engine.</li>
+<li><strong>Blast</strong> untuk job komunikasi WA atau SMS.</li>
+<li><strong>AuditLog</strong> — sekali insert, tidak bisa modify. Catat setiap aksi penting beserta IP dan requestId.</li>
+</ul>
+<p>Selain 8 ini ada 27 entitas pendukung lainnya: ChatMessage, PushSubscription, Attendance, AttendanceSession, Wilayah, dan seterusnya. Total <strong>35+ entitas dan 190+ endpoint REST API</strong>.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Mari kita lihat seperti apa dashboard supervisornya.&quot;</em></p>
+<hr>
+<h2>Slide 7 — Modul 01: Dashboard Supervisor (±3 menit)</h2>
+<p><strong>Tampilan:</strong> 4 area dashboard — Allocation, Peta GIS, Analitik, Laporan.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Dashboard supervisor adalah <strong>kokpit operasional</strong> harian. Dirancang supaya seorang supervisor cabang bisa langsung tahu kondisi tim tanpa perlu nelpon satu-satu.</p>
+<p>Pertama, <strong>Smart Allocation Engine</strong>. Tiap pagi, supervisor cukup tekan satu tombol &quot;Auto-Balance&quot; — sistem akan distribusikan nasabah ke petugas dengan tiga pertimbangan: jarak GPS, urgensi DPD, dan beban kerja saat ini. Hasilnya bisa di-review dan di-override sebelum di-commit ke petugas.</p>
+<p>Kedua, <strong>Peta GIS dengan Live Tracking</strong>. Marker petugas bergerak secara real-time di peta. Klik marker, muncul timeline kunjungan hari ini. Ada juga fitur <strong>GPS trail historis</strong> — supervisor bisa pilih tanggal, melihat jejak pergerakan petugas hari itu, lengkap dengan jeda waktu di setiap nasabah. Plus <strong>heatmap kunjungan</strong> untuk melihat sebaran aktivitas per zona.</p>
+<p>Ketiga, <strong>Analitik dan Pelaporan</strong>. Tren arus pembayaran 14 hari, leaderboard kolektor terbaik per cabang, perbandingan realisasi versus target. Bisa di-export CSV dan PDF.</p>
+<p>Keempat, <strong>Laporan dan Audit Compliance</strong>. Antrian laporan yang perlu review muncul dengan badge risk score — supervisor langsung tahu mana yang prioritas. Approve atau reject langsung dari sini, sistem otomatis kirim notifikasi push ke petugas.</p>
+<p>Yang kami tambahkan paling baru: <strong>chat in-app petugas ↔ supervisor</strong>, jadi koordinasi cepat tidak harus pindah ke WhatsApp pribadi. Lalu <strong>worker otomatis</strong> yang notify supervisor kalau petugas masuk wilayah yang bukan binaan-nya (geofence violation), atau tidak ada update GPS lebih dari 30 menit padahal jam kerja (live inactivity alert).</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Sekarang sisi petugas — yang setiap hari pegang aplikasinya.&quot;</em></p>
+<hr>
+<h2>Slide 8 — Modul 02: Mobile Petugas (±3 menit)</h2>
+<p><strong>Tampilan:</strong> Mockup mobile + 5 tab utama + label cross-platform.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Aplikasi petugas adalah jembatan antara strategi di kantor dengan eksekusi di lapangan. Filosofi desainnya: <strong>sesedikit mungkin tap untuk selesaikan satu laporan</strong>.</p>
+<p>Struktur 5 tab utama:</p>
+<ul>
+<li><strong>Beranda</strong> — target harian, progres tertagih, status GPS, tombol clock-in/out, dan tombol chat ke supervisor.</li>
+<li><strong>Rute</strong> — daftar nasabah hari ini, di-urutkan berdasarkan jarak dari posisi petugas saat ini (nearest neighbor). Bisa juga ditampilkan di peta dengan polyline rute optimal.</li>
+<li><strong>Riwayat</strong> — kunjungan yang sudah dilakukan beserta status review-nya dari supervisor.</li>
+<li><strong>Profil</strong> — capaian bulanan, pengaturan, toggle notifikasi push.</li>
+<li><strong>Lapor</strong> — form ini overlay full-screen, dipanggil dari berbagai tempat. Berisi: kamera in-app dengan watermark, GPS otomatis, pilihan hasil (Bayar/Janji/Tidak Bertemu), nominal, foto bukti.</li>
+</ul>
+<p>Dua bentuk distribusi:</p>
+<p>Pertama, <strong>PWA browser</strong> — petugas tinggal buka link di Chrome, tap &quot;Add to Home Screen&quot;, langsung jalan. Tidak perlu install dari Play Store, tidak ada biaya developer account, update fitur otomatis terjadi saat kami deploy. Tracking GPS bisa berjalan, tapi terbatas saat layar mati.</p>
+<p>Kedua, <strong>APK Android Native</strong> dibangun dengan Capacitor. APK ini adalah <strong>shell</strong> tipis yang me-load aplikasi web yang sama, tapi punya satu keunggulan kritikal: <strong>foreground service</strong> untuk GPS. Artinya, walaupun petugas tutup aplikasi dan layar HP mati, GPS tetap aktif merekam pergerakan. Status bar HP menampilkan notifikasi &quot;BSN Lacak — Tracking aktif&quot; sebagai bukti dan transparansi.</p>
+<p>Petugas tidak perlu pilih — kami sediakan dua-duanya. Untuk demo BSN bisa pakai APK; untuk skala produksi nanti tinggal sideload via link internal atau distribusi terbatas.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Tapi yang paling sering ditanyakan: bagaimana memastikan laporan tidak fiksi?&quot;</em></p>
+<hr>
+<h2>Slide 9 — Sistem Anti-Fraud Berlapis (±4 menit)</h2>
+<p><strong>Tampilan:</strong> 6 kotak proteksi.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Pertanyaan paling penting dari setiap evaluasi sistem field collection: <em>&quot;Bagaimana memastikan petugas tidak mengarang laporan?&quot;</em> Jawaban kami: <strong>proteksi berlapis</strong> yang saling melengkapi. Tidak ada satu lapis pun yang dianggap sempurna, tapi gabungannya menyulitkan fraud sampai tidak ekonomis lagi untuk dilakukan.</p>
+<p><strong>Lapis 1 — Geo-Fencing 50 meter.</strong> Saat petugas submit laporan, koordinat GPS-nya dibandingkan dengan koordinat alamat nasabah. Kalau jaraknya di atas 50 meter, server menolak dengan HTTP 403. Bukan warning di klien — hard reject di server, tidak bisa dimanipulasi dari sisi petugas.</p>
+<p><strong>Lapis 2 — In-App Camera Lock.</strong> Foto wajib diambil langsung dari kamera aplikasi. Upload dari galeri foto diblokir. Implementasinya pakai <code>capture</code> attribute HTML5 + validasi server-side magic-byte JPEG/PNG.</p>
+<p><strong>Lapis 3 — Server-Side Watermarking.</strong> Setelah foto diterima server, engine <code>sharp</code> menulis GPS, timestamp, ID petugas dan ID kunjungan langsung ke metadata EXIF. Permanen, tidak bisa dihapus tanpa kompresi ulang yang akan kelihatan jelas. Foto ini jadi bukti forensik kalau ada sengketa.</p>
+<p><strong>Lapis 4 — Speed-Jump Detection.</strong> Anti-GPS-spoofing. Sistem cek kecepatan antar dua ping GPS. Kalau petugas terdeteksi pindah di atas 150 km/jam — itu fisik tidak mungkin dengan motor — kunjungan tersebut otomatis ditandai sebagai mencurigakan.</p>
+<p><strong>Lapis 5 — EXIF Freshness Check.</strong> Foto yang metadata-nya lebih dari 1 jam ditolak. Mencegah daur-ulang foto dari sesi sebelumnya.</p>
+<p><strong>Lapis 6 — Capacitor Native + Magic Byte.</strong> APK native + validasi tipe file di server. Foto yang dimodifikasi ekstensinya akan terdeteksi.</p>
+<p>Semua flag ini diakumulasi dalam <strong>Risk Score</strong> per kunjungan. Supervisor melihat angka itu di dashboard. Kunjungan dengan skor di bawah threshold lolos otomatis. Yang di atas masuk antrian review — supervisor approve atau reject dengan satu klik, plus push notification ke petugas.</p>
+<p>Filosofi-nya: kami tidak menuduh petugas, tapi memberi tools supaya yang jujur lebih cepat selesai laporannya, dan yang nakal kesulitan beraksi.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Modul ketiga, komunikasi ke nasabah.&quot;</em></p>
+<hr>
+<h2>Slide 10 — Modul 03: Komunikasi Santun WhatsApp (±2.5 menit)</h2>
+<p><strong>Tampilan:</strong> 3 fase komunikasi + mockup chat WhatsApp.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Modul komunikasi nasabah dirancang berdasarkan satu prinsip: <strong>etika muamalah Islam</strong>. Tidak ada bahasa intimidasi, tidak ada teror waktu. Tetap profesional, tegas, tapi santun.</p>
+<p>Kami rancang tiga fase:</p>
+<p><strong>Fase 1 — Pre-Due Reminder.</strong> Pengingat pro-aktif H-7, H-3, dan H-1 sebelum jatuh tempo. Tone hangat, mengingatkan kewajiban dengan nada ramah. Tujuan: mencegah keterlambatan, bukan menagih yang terlambat. Ini biasanya menurunkan DPD-1 secara signifikan.</p>
+<p><strong>Fase 2 — Past-Due Escalation.</strong> Untuk yang sudah lewat tempo, eskalasi bertingkat: DPD 1, 7, 14, 30 hari. Nada semakin serius sesuai masa tunggakan — <strong>tapi tidak intimidatif</strong>. Tetap berakhir dengan salam Islami.</p>
+<p><strong>Fase 3 — Interactive CTA.</strong> Tombol respons cepat: <em>&quot;Saya Sudah Bayar&quot;</em> atau <em>&quot;Butuh Bantuan&quot;</em>. Klik nasabah otomatis tercatat di sistem. Kalau dia klik &quot;Sudah Bayar&quot;, supervisor langsung dapat notifikasi untuk verifikasi pembayaran.</p>
+<p>Status saat ini: <strong>BlastGateway sudah dibangun sebagai modul pluggable</strong>. Twilio SMS sudah terintegrasi. Slot untuk WhatsApp Business Cloud API resmi Meta sudah siap — saat BSN sudah punya akun Meta Business dan template-nya sudah diapprove Meta, tinggal masukkan kredensial di environment variable, langsung jalan. Tidak perlu coding ulang.</p>
+<p>Yang penting: ini <strong>WhatsApp resmi</strong>, bukan WA gateway ilegal. Aman dari pemblokiran nomor, dan pesan masuk dengan badge bisnis terverifikasi — meningkatkan kepercayaan nasabah.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Bagaimana kita sampai ke sini? Mari lihat roadmap.&quot;</em></p>
+<hr>
+<h2>Slide 11 — Roadmap 14 Minggu (±3 menit)</h2>
+<p><strong>Tampilan:</strong> 3 prioritas (P0/P1/P2) + 5 fase mingguan.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Roadmap kami susun dengan <strong>prioritas berbasis dampak</strong>, bukan urutan alfabetis.</p>
+<p><strong>Prioritas P0 — Compliance Wajib.</strong> Hal-hal yang tidak boleh terlewat sebelum go-live. Geo-fencing server-side sudah selesai. TOTP 2FA sudah selesai. In-app camera lock plus magic-byte server validation sudah selesai. Yang masih kami siapkan: <strong>penetration test eksternal OWASP</strong> — kami punya jadwal mengundang vendor independen 2 minggu sebelum go-live.</p>
+<p><strong>Prioritas P1 — Unique Selling Point.</strong> Yang membedakan BSN Lacak dari kompetitor: WhatsApp Business Cloud API resmi, scheduler pre-due dan past-due, Smart Allocation 3-parameter, interactive CTA. Sebagian sudah live di staging, sebagian menunggu akses Meta Business.</p>
+<p><strong>Prioritas P2 — Polish dan Differentiator.</strong> Hal-hal yang menambah nilai tapi tidak menghambat go-live: connector core banking, HA Postgres replica untuk skala besar, encryption LUKS di level disk, monitoring Prometheus + Grafana.</p>
+<p>Untuk <strong>timeline 14 minggu</strong>:</p>
+<ul>
+<li><strong>Minggu 1–2: Kickoff.</strong> Spesifikasi teknis final, setup environment Firebase dan VPS, alignment tim PIC BSN dan ArtiVisi.</li>
+<li><strong>Minggu 3–8: Core Development.</strong> Backend API, integrasi WhatsApp Cloud, dashboard, PWA, APK.</li>
+<li><strong>Minggu 9–10: Penetration Test.</strong> OWASP Top 10 eksternal, load testing, remediasi temuan kritis.</li>
+<li><strong>Minggu 11–12: UAT Staging.</strong> Pengujian oleh tim Supervisor dan beberapa Petugas BSN. Bug fix oleh tim IT bersama.</li>
+<li><strong>Minggu 13–14: Go-Live dan Hyper-Care.</strong> Deploy ke DC BSN, pelatihan massal, dan 30 hari pendampingan intensif untuk smoothing onboarding.</li>
+</ul>
+<p>Penting dicatat: <strong>mayoritas fitur sudah jalan di staging hari ini</strong>. Bukan janji 14 minggu dari nol. 14 minggu adalah waktu integrasi, hardening, dan onboarding di lingkungan BSN.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Kenapa harus PT ArtiVisi?&quot;</em></p>
+<hr>
+<h2>Slide 12 — Kredensial PT ArtiVisi (±2.5 menit)</h2>
+<p><strong>Tampilan:</strong> Klien Tier-1 + statistik + keahlian inti.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Kami sadar, memilih partner teknologi untuk sistem kritikal seperti ini bukan keputusan ringan. Izinkan kami sampaikan kredensial PT ArtiVisi.</p>
+<p><strong>Berpengalaman sejak 2008</strong> — sudah <strong>18 tahun</strong> menyelidiki sistem pembayaran dan infrastruktur perbankan enterprise. Dipimpin oleh <strong>Endy Muhardin</strong>, dengan rekam jejak lebih dari 20 tahun di industri IT payment systems Indonesia.</p>
+<p>Klien yang sudah kami layani termasuk: <strong>BCA, BNI, Telkom, KAI, Pegadaian, dan Kementerian Keuangan RI</strong> — semua institusi yang memerlukan kepercayaan tinggi dan standar enterprise.</p>
+<p>Statistik singkat: 18+ tahun operasional, 40+ corporate training yang sudah kami jalankan, dan 60+ project API endpoints yang sudah deliver ke klien.</p>
+<p><strong>Keahlian inti</strong> kami yang relevan dengan BSN Lacak:</p>
+<ul>
+<li><strong>ISO 8583</strong> dan <strong>SNAP API BI</strong> untuk integrasi sistem pembayaran nasional.</li>
+<li><strong>HSM Integration</strong> untuk pengelolaan kunci kriptografi.</li>
+<li><strong>BI-FAST, QRIS, Payment Gateway</strong> on-premise.</li>
+<li><strong>Microservices, Kubernetes, CI/CD GitHub Actions</strong> untuk delivery modern.</li>
+</ul>
+<p>Yang ingin kami sampaikan: <strong>BSN Lacak bukan eksperimen R&amp;D</strong>. Ini dibangun di atas pengalaman 18 tahun menangani sistem-sistem kritikal serupa.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Untuk tim teknis BSN, kami siapkan spec API.&quot;</em></p>
+<hr>
+<h2>Slide 13 — Spesifikasi API (±2 menit, lebih cepat — slide teknis)</h2>
+<p><strong>Tampilan:</strong> Sample endpoint per kategori + standard auth, pagination, rate limit.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Slide ini ringkasan untuk tim teknis BSN.</p>
+<p><strong>Lebih dari 190 REST endpoint</strong> sudah dibangun, semua mengikuti standar OpenAPI 3.1. Dokumentasi interaktif tersedia di <code>/api/docs</code> lewat Swagger UI.</p>
+<p>Dikelompokkan dalam beberapa domain:</p>
+<ul>
+<li><strong>Autentikasi dan Sesi</strong> — login dengan rotasi refresh token httpOnly, verifikasi TOTP 6-digit untuk akun sensitif.</li>
+<li><strong>Nasabah dan Distribusi</strong> — query nasabah dengan filter Kol/DPD/akad, agregasi postur kolektabilitas, bulk import CSV maksimal 2000 baris per request, dan endpoint auto-balance distribusi.</li>
+<li><strong>Kunjungan dan Analytics</strong> — submit laporan multipart (form + foto), review approve/reject, generate PDF bukti per kunjungan, analytics overview revenue 6 bulan.</li>
+</ul>
+<p>Standar yang kami terapkan:</p>
+<ul>
+<li><strong>Rate limit</strong>: login 10x per 15 menit per IP, endpoint umum 600x per 15 menit, dengan budget khusus per-user untuk POST kunjungan.</li>
+<li><strong>Auth header</strong>: Bearer JWT 15 menit, refresh otomatis lewat httpOnly cookie 7 hari, header <code>x-branch-id</code> untuk supervisor multi-branch.</li>
+<li><strong>Pagination</strong>: cursor-based, response shape konsisten <code>{ data: [], nextCursor }</code>.</li>
+</ul>
+<p>Untuk integrasi nantinya dengan core banking BSN, kami siapkan <strong>webhook</strong> dan <strong>API key</strong> dengan scope terbatas.</p>
+</blockquote>
+<p><strong>Transisi:</strong> <em>&quot;Sebagai penutup...&quot;</em></p>
+<hr>
+<h2>Slide 14 — Penutup (±1 menit)</h2>
+<p><strong>Tampilan:</strong> &quot;Jazakumullah Khairan Khasiran&quot; + closing statement.</p>
+<p><strong>Narasi:</strong></p>
+<blockquote>
+<p>Demikian pemaparan singkat dari PT ArtiVisi tentang BSN Lacak.</p>
+<p><strong>Jazakumullah Khairan Khasiran</strong> — semoga Allah membalas kebaikan Bapak/Ibu dengan balasan yang lebih baik. Terima kasih atas waktu dan perhatian yang diberikan.</p>
+<p>Komitmen kami sederhana: bersama-sama mewujudkan perbankan syariah yang <strong>modern</strong>, <strong>akuntabel</strong>, dan tetap <strong>terpercaya</strong> — sesuai nilai-nilai yang menjadi fondasi BSN.</p>
+<p>Kami siap menjawab pertanyaan, masuk ke detail teknis manapun yang diperlukan, atau langsung diskusi pilot di cabang prioritas yang dipilih BSN.</p>
+<p>Demo live aplikasi staging juga sudah kami siapkan — kalau ada waktu setelah ini, dengan senang hati kami jalankan.</p>
+<p>Wassalamu&#39;alaikum warahmatullahi wabarakatuh.</p>
+</blockquote>
+<hr>
+<h2>Tips Tambahan Saat Presentasi</h2>
+<h3>Antisipasi Pertanyaan yang Biasa Muncul</h3>
+<p><strong>Q: &quot;Kalau petugas matikan GPS, sistem bisa apa?&quot;</strong></p>
+<blockquote>
+<p>Jawaban: GPS off akan terdeteksi sebagai &quot;GPS unavailable&quot; di dashboard. Petugas akan muncul di alert supervisor sebagai &quot;tidak ada update GPS&quot;. Sistem tidak bisa memaksa GPS aktif — ini batasan platform Android, semua aplikasi kena. Yang sistem lakukan: surface kondisi itu transparent ke supervisor sehingga ada akuntabilitas.</p>
+</blockquote>
+<p><strong>Q: &quot;Berapa biaya per bulan kalau pakai MapTiler?&quot;</strong></p>
+<blockquote>
+<p>Jawaban: MapTiler free tier sampai 100.000 map loads per bulan. Untuk skala BSN dengan ratusan supervisor + petugas, kira-kira masuk paket berbayar di kisaran USD 25–95 per bulan. Kalau ingin alternatif lebih hemat, basemap bisa swap ke OpenStreetMap self-hosted — sedikit setup, tapi nol biaya recurring.</p>
+</blockquote>
+<p><strong>Q: &quot;Data nasabah disimpan di mana? Aman dari cloud asing?&quot;</strong></p>
+<blockquote>
+<p>Jawaban: Deployment on-premise di DC BSN. Data tidak transit ke cloud asing manapun. Yang kontak ke pihak luar hanya: (1) Firebase FCM untuk push notif APK — payload yang dikirim cuma judul + body singkat, tidak ada data nasabah; (2) Twilio/Meta saat WA aktif — itupun isi pesannya template yang sudah disetujui BSN.</p>
+</blockquote>
+<p><strong>Q: &quot;Bagaimana kalau ArtiVisi tidak lagi support?&quot;</strong></p>
+<blockquote>
+<p>Jawaban: Source code menjadi milik BSN setelah deliver (tergantung kontrak). Stack-nya open-source standar industri: PostgreSQL, Node.js, React. Tim internal BSN atau vendor lain bisa lanjut maintain tanpa lock-in. Dokumentasi teknis lengkap, plus 30 hari pendampingan post-go-live.</p>
+</blockquote>
+<p><strong>Q: &quot;Berapa lama training petugas?&quot;</strong></p>
+<blockquote>
+<p>Jawaban: Aplikasi dirancang dengan onboarding tour 6 langkah di dalam aplikasi sendiri. Untuk petugas yang biasa pakai HP, butuh 15–30 menit pakai pertama kali, lalu lancar. Untuk supervisor butuh sesi 2 jam sekali, plus user manual yang sudah kami siapkan dalam Bahasa Indonesia.</p>
+</blockquote>
+<h3>Aturan Praktis Saat Presentasi</h3>
+<ol>
+<li><strong>Slide 1, 4, 14</strong> — pelan, kontak mata, suara tegas.</li>
+<li><strong>Slide 2</strong> — bangun urgency, tapi jangan menggurui. Audiens BSN tahu masalah ini lebih baik dari kita.</li>
+<li><strong>Slide 5, 13</strong> — slide teknis. Kalau audiens non-teknis, tipiskan; kalau ada CTO/IT Head, perlambat dan biarkan mereka bertanya detail.</li>
+<li><strong>Slide 9</strong> — bagian paling persuasif untuk decision maker non-IT. Jangan terburu.</li>
+<li><strong>Slide 11</strong> — tekankan &quot;<strong>sebagian besar sudah berjalan</strong>&quot; supaya tidak kelihatan jadwal ambisius.</li>
+<li><strong>Hindari klaim yang tidak yakin</strong>. Lebih baik bilang &quot;sedang dievaluasi&quot; daripada &quot;siap&quot;.</li>
+<li><strong>Siapkan demo live</strong> sebagai cadangan — bila ada pertanyaan tentang feature spesifik, bilang &quot;izin kami tunjukkan langsung&quot; lebih impactful daripada deskripsi.</li>
+</ol>
+<h3>Durasi Total</h3>
+<table>
+<thead>
+<tr>
+<th>Segmen</th>
+<th>Durasi</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Cover + Latar Belakang (1-2)</td>
+<td>~5 menit</td>
+</tr>
+<tr>
+<td>Solusi + Pilar (3-4)</td>
+<td>~6 menit</td>
+</tr>
+<tr>
+<td>Arsitektur + Domain (5-6)</td>
+<td>~6 menit</td>
+</tr>
+<tr>
+<td>Modul Detail (7-10)</td>
+<td>~12 menit</td>
+</tr>
+<tr>
+<td>Roadmap + Kredensial (11-12)</td>
+<td>~5 menit</td>
+</tr>
+<tr>
+<td>Spec API + Penutup (13-14)</td>
+<td>~3 menit</td>
+</tr>
+<tr>
+<td><strong>Subtotal presentasi</strong></td>
+<td><strong>~37 menit</strong></td>
+</tr>
+<tr>
+<td>Q&amp;A</td>
+<td>15–30 menit</td>
+</tr>
+<tr>
+<td><strong>Total sesi</strong></td>
+<td><strong>~55–67 menit</strong></td>
+</tr>
+</tbody></table>
+<p>Kalau diminta versi ringkas 15 menit: skip slide 6, 12, 13 — fokus pada 1, 2, 3, 4, 7, 8, 9, 14.</p>
+
+  </div>
+</body>
+</html>

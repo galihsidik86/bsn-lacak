@@ -9,7 +9,7 @@ Bank Syariah Nasional
 
 Dokumen ini menetapkan spesifikasi minimum dan rekomendasi untuk tiga
 komponen perangkat keras yang menopang operasional aplikasi **BSN Lacak** —
-sistem tracking penagihan berbasis web + mobile PWA:
+sistem tracking penagihan berbasis web + mobile (PWA browser + APK Android native):
 
 1. **Server backend** (host API + database + reverse proxy)
 2. **Workstation supervisor/admin** (akses dashboard web)
@@ -30,9 +30,9 @@ multi-cabang.
               │                                  │
               ▼                                  ▼
   ┌───────────────────────┐         ┌──────────────────────┐
-  │  Laptop / PC          │         │  HP Petugas (PWA)    │
-  │  Supervisor & Admin   │         │  GPS + Kamera        │
-  │  Browser modern       │         │  Online + offline    │
+  │  Laptop / PC          │         │  HP Petugas          │
+  │  Supervisor & Admin   │         │  PWA / APK Native    │
+  │  Browser modern       │         │  GPS + Kamera + FCM  │
   └───────────────────────┘         └──────────────────────┘
               │                                  │
               └──────────────┬───────────────────┘
@@ -55,8 +55,9 @@ multi-cabang.
 ```
 
 Komunikasi end-to-end melewati TLS (Let's Encrypt) — tidak ada port
-non-HTTPS yang terbuka ke publik. PWA petugas dapat queue laporan saat
-offline dan auto-sync ketika koneksi pulih.
+non-HTTPS yang terbuka ke publik. Aplikasi petugas (PWA atau APK) dapat
+queue laporan saat offline dan auto-sync ketika koneksi pulih.
+Push notification via VAPID Web Push (PWA) atau FCM Firebase (APK native).
 
 ---
 
@@ -170,37 +171,45 @@ dengan WebGL2. Browser modern adalah syarat utama; spek hardware moderat.
 
 ## 4. Spesifikasi Device Petugas Lapangan
 
-Aplikasi mobile berjalan sebagai PWA (Progressive Web App) di browser.
-GPS dan kamera adalah komponen kritis. Battery life menentukan jam
-operasional.
+Aplikasi mobile petugas tersedia dalam **dua bentuk paralel**:
+
+- **PWA (Progressive Web App)** — buka di Chrome/Safari, install ke home screen tanpa app store. GPS aktif saat aplikasi di foreground. Cakupan tracking ~70-85% karena browser suspend `watchPosition` saat layar mati.
+- **APK Android Native (Capacitor)** — sideload lewat file APK. Punya **foreground service** untuk GPS yang tetap jalan walau layar mati / aplikasi backgrounded. Push notification via **FCM Firebase** langsung ke status bar. Cakupan tracking ~95-99%.
+
+**Rekomendasi produksi:** petugas Android pakai APK; iOS tetap PWA (Capacitor iOS tidak di-deliver di fase ini). GPS dan kamera adalah komponen kritis. Battery life menentukan jam operasional.
 
 ### 4.1 Hardware
 
 | Komponen | Minimum | Direkomendasikan |
 |---|---|---|
 | **Prosesor** | Snapdragon 4-series / Mediatek Helio G35 | Snapdragon 6-series / Helio G99 |
-| **RAM** | 2 GB | 3+ GB |
-| **Storage free** | 1 GB (untuk PWA cache + antrian offline) | 4+ GB |
+| **RAM** | 3 GB (APK Capacitor + foreground service + WebView) | 4+ GB |
+| **Storage free** | 1.5 GB (APK 6 MB + WebView cache + antrian offline + foto pending) | 4+ GB |
 | **Layar** | 5.0" HD 720×1280 | 5.5"+ Full HD 1080×1920 |
 | **Kamera belakang** | 5 MP autofocus + flash | 8+ MP, autofocus, HDR |
 | **GPS** | A-GPS aktif, support precise location | A-GPS + GLONASS + Galileo (akurasi < 10 m outdoor) |
-| **Baterai** | 3.000 mAh + powerbank cadangan wajib | 4.500+ mAh |
+| **Baterai** | 4.000 mAh + powerbank cadangan wajib (foreground GPS + FCM listener drain ±8-12%/jam) | 5.000+ mAh |
 | **Konektivitas** | 4G LTE Band 1/3/5/8 (operator Indonesia) | 4G LTE / 5G |
+
+> **Catatan RAM 3 GB (naik dari 2 GB):** APK Capacitor menjalankan WebView (Chrome-based) + foreground service GPS sekaligus. Total memori ±250-350 MB — di HP RAM 2 GB, Android sering kill service saat memori tekanan. Kalau tetap pakai HP 2 GB, wajib pakai jalur PWA (bukan APK).
 
 ### 4.2 Software
 
 | Komponen | Minimum | Direkomendasikan |
 |---|---|---|
-| **OS Android** | Android 8.0 (Oreo) | Android 13+ |
-| **Chrome Android** | versi 90+ | versi terbaru |
-| **OS iOS** | iOS 14 | iOS 16+ |
+| **OS Android** | Android 8.0 (Oreo) — untuk PWA | Android 13+ — untuk APK Capacitor |
+| **Chrome Android / System WebView** | versi 90+ | versi terbaru (Chromium 100+) |
+| **Google Play Services** | **wajib** ter-install + ter-update | (WAJIB untuk FCM push notification APK) |
+| **OS iOS** | iOS 14 (PWA only) | iOS 16+ (PWA only) |
 | **Safari iOS** | versi 14+ | versi terbaru |
-| **Google Play Services** | terinstall + ter-update | (untuk push notification) |
+
+> **Google Play Services WAJIB untuk APK.** Push notification dari supervisor (chat, alert laporan, geofence violation) rely pada **FCM Firebase**. HP grey-market China tanpa GMS **tidak akan menerima notifikasi** — chat tetap masuk saat app dibuka (via SSE), tapi notif status bar mati total. Untuk HP tanpa GMS, gunakan jalur PWA saja.
 
 ### 4.3 Permission yang wajib di-grant
 
-Sebelum hand-off device ke petugas, pastikan keenam izin berikut sudah
-diaktifkan:
+Beda antara PWA dan APK. Sebelum hand-off device, verifikasi izin berikut:
+
+#### 4.3.1 Petugas pakai PWA (browser)
 
 | Izin | Lokasi setting | Wajib |
 |---|---|---|
@@ -211,29 +220,60 @@ diaktifkan:
 | ☑ PWA terinstall ke home screen | Browser menu → "Add to Home Screen" | Direkomendasikan |
 | ☑ Battery saver tidak agresif | Settings → Battery → tidak hemat untuk browser | Direkomendasikan |
 
+#### 4.3.2 Petugas pakai APK Android Native
+
+| Izin | Lokasi setting | Wajib |
+|---|---|---|
+| ☑ GPS / Location service device-level | Settings → Location → ON, mode "High accuracy" | ✓ |
+| ☑ Lokasi **"Sepanjang waktu"** (bukan hanya "saat digunakan") | Settings → Apps → BSN Lacak → Permissions → Location → **Allow all the time** | ✓ (kritis untuk tracking backgrounded) |
+| ☑ Kamera | Settings → Apps → BSN Lacak → Permissions → Camera → Allow | ✓ |
+| ☑ Notifications (Android 13+ runtime prompt) | Settings → Apps → BSN Lacak → Notifications → Allow | ✓ (untuk FCM push + foreground service notif) |
+| ☑ **Battery optimization: Tidak dibatasi** | Settings → Apps → BSN Lacak → Battery → **Unrestricted** | ✓ **KRITIS** — kalau tidak, OEM (Samsung/Xiaomi/Oppo) akan kill foreground service |
+| ☑ Auto-start (khusus MIUI/ColorOS/Funtouch) | Settings → Apps → BSN Lacak → Auto-start → ON | ✓ untuk HP Xiaomi/Oppo/Vivo |
+| ☑ Install "Sumber tidak dikenal" (untuk sideload APK) | Settings → Apps → Special access → Install unknown apps | ✓ saat first install |
+
+> **Catatan penting Android 11+:** Runtime dialog izin lokasi **tidak** menampilkan opsi "Sepanjang waktu" (only "Saat aplikasi digunakan" atau "Sekali saja"). Petugas harus **manual upgrade** di Settings → Apps → Permissions. Aplikasi sudah menampilkan banner in-app "Buka Pengaturan" dengan tombol shortcut saat clock-in.
+
 ### 4.4 Rekomendasi HP
 
 | Kategori | Model contoh | Harga estimasi | Catatan |
 |---|---|---|---|
-| **Entry layak** | Infinix Hot 50i / Realme C61 | Rp 1.5–1.8 juta | RAM 4 GB, Android 14 |
-| **Optimal** | Samsung Galaxy A15 / Xiaomi Redmi 13C | Rp 2.0–2.5 juta | RAM 6 GB, kamera 50 MP, baterai 5000 mAh |
-| **Premium** | Samsung Galaxy A55 5G | Rp 5–6 juta | Performa & build quality jangka panjang |
+| **Entry layak (PWA)** | Infinix Hot 50i / Realme C61 | Rp 1.5–1.8 juta | RAM 4 GB, Android 14. **Cukup untuk PWA**, tapi APK Capacitor kurang optimal — foreground service sering ke-kill di kondisi memori tekanan. |
+| **Optimal (APK + PWA)** | Samsung Galaxy A15 / A16 / Xiaomi Redmi 13 | Rp 2.0–2.5 juta | RAM 6 GB, kamera 50 MP, baterai 5.000 mAh. **Sweet spot untuk APK** — foreground service stabil, battery cukup shift 8 jam. |
+| **Premium** | Samsung Galaxy A25 / A55 5G | Rp 3.5–6 juta | RAM 8 GB, kamera OIS, IP54 splash-resistant. Untuk supervisor lapangan / petugas senior. |
+
+> **Sudah diuji internal:** Samsung Galaxy A73 (Android 14, RAM 8 GB) — APK berjalan stabil, foreground service GPS tidak ke-kill, FCM push masuk saat app tertutup. Baseline referensi untuk kompatibilitas produksi.
 
 ### 4.5 Aksesori wajib
 
 | Item | Estimasi harga | Tujuan |
 |---|---|---|
-| **Powerbank** ≥ 10.000 mAh | Rp 200–350 rb | Shift penuh 8 jam dengan GPS aktif konsumsi tinggi |
+| **Powerbank** ≥ 10.000 mAh | Rp 200–350 rb | Shift penuh 8 jam dengan GPS foreground service konsumsi 8-12%/jam |
 | **Holder motor / mobil** | Rp 50–150 rb | Akses cepat saat di kendaraan, navigasi rute |
 | **Charger mobil USB** | Rp 50–100 rb | Top-up baterai antar kunjungan |
 | **Pelindung layar + casing tahan banting** | Rp 100–200 rb | HP lapangan sering jatuh, melindungi investasi |
 
 ### 4.6 Device yang TIDAK direkomendasikan
 
-- HP dengan RAM 1 GB → PWA + MapLibre OOM crash sering
-- HP Android < 8.0 → Chrome 90+ tidak tersedia
-- HP tanpa Google Play Services (grey market China) → push notification gagal
-- Feature phone / tablet kecil tanpa GPS chip native
+- HP dengan RAM ≤ 2 GB → APK Capacitor foreground service ke-kill OS, WebView OOM. Jalur PWA-only masih bisa tapi tracking cakupan turun.
+- HP Android < 8.0 → System WebView 90+ tidak tersedia, Capacitor plugin tidak jalan.
+- **HP tanpa Google Play Services** (grey market Xiaomi tanpa GMS, Huawei tanpa GMS setelah 2019) → **FCM push tidak berfungsi**. Aplikasi tetap jalan lewat SSE (saat app dibuka), tapi status bar notif mati total.
+- Feature phone / tablet kecil tanpa GPS chip native.
+- HP dengan custom ROM agresif (LineageOS microG tanpa GMS, Custom AOSP tanpa Google) → tracking foreground service tidak reliable.
+
+### 4.7 PWA vs APK — Kapan Pilih Mana
+
+| Kriteria | PWA (browser) | APK Android Native |
+|---|---|---|
+| **Distribusi** | Buka URL → Add to Home Screen | Sideload file APK, install manual |
+| **GPS saat layar mati** | Tidak reliable (browser suspend) | Foreground service — reliable |
+| **Cakupan tracking harian** | ~70-85% | ~95-99% |
+| **Push notification saat app ditutup** | Web Push VAPID (perlu WebView modern) | FCM native (butuh Google Play Services) |
+| **Update aplikasi** | Otomatis via service worker | Otomatis untuk fitur SPA (server mode); APK rebuild hanya saat plugin/permission berubah |
+| **Ukuran storage** | ~50 MB SW cache | 6 MB APK + WebView cache |
+| **Kompatibilitas iOS** | ✓ Safari 14+ | ✗ Tidak di-deliver fase ini |
+| **Wajib install-unknown-apps** | Tidak | Ya (saat first install) |
+| **Rekomendasi** | HP RAM < 3 GB, iOS user, petugas backup | **Petugas Android produksi utama** |
 
 ---
 
@@ -285,7 +325,7 @@ diaktifkan:
 - **Backup database**: harian otomatis, retensi 30 hari (sudah terkonfigurasi di systemd timer).
 - **Monitoring uptime**: tools eksternal (UptimeRobot gratis) cek endpoint `/api/health/ready` setiap 5 menit.
 - **Disaster recovery**: dokumentasi prosedur restore dari backup tersedia di `OPERATIONS.md` repo.
-- **Update aplikasi**: deploy zero-downtime via Docker compose, auto-update service worker PWA.
+- **Update aplikasi**: deploy zero-downtime via Docker compose, auto-update service worker (PWA) + APK Capacitor server-mode load SPA terbaru otomatis tanpa rebuild.
 
 ### 6.3 Keamanan dasar (sudah terkonfigurasi)
 
@@ -303,6 +343,12 @@ diaktifkan:
 | Istilah | Definisi |
 |---|---|
 | **PWA** | Progressive Web App — aplikasi web yang bisa di-install seperti aplikasi native ke home screen |
+| **Capacitor** | Framework hybrid oleh Ionic — wrap aplikasi web jadi APK Android native dengan akses plugin native (foreground service GPS, dll) |
+| **APK** | Android Package Kit — paket instalasi aplikasi Android, di-sideload ke HP |
+| **Foreground Service** | Service Android yang jalan terus dengan notifikasi persisten di status bar — tidak dikill OS saat aplikasi backgrounded |
+| **FCM** | Firebase Cloud Messaging — layanan push notification Google untuk Android native (via GMS) |
+| **VAPID Web Push** | Voluntary Application Server Identification — protokol push untuk PWA browser (tidak butuh GMS) |
+| **GMS** | Google Mobile Services — paket Google (Play Services, Play Store, dll) yang wajib untuk FCM |
 | **SSE** | Server-Sent Events — channel realtime satu arah dari server ke browser untuk update tracking petugas |
 | **A-GPS** | Assisted GPS — GPS yang mempercepat first-fix dengan bantuan data jaringan seluler |
 | **WebGL2** | Web Graphics Library 2 — API browser untuk render grafis akselerasi GPU, dipakai oleh peta MapLibre |
@@ -317,6 +363,8 @@ diaktifkan:
 - `DEPLOYMENT.md` — runbook deploy production lengkap
 - `OPERATIONS.md` — manual operasional on-call & SLA
 - `MANUAL_PENGGUNAAN.md` — panduan pengguna supervisor/admin
+- `ANDROID_APP.md` — panduan build + install APK Android native
+- `FIREBASE_SETUP.md` — setup Firebase Cloud Messaging untuk push notification APK
 - `deploy/domainesia-vps/DEPLOY-domainesia-vps.md` — runbook spesifik Domainesia VPS
 
 ---

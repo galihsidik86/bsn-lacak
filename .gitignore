@@ -5,6 +5,9 @@
 **/.env
 **/.env.*
 !**/.env.example
+# Firebase secret — injected via GitHub Actions secret pada build APK.
+web/android/app/google-services.json
+**/google-services.json
 
 # ---- Node ----
 node_modules/
@@ -23,6 +26,9 @@ logs/
 # ---- Runtime data ----
 api/uploads/
 api/audit-archive/
+
+# ---- APK build output (di-download dari GitHub Actions artifact) ----
+build-android/
 
 # ---- Test output ----
 coverage/

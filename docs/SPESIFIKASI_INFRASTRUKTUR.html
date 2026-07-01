@@ -202,7 +202,7 @@
       <div class="meta">
         <div><strong>Dokumen</strong> SPESIFIKASI_INFRASTRUKTUR v1.0</div>
         <div><strong>Versi</strong> 1.0</div>
-        <div><strong>Tanggal</strong> 25 Juni 2026</div>
+        <div><strong>Tanggal</strong> 1 Juli 2026</div>
         <div><strong>Klasifikasi</strong> Internal — Procurement</div>
       </div>
     </div>
@@ -220,7 +220,7 @@ Bank Syariah Nasional</p>
 <h2>Ringkasan Eksekutif</h2>
 <p>Dokumen ini menetapkan spesifikasi minimum dan rekomendasi untuk tiga
 komponen perangkat keras yang menopang operasional aplikasi <strong>BSN Lacak</strong> —
-sistem tracking penagihan berbasis web + mobile PWA:</p>
+sistem tracking penagihan berbasis web + mobile (PWA browser + APK Android native):</p>
 <ol>
 <li><strong>Server backend</strong> (host API + database + reverse proxy)</li>
 <li><strong>Workstation supervisor/admin</strong> (akses dashboard web)</li>
@@ -237,9 +237,9 @@ multi-cabang.</p>
               │                                  │
               ▼                                  ▼
   ┌───────────────────────┐         ┌──────────────────────┐
-  │  Laptop / PC          │         │  HP Petugas (PWA)    │
-  │  Supervisor &amp; Admin   │         │  GPS + Kamera        │
-  │  Browser modern       │         │  Online + offline    │
+  │  Laptop / PC          │         │  HP Petugas          │
+  │  Supervisor &amp; Admin   │         │  PWA / APK Native    │
+  │  Browser modern       │         │  GPS + Kamera + FCM  │
   └───────────────────────┘         └──────────────────────┘
               │                                  │
               └──────────────┬───────────────────┘
@@ -261,8 +261,9 @@ multi-cabang.</p>
                └──────────────────────────────┘
 </code></pre>
 <p>Komunikasi end-to-end melewati TLS (Let&#39;s Encrypt) — tidak ada port
-non-HTTPS yang terbuka ke publik. PWA petugas dapat queue laporan saat
-offline dan auto-sync ketika koneksi pulih.</p>
+non-HTTPS yang terbuka ke publik. Aplikasi petugas (PWA atau APK) dapat
+queue laporan saat offline dan auto-sync ketika koneksi pulih.
+Push notification via VAPID Web Push (PWA) atau FCM Firebase (APK native).</p>
 <hr>
 <h2>2. Spesifikasi Server Backend</h2>
 <p>Pilih tier yang sesuai dengan skala operasional. Migrasi antar tier
@@ -568,9 +569,12 @@ dengan WebGL2. Browser modern adalah syarat utama; spek hardware moderat.</p>
 </tbody></table>
 <hr>
 <h2>4. Spesifikasi Device Petugas Lapangan</h2>
-<p>Aplikasi mobile berjalan sebagai PWA (Progressive Web App) di browser.
-GPS dan kamera adalah komponen kritis. Battery life menentukan jam
-operasional.</p>
+<p>Aplikasi mobile petugas tersedia dalam <strong>dua bentuk paralel</strong>:</p>
+<ul>
+<li><strong>PWA (Progressive Web App)</strong> — buka di Chrome/Safari, install ke home screen tanpa app store. GPS aktif saat aplikasi di foreground. Cakupan tracking ~70-85% karena browser suspend <code>watchPosition</code> saat layar mati.</li>
+<li><strong>APK Android Native (Capacitor)</strong> — sideload lewat file APK. Punya <strong>foreground service</strong> untuk GPS yang tetap jalan walau layar mati / aplikasi backgrounded. Push notification via <strong>FCM Firebase</strong> langsung ke status bar. Cakupan tracking ~95-99%.</li>
+</ul>
+<p><strong>Rekomendasi produksi:</strong> petugas Android pakai APK; iOS tetap PWA (Capacitor iOS tidak di-deliver di fase ini). GPS dan kamera adalah komponen kritis. Battery life menentukan jam operasional.</p>
 <h3>4.1 Hardware</h3>
 <table>
 <thead>
@@ -587,12 +591,12 @@ operasional.</p>
 </tr>
 <tr>
 <td><strong>RAM</strong></td>
-<td>2 GB</td>
-<td>3+ GB</td>
+<td>3 GB (APK Capacitor + foreground service + WebView)</td>
+<td>4+ GB</td>
 </tr>
 <tr>
 <td><strong>Storage free</strong></td>
-<td>1 GB (untuk PWA cache + antrian offline)</td>
+<td>1.5 GB (APK 6 MB + WebView cache + antrian offline + foto pending)</td>
 <td>4+ GB</td>
 </tr>
 <tr>
@@ -612,8 +616,8 @@ operasional.</p>
 </tr>
 <tr>
 <td><strong>Baterai</strong></td>
-<td>3.000 mAh + powerbank cadangan wajib</td>
-<td>4.500+ mAh</td>
+<td>4.000 mAh + powerbank cadangan wajib (foreground GPS + FCM listener drain ±8-12%/jam)</td>
+<td>5.000+ mAh</td>
 </tr>
 <tr>
 <td><strong>Konektivitas</strong></td>
@@ -621,6 +625,9 @@ operasional.</p>
 <td>4G LTE / 5G</td>
 </tr>
 </tbody></table>
+<blockquote>
+<p><strong>Catatan RAM 3 GB (naik dari 2 GB):</strong> APK Capacitor menjalankan WebView (Chrome-based) + foreground service GPS sekaligus. Total memori ±250-350 MB — di HP RAM 2 GB, Android sering kill service saat memori tekanan. Kalau tetap pakai HP 2 GB, wajib pakai jalur PWA (bukan APK).</p>
+</blockquote>
 <h3>4.2 Software</h3>
 <table>
 <thead>
@@ -632,33 +639,36 @@ operasional.</p>
 </thead>
 <tbody><tr>
 <td><strong>OS Android</strong></td>
-<td>Android 8.0 (Oreo)</td>
-<td>Android 13+</td>
+<td>Android 8.0 (Oreo) — untuk PWA</td>
+<td>Android 13+ — untuk APK Capacitor</td>
 </tr>
 <tr>
-<td><strong>Chrome Android</strong></td>
+<td><strong>Chrome Android / System WebView</strong></td>
 <td>versi 90+</td>
-<td>versi terbaru</td>
+<td>versi terbaru (Chromium 100+)</td>
+</tr>
+<tr>
+<td><strong>Google Play Services</strong></td>
+<td><strong>wajib</strong> ter-install + ter-update</td>
+<td>(WAJIB untuk FCM push notification APK)</td>
 </tr>
 <tr>
 <td><strong>OS iOS</strong></td>
-<td>iOS 14</td>
-<td>iOS 16+</td>
+<td>iOS 14 (PWA only)</td>
+<td>iOS 16+ (PWA only)</td>
 </tr>
 <tr>
 <td><strong>Safari iOS</strong></td>
 <td>versi 14+</td>
 <td>versi terbaru</td>
 </tr>
-<tr>
-<td><strong>Google Play Services</strong></td>
-<td>terinstall + ter-update</td>
-<td>(untuk push notification)</td>
-</tr>
 </tbody></table>
+<blockquote>
+<p><strong>Google Play Services WAJIB untuk APK.</strong> Push notification dari supervisor (chat, alert laporan, geofence violation) rely pada <strong>FCM Firebase</strong>. HP grey-market China tanpa GMS <strong>tidak akan menerima notifikasi</strong> — chat tetap masuk saat app dibuka (via SSE), tapi notif status bar mati total. Untuk HP tanpa GMS, gunakan jalur PWA saja.</p>
+</blockquote>
 <h3>4.3 Permission yang wajib di-grant</h3>
-<p>Sebelum hand-off device ke petugas, pastikan keenam izin berikut sudah
-diaktifkan:</p>
+<p>Beda antara PWA dan APK. Sebelum hand-off device, verifikasi izin berikut:</p>
+<h4>4.3.1 Petugas pakai PWA (browser)</h4>
 <table>
 <thead>
 <tr>
@@ -698,6 +708,54 @@ diaktifkan:</p>
 <td>Direkomendasikan</td>
 </tr>
 </tbody></table>
+<h4>4.3.2 Petugas pakai APK Android Native</h4>
+<table>
+<thead>
+<tr>
+<th>Izin</th>
+<th>Lokasi setting</th>
+<th>Wajib</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>☑ GPS / Location service device-level</td>
+<td>Settings → Location → ON, mode &quot;High accuracy&quot;</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>☑ Lokasi <strong>&quot;Sepanjang waktu&quot;</strong> (bukan hanya &quot;saat digunakan&quot;)</td>
+<td>Settings → Apps → BSN Lacak → Permissions → Location → <strong>Allow all the time</strong></td>
+<td>✓ (kritis untuk tracking backgrounded)</td>
+</tr>
+<tr>
+<td>☑ Kamera</td>
+<td>Settings → Apps → BSN Lacak → Permissions → Camera → Allow</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>☑ Notifications (Android 13+ runtime prompt)</td>
+<td>Settings → Apps → BSN Lacak → Notifications → Allow</td>
+<td>✓ (untuk FCM push + foreground service notif)</td>
+</tr>
+<tr>
+<td>☑ <strong>Battery optimization: Tidak dibatasi</strong></td>
+<td>Settings → Apps → BSN Lacak → Battery → <strong>Unrestricted</strong></td>
+<td>✓ <strong>KRITIS</strong> — kalau tidak, OEM (Samsung/Xiaomi/Oppo) akan kill foreground service</td>
+</tr>
+<tr>
+<td>☑ Auto-start (khusus MIUI/ColorOS/Funtouch)</td>
+<td>Settings → Apps → BSN Lacak → Auto-start → ON</td>
+<td>✓ untuk HP Xiaomi/Oppo/Vivo</td>
+</tr>
+<tr>
+<td>☑ Install &quot;Sumber tidak dikenal&quot; (untuk sideload APK)</td>
+<td>Settings → Apps → Special access → Install unknown apps</td>
+<td>✓ saat first install</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p><strong>Catatan penting Android 11+:</strong> Runtime dialog izin lokasi <strong>tidak</strong> menampilkan opsi &quot;Sepanjang waktu&quot; (only &quot;Saat aplikasi digunakan&quot; atau &quot;Sekali saja&quot;). Petugas harus <strong>manual upgrade</strong> di Settings → Apps → Permissions. Aplikasi sudah menampilkan banner in-app &quot;Buka Pengaturan&quot; dengan tombol shortcut saat clock-in.</p>
+</blockquote>
 <h3>4.4 Rekomendasi HP</h3>
 <table>
 <thead>
@@ -709,24 +767,27 @@ diaktifkan:</p>
 </tr>
 </thead>
 <tbody><tr>
-<td><strong>Entry layak</strong></td>
+<td><strong>Entry layak (PWA)</strong></td>
 <td>Infinix Hot 50i / Realme C61</td>
 <td>Rp 1.5–1.8 juta</td>
-<td>RAM 4 GB, Android 14</td>
+<td>RAM 4 GB, Android 14. <strong>Cukup untuk PWA</strong>, tapi APK Capacitor kurang optimal — foreground service sering ke-kill di kondisi memori tekanan.</td>
 </tr>
 <tr>
-<td><strong>Optimal</strong></td>
-<td>Samsung Galaxy A15 / Xiaomi Redmi 13C</td>
+<td><strong>Optimal (APK + PWA)</strong></td>
+<td>Samsung Galaxy A15 / A16 / Xiaomi Redmi 13</td>
 <td>Rp 2.0–2.5 juta</td>
-<td>RAM 6 GB, kamera 50 MP, baterai 5000 mAh</td>
+<td>RAM 6 GB, kamera 50 MP, baterai 5.000 mAh. <strong>Sweet spot untuk APK</strong> — foreground service stabil, battery cukup shift 8 jam.</td>
 </tr>
 <tr>
 <td><strong>Premium</strong></td>
-<td>Samsung Galaxy A55 5G</td>
-<td>Rp 5–6 juta</td>
-<td>Performa &amp; build quality jangka panjang</td>
+<td>Samsung Galaxy A25 / A55 5G</td>
+<td>Rp 3.5–6 juta</td>
+<td>RAM 8 GB, kamera OIS, IP54 splash-resistant. Untuk supervisor lapangan / petugas senior.</td>
 </tr>
 </tbody></table>
+<blockquote>
+<p><strong>Sudah diuji internal:</strong> Samsung Galaxy A73 (Android 14, RAM 8 GB) — APK berjalan stabil, foreground service GPS tidak ke-kill, FCM push masuk saat app tertutup. Baseline referensi untuk kompatibilitas produksi.</p>
+</blockquote>
 <h3>4.5 Aksesori wajib</h3>
 <table>
 <thead>
@@ -739,7 +800,7 @@ diaktifkan:</p>
 <tbody><tr>
 <td><strong>Powerbank</strong> ≥ 10.000 mAh</td>
 <td>Rp 200–350 rb</td>
-<td>Shift penuh 8 jam dengan GPS aktif konsumsi tinggi</td>
+<td>Shift penuh 8 jam dengan GPS foreground service konsumsi 8-12%/jam</td>
 </tr>
 <tr>
 <td><strong>Holder motor / mobil</strong></td>
@@ -759,11 +820,67 @@ diaktifkan:</p>
 </tbody></table>
 <h3>4.6 Device yang TIDAK direkomendasikan</h3>
 <ul>
-<li>HP dengan RAM 1 GB → PWA + MapLibre OOM crash sering</li>
-<li>HP Android &lt; 8.0 → Chrome 90+ tidak tersedia</li>
-<li>HP tanpa Google Play Services (grey market China) → push notification gagal</li>
-<li>Feature phone / tablet kecil tanpa GPS chip native</li>
+<li>HP dengan RAM ≤ 2 GB → APK Capacitor foreground service ke-kill OS, WebView OOM. Jalur PWA-only masih bisa tapi tracking cakupan turun.</li>
+<li>HP Android &lt; 8.0 → System WebView 90+ tidak tersedia, Capacitor plugin tidak jalan.</li>
+<li><strong>HP tanpa Google Play Services</strong> (grey market Xiaomi tanpa GMS, Huawei tanpa GMS setelah 2019) → <strong>FCM push tidak berfungsi</strong>. Aplikasi tetap jalan lewat SSE (saat app dibuka), tapi status bar notif mati total.</li>
+<li>Feature phone / tablet kecil tanpa GPS chip native.</li>
+<li>HP dengan custom ROM agresif (LineageOS microG tanpa GMS, Custom AOSP tanpa Google) → tracking foreground service tidak reliable.</li>
 </ul>
+<h3>4.7 PWA vs APK — Kapan Pilih Mana</h3>
+<table>
+<thead>
+<tr>
+<th>Kriteria</th>
+<th>PWA (browser)</th>
+<th>APK Android Native</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Distribusi</strong></td>
+<td>Buka URL → Add to Home Screen</td>
+<td>Sideload file APK, install manual</td>
+</tr>
+<tr>
+<td><strong>GPS saat layar mati</strong></td>
+<td>Tidak reliable (browser suspend)</td>
+<td>Foreground service — reliable</td>
+</tr>
+<tr>
+<td><strong>Cakupan tracking harian</strong></td>
+<td>~70-85%</td>
+<td>~95-99%</td>
+</tr>
+<tr>
+<td><strong>Push notification saat app ditutup</strong></td>
+<td>Web Push VAPID (perlu WebView modern)</td>
+<td>FCM native (butuh Google Play Services)</td>
+</tr>
+<tr>
+<td><strong>Update aplikasi</strong></td>
+<td>Otomatis via service worker</td>
+<td>Otomatis untuk fitur SPA (server mode); APK rebuild hanya saat plugin/permission berubah</td>
+</tr>
+<tr>
+<td><strong>Ukuran storage</strong></td>
+<td>~50 MB SW cache</td>
+<td>6 MB APK + WebView cache</td>
+</tr>
+<tr>
+<td><strong>Kompatibilitas iOS</strong></td>
+<td>✓ Safari 14+</td>
+<td>✗ Tidak di-deliver fase ini</td>
+</tr>
+<tr>
+<td><strong>Wajib install-unknown-apps</strong></td>
+<td>Tidak</td>
+<td>Ya (saat first install)</td>
+</tr>
+<tr>
+<td><strong>Rekomendasi</strong></td>
+<td>HP RAM &lt; 3 GB, iOS user, petugas backup</td>
+<td><strong>Petugas Android produksi utama</strong></td>
+</tr>
+</tbody></table>
 <hr>
 <h2>5. Estimasi Biaya CapEx</h2>
 <h3>5.1 Setup 1 cabang (1 supervisor + 6 petugas)</h3>
@@ -897,7 +1014,7 @@ diaktifkan:</p>
 <li><strong>Backup database</strong>: harian otomatis, retensi 30 hari (sudah terkonfigurasi di systemd timer).</li>
 <li><strong>Monitoring uptime</strong>: tools eksternal (UptimeRobot gratis) cek endpoint <code>/api/health/ready</code> setiap 5 menit.</li>
 <li><strong>Disaster recovery</strong>: dokumentasi prosedur restore dari backup tersedia di <code>OPERATIONS.md</code> repo.</li>
-<li><strong>Update aplikasi</strong>: deploy zero-downtime via Docker compose, auto-update service worker PWA.</li>
+<li><strong>Update aplikasi</strong>: deploy zero-downtime via Docker compose, auto-update service worker (PWA) + APK Capacitor server-mode load SPA terbaru otomatis tanpa rebuild.</li>
 </ul>
 <h3>6.3 Keamanan dasar (sudah terkonfigurasi)</h3>
 <ul>
@@ -920,6 +1037,30 @@ diaktifkan:</p>
 <tbody><tr>
 <td><strong>PWA</strong></td>
 <td>Progressive Web App — aplikasi web yang bisa di-install seperti aplikasi native ke home screen</td>
+</tr>
+<tr>
+<td><strong>Capacitor</strong></td>
+<td>Framework hybrid oleh Ionic — wrap aplikasi web jadi APK Android native dengan akses plugin native (foreground service GPS, dll)</td>
+</tr>
+<tr>
+<td><strong>APK</strong></td>
+<td>Android Package Kit — paket instalasi aplikasi Android, di-sideload ke HP</td>
+</tr>
+<tr>
+<td><strong>Foreground Service</strong></td>
+<td>Service Android yang jalan terus dengan notifikasi persisten di status bar — tidak dikill OS saat aplikasi backgrounded</td>
+</tr>
+<tr>
+<td><strong>FCM</strong></td>
+<td>Firebase Cloud Messaging — layanan push notification Google untuk Android native (via GMS)</td>
+</tr>
+<tr>
+<td><strong>VAPID Web Push</strong></td>
+<td>Voluntary Application Server Identification — protokol push untuk PWA browser (tidak butuh GMS)</td>
+</tr>
+<tr>
+<td><strong>GMS</strong></td>
+<td>Google Mobile Services — paket Google (Play Services, Play Store, dll) yang wajib untuk FCM</td>
 </tr>
 <tr>
 <td><strong>SSE</strong></td>
@@ -956,6 +1097,8 @@ diaktifkan:</p>
 <li><code>DEPLOYMENT.md</code> — runbook deploy production lengkap</li>
 <li><code>OPERATIONS.md</code> — manual operasional on-call &amp; SLA</li>
 <li><code>MANUAL_PENGGUNAAN.md</code> — panduan pengguna supervisor/admin</li>
+<li><code>ANDROID_APP.md</code> — panduan build + install APK Android native</li>
+<li><code>FIREBASE_SETUP.md</code> — setup Firebase Cloud Messaging untuk push notification APK</li>
 <li><code>deploy/domainesia-vps/DEPLOY-domainesia-vps.md</code> — runbook spesifik Domainesia VPS</li>
 </ul>
 <hr>
