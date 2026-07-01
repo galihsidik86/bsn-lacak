@@ -376,3 +376,190 @@
 | **Total sesi** | **~55–67 menit** |
 
 Kalau diminta versi ringkas 15 menit: skip slide 6, 12, 13 — fokus pada 1, 2, 3, 4, 7, 8, 9, 14.
+
+---
+
+## Skenario Demo Live (Bonus — Kalau Waktu Cukup)
+
+Sesudah 14 slide selesai, biasanya audience ingin melihat "bukti". Demo live 10 menit ini menampilkan alur ujung-ke-ujung: petugas clock-in → tugas → laporan → supervisor review → chat. Jauh lebih persuasif daripada slide static.
+
+**Persiapan sebelum sesi:**
+- Buka laptop dengan browser fresh, login sebagai supervisor di `https://lacak.sosmartpro.com`
+- HP Android petugas (yang sudah diinstall APK) siap terhubung Wi-Fi/data
+- Screen mirror HP ke proyektor pakai kabel USB-C ke HDMI, atau aplikasi seperti `scrcpy` di laptop
+
+### Skrip Demo — 10 Menit
+
+**Menit 0-1 — Setup context**
+
+> "Baik, sebelum masuk demo, izin sekedar setup konteks. Yang di layar kiri ini **dashboard supervisor** — lihat di kanan atas ada nama akun `supervisor-jkt-selatan`. Di HP Bapak/Ibu bisa lihat proyeksi, ini **aplikasi petugas** — akun `budi.santoso`, salah satu petugas cabang Jakarta Selatan. Data yang tampil adalah data uji coba, bukan nasabah riil."
+
+**Menit 1-2 — Clock-in + izin lokasi**
+
+- Di HP: tap **Clock-in** → masukkan odometer awal → sistem minta lokasi
+- Tunjukkan **notifikasi status bar** "BSN Lacak — Tracking aktif" muncul
+
+> "Perhatikan status bar HP — ada notifikasi 'Tracking aktif'. Itu bukti **foreground service** sedang jalan. GPS petugas ini akan terus terekam walaupun HP dimatikan layarnya. Ini kritis untuk cakupan tracking penuh 8 jam kerja."
+
+**Menit 2-3 — Live tracking di dashboard**
+
+- Di laptop, buka tab **Tracking** dashboard supervisor
+- Tunjukkan marker petugas `budi.santoso` di peta (real-time)
+
+> "Di sisi supervisor, marker Budi muncul di peta secara real-time — pakai SSE Server-Sent Events, latency sekitar 1 detik. Kalau saya minta beliau jalan 5 meter, marker akan bergerak di layar ini."
+
+- Minta assisten atau berjalan sendiri dengan HP → marker bergerak
+
+**Menit 3-5 — Laporan lapangan**
+
+- Di HP: masuk tab **Rute** → pilih nasabah pertama → tap **Lapor**
+- Isi hasil "BAYAR", nominal, ambil foto (kamera in-app, bukan galeri)
+- Submit
+
+> "Perhatikan — kamera terbuka langsung dari aplikasi, bukan galeri. Ini pertahanan pertama anti-fraud. Foto yang saya ambil sekarang akan di-watermark server dengan GPS, timestamp, ID petugas — permanen di EXIF metadata."
+
+**Menit 5-7 — Laporan muncul di supervisor**
+
+- Di laptop, refresh tab **Laporan** dashboard
+- Tunjukkan laporan Budi muncul dengan risk score
+
+> "Laporan langsung muncul di antrian supervisor. Lihat risk score — angka 0 artinya semua flag anti-fraud lolos: GPS petugas dekat koordinat nasabah, foto fresh, tidak ada pola mencurigakan. Kalau ada anomali, angkanya naik dan laporan otomatis masuk PENDING review."
+
+- Klik detail laporan → tunjukkan foto dengan watermark
+
+**Menit 7-9 — Chat supervisor ↔ petugas**
+
+- Di laptop: buka tab **Pesan Petugas** → kirim ke Budi "Sudah sampai lokasi ke-2?"
+- Di HP: notifikasi masuk di status bar (**tanpa buka app**)
+- Tap notif → APK terbuka langsung ke thread chat
+
+> "Push notification via FCM sampai ke status bar HP dalam 1-2 detik. Petugas cukup tap → langsung buka thread. Tidak perlu buka aplikasi cari-cari menu. Ini menggantikan telepon manual + WhatsApp pribadi yang biasanya tidak trackable."
+
+**Menit 9-10 — Closing demo**
+
+> "Demikian alur lengkap: petugas clock-in, GPS tracking real-time, laporan dengan validasi anti-fraud, review supervisor, komunikasi in-app. Semua terjadi di **satu ekosistem**, dengan audit trail lengkap. Kalau ada aksi spesifik yang ingin ditunjukkan, silakan minta."
+
+### Tips Demo
+
+- **Jangan improvisasi terlalu jauh.** Kalau tersendat, kembali ke skrip.
+- **Punya cadangan screenshot.** Kalau internet mati atau device gagal, pindah ke screenshot.
+- **Latihan 3x sebelum sesi.** Terutama koneksi HP → proyektor.
+- **Data uji coba yang manusiawi.** Nama nasabah pakai "Budi Santoso", "Siti Aminah" — bukan "Test 1", "Test 2". Kesan profesional.
+
+---
+
+## Pertanyaan Lanjutan yang Sering Muncul
+
+Selain 5 pertanyaan dasar di atas, siapkan jawaban untuk pertanyaan ini yang sering keluar di tahap decision-making:
+
+**Q: "Kalau server BSN Lacak down, apa yang terjadi ke petugas di lapangan?"**
+> Jawaban: Aplikasi petugas punya **offline queue** — GPS ping + laporan disimpan di localStorage HP selama server tidak terjangkau. Saat koneksi pulih, otomatis re-sync ke server dengan preserved timestamp (`clientTs`). Petugas tidak kehilangan pekerjaan. Untuk supervisor, dashboard menampilkan warning "koneksi terputus" — mereka masih bisa lihat data terakhir yang ter-cache.
+
+**Q: "Berapa lama recovery kalau database corrupted / server crashed?"**
+> Jawaban: Backup harian ada di systemd timer — pg_dump ter-encrypt disimpan di volume terpisah, retensi 30 hari. Recovery time dari backup latest sekitar 15-30 menit tergantung ukuran data. Tim on-call ada dokumentasi step-by-step di `OPERATIONS.md`.
+
+**Q: "Kalau ada tim internal BSN mau extend fitur sendiri, bisa?"**
+> Jawaban: Bisa. Source code lengkap di-hand-over ke BSN. Stack open-source standar: React, Node.js, PostgreSQL. Struktur folder rapi (`api/src/routes` untuk endpoint, `web/src/screens` untuk halaman). Dokumentasi arsitektur ada di `README.md` dan `ARCHITECTURE.md`. Tim IT internal bisa lanjut develop tanpa dependency vendor.
+
+**Q: "Bagaimana handling nasabah yang tidak punya WA?"**
+> Jawaban: Fallback dua lapis: (1) SMS via Twilio kalau nomor terdaftar — biaya per SMS lebih tinggi, tapi coverage universal; (2) Petugas kunjungan langsung sesuai jadwal rute yang sudah di-optimize sistem. Sistem bukan menggantikan tatap muka, tapi **melengkapi** — reminder digital jadi lapis pertama, kunjungan fisik lapis kedua.
+
+**Q: "Berapa besar bandwidth internet yang dipakai supervisor / petugas per hari?"**
+> Jawaban: Supervisor dashboard: sekitar 5-20 MB per hari, tergantung berapa lama monitoring live. SSE tracking hemat karena hanya push delta, bukan polling. Petugas APK: sekitar 15-30 MB per shift 8 jam — dominant GPS ping (kecil) + upload foto (2-3 MB per foto). Layak untuk paket data reguler.
+
+**Q: "Apakah bisa integrasi ke SIA Core Banking BSN?"**
+> Jawaban: Ya, arsitektur sudah menyiapkan slot integrasi via **REST endpoint + webhook**. Format data pertukaran standar JSON. Yang kami butuh dari tim BSN adalah spesifikasi API core banking (endpoint, auth, schema). Estimasi effort integrasi 2-3 minggu setelah dapat spec.
+
+**Q: "Kalau petugas resign, data / device diapakan?"**
+> Jawaban: Akun petugas di-nonaktifkan lewat dashboard (bukan dihapus — audit trail tetap valid). Refresh token otomatis expired di HP. APK bisa remote uninstall via MDM kalau BSN pakai. Untuk hand-over ke petugas pengganti: reset device via Settings → Reset → Install ulang APK → login akun baru. Trail history petugas lama tetap ada di database untuk audit.
+
+**Q: "Apakah aplikasi ini di-audit keamanan?"**
+> Jawaban: Kami menjalankan self-review internal secara berkala: static analysis, dependency scanning, OWASP checklist. **Belum** dilakukan pentest eksternal — itu masuk fase P0 sebelum go-live, 2 minggu sebelum production. Kami rekomendasikan pentest oleh vendor independen yang sudah biasa audit sistem perbankan.
+
+**Q: "Kalau petugas ambil foto duplikat dari laporan sebelumnya, bisa terdeteksi?"**
+> Jawaban: Ya, ada tiga mekanisme. **Satu**, EXIF freshness check — foto lebih dari 1 jam ditolak. **Dua**, in-app camera lock — galeri tidak bisa dipakai. **Tiga**, watermark server dengan GPS + timestamp membuat foto sudah punya "sidik jari" unik per submission. Kalau petugas somehow bypass dua yang pertama (misal HP dimodif), watermark tetap menunjukkan waktu upload asli.
+
+**Q: "Bagaimana kalau daerah blank spot signal — petugas tetap bisa lapor?"**
+> Jawaban: Ya. Aplikasi didesain **offline-first**. Petugas isi laporan seperti biasa, ambil foto, submit. Kalau tidak ada koneksi, laporan masuk queue localStorage. Notifikasi kecil muncul "1 laporan menunggu kirim". Saat petugas keluar area blank spot, otomatis sinkron dengan timestamp asli tetap tercatat. Batasan: maksimum 500 laporan dalam antrian atau 24 jam sejak submit — di luar itu, item terlama drop otomatis supaya localStorage tidak overflow.
+
+---
+
+## Variasi Opening Warm-up
+
+Sesuaikan pembuka dengan tipe audience. Kalau ragu, pakai yang formal.
+
+**Kalau audience = Board Direksi / Komisaris BSN (formal, konservatif):**
+
+> "Assalamu'alaikum warahmatullahi wabarakatuh. Bapak/Ibu Direksi Bank Syariah Nasional yang kami hormati. Kami dari PT ArtiVisi Intermedia menyampaikan penghormatan atas kesempatan yang diberikan hari ini. Presentasi ini adalah usulan konkret bagaimana teknologi dapat mendukung strategi manajemen risiko BSN, khususnya pengendalian NPF di lini field collection. Mohon izin memulai."
+
+**Kalau audience = Tim Teknis / IT Head BSN:**
+
+> "Assalamu'alaikum warahmatullahi wabarakatuh. Terima kasih atas waktunya. Kami paham audience hari ini punya pemahaman teknis yang solid, jadi presentasinya akan lebih spesifik ke arsitektur, security, dan integrasi. Kalau ada bagian yang mau diperlambat atau di-skip karena sudah familiar, silakan interupsi. Kami mulai dengan konteks singkat lalu langsung ke bagian teknis."
+
+**Kalau audience = Manajemen Operasional Cabang (SPI / kepala cabang):**
+
+> "Assalamu'alaikum warahmatullahi wabarakatuh. Bapak/Ibu yang di garda terdepan operasional BSN. Kalau presentasi ini terasa terlalu 'teknologi', mohon dimaafkan. Yang terpenting untuk kami sampaikan adalah: apa yang **berubah di operasional harian** cabang saat sistem ini dipakai — supaya kita bisa diskusi apakah perubahan itu masuk akal buat tim lapangan Bapak/Ibu."
+
+---
+
+## Variasi Closing (Sesuai Situasi)
+
+Baca ruangan sebelum memilih closing. Kalau audience sudah "buy in", pakai closing pilot proposal. Kalau masih evaluatif, pakai closing terbuka.
+
+**Closing Standar (safe default):**
+
+> Sudah ditulis di narasi Slide 14. Fokus terima kasih + kesediaan diskusi lanjut.
+
+**Closing Pilot Proposal (kalau audience terlihat tertarik & siap decide):**
+
+> "Bapak/Ibu, kalau BSN merasa arahnya sudah sejalan, izinkan kami usulkan langkah konkret berikutnya: **pilot 4 minggu di satu cabang terpilih**. Tim ArtiVisi akan setup lingkungan staging BSN, deploy sistem, dan dampingi 2 petugas + 1 supervisor selama pilot. Investasi pilot ini terbatas, dan output-nya jelas: **data konkret** apakah sistem ini benar-benar berdampak pada NPF cabang tersebut. Kalau hasil pilot positif, baru kita bicara skala. Kalau tidak, tidak ada komitmen jangka panjang yang terikat. Bagaimana pandangan Bapak/Ibu?"
+
+**Closing Evaluatif (kalau audience masih banyak concern):**
+
+> "Kami paham keputusan sistem seperti ini bukan hal yang bisa diambil di satu sesi. Untuk membantu Bapak/Ibu mengevaluasi lebih dalam, kami sudah menyiapkan tiga hal: **satu**, dokumen spesifikasi infrastruktur lengkap; **dua**, akses ke lingkungan staging untuk tim IT BSN uji coba mandiri; **tiga**, sesi tanya jawab teknis dengan tim engineering kami. Silakan pilih format lanjutan yang paling sesuai — kami siap kapan pun."
+
+**Closing Kalau Ada Concern Compliance / Regulator (POJK, OJK):**
+
+> "Bapak/Ibu, kami sangat memahami bobot regulasi POJK terkait MRTI yang harus BSN patuhi. Kami tidak mau mengaburkan atau over-claim compliance. Yang bisa kami tawarkan: **sesi kolaborasi khusus** dengan tim SPI dan Compliance BSN untuk map fitur sistem ke checklist POJK, plus siap adaptasi kalau ada gap. Kami tidak menjual 'compliance in a box' — kami menjual sistem yang dirancang siap-audit dan bersedia iterasi bersama tim BSN."
+
+---
+
+## Handling Pertanyaan Sulit / Skeptis
+
+Kadang ada pertanyaan yang provokatif atau menantang. Ini bukan serangan pribadi — biasanya audience yang butuh diyakinkan dengan cara lebih keras. Panduan:
+
+**Kalau ditanya harga langsung padahal belum lengkap konteks:**
+
+> Jangan defensif. Jawab: *"Untuk pilot 4 minggu di 1 cabang, estimasi investasi teknis di kisaran X juta rupiah, sudah termasuk deployment, training, dan pendampingan. Angka pastinya nanti kami sampaikan dalam proposal komersial terpisah sesuai scope final. Yang bisa kami pastikan hari ini: **struktur biayanya transparan**, tidak ada hidden cost recurring."*
+
+**Kalau ada yang bilang "sistem serupa sudah pernah dicoba dan gagal":**
+
+> Jangan bantah. Akui dulu: *"Bapak/Ibu benar — banyak sistem tracking petugas yang gagal adopsi. Kami sendiri sudah observasi beberapa case. Yang biasa jadi penyebab: satu, aplikasi berat / boros baterai; dua, petugas resisten karena rasa 'diawasi'; tiga, dashboard supervisor terlalu ramai tidak actionable. Untuk BSN Lacak, kami sudah desain **berbeda**: aplikasi ringan, notifikasi tracking transparan (petugas lihat sendiri), dashboard fokus 3 KPI utama saja. Setelah pilot, kami evaluasi bersama apakah anti-pola ini terhindar."*
+
+**Kalau ditanya kompetitor ("kenapa bukan pakai [X vendor lain]?"):**
+
+> Jangan jelekkan kompetitor. Fokus ke pembeda: *"Vendor [X] punya kekuatan di [Y]. Yang membedakan pendekatan kami: (1) syariah-first, template komunikasi sudah dirancang etika muamalah; (2) on-premise deployment, data BSN tidak transit vendor; (3) source code hand-over full, tidak ada lock-in. Pilihan akhir tentu tetap di BSN — kami tidak minta eksklusifitas."*
+
+**Kalau ada silence panjang / tidak ada pertanyaan:**
+
+> Jangan panik. Isi silence dengan pertanyaan reflektif: *"Sebelum kami tutup — apakah ada bagian tertentu yang kurang jelas atau ingin didalami? Atau mungkin kekhawatiran yang belum kami jawab? Jujur saja, silence-nya bisa artinya semua clear, bisa juga ada yang belum resonate. Kami lebih senang tahu."*
+
+---
+
+## Checklist Persiapan H-1
+
+24 jam sebelum presentasi, verifikasi:
+
+- [ ] Laptop presentasi charged full + charger di tas
+- [ ] Adapter HDMI/USB-C untuk proyektor (Windows / Mac)
+- [ ] File `.pptx` di 3 lokasi: laptop, USB flashdisk, cloud storage
+- [ ] File `NARASI_PRESENTASI.pdf` di tablet + versi printed A4
+- [ ] HP demo terinstall APK terbaru, akun petugas siap login
+- [ ] Akun supervisor demo siap login di browser (test dulu)
+- [ ] Screenshot cadangan (kalau internet mati) di folder yang cepat akses
+- [ ] Air mineral, permen (untuk kondisi kering tenggorokan)
+- [ ] Business card + 3 copy hardcopy proposal
+- [ ] Dress code sesuai audience BSN (formal batik / setelan)
+- [ ] Tiba lokasi minimal 30 menit sebelum jadwal
+
+Selamat mempersiapkan. Semoga lancar dan berkah. Wassalam.

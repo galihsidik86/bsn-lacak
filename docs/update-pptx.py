@@ -92,6 +92,40 @@ REPLACEMENTS: list[tuple[str, str]] = [
      "·  In-app camera lock + magic-byte server validation (1 minggu)"),
     ("Spesifikasi teknis, LDAP AD sandbox, tim PIC BSN & ArtiVisi",
      "Spesifikasi teknis, env Firebase + VPS, tim PIC BSN & ArtiVisi"),
+
+    # --- Slide 7: Peta GIS bullet 2 — ganti generic click ke GPS trail + heatmap ---
+    ("✓  Klik marker → linimasa kunjungan per petugas per hari",
+     "✓  GPS trail historis dengan date picker + heatmap kunjungan"),
+
+    # --- Slide 7: Analitik bullet 3 — arsip JSONL diganti chat + alerts ---
+    ("✓  Arsip JSONL.gz harian otomatis untuk kepatuhan OJK MRTI",
+     "✓  Chat petugas ↔ supervisor + geofence violation + inactivity alert"),
+    ("✓  Supervisor approve/reject + catatan + push notif ke petugas",
+     "✓  Supervisor approve/reject + push notif FCM ke petugas"),
+
+    # --- Slide 11 P0: Ganti item ke ✓ DONE per baris (paragraph-level) ---
+    ("·  Geo-Fencing 50m server-side (1–2 hari)",
+     "✓  Geo-Fencing 50m server-side — DONE"),
+    ("·  SSO Active Directory + 2FA TOTP (1 minggu)",
+     "✓  TOTP 2FA + JWT rotation 15m — DONE"),
+    ("·  In-app camera lock + magic-byte server validation (1 minggu)",
+     "✓  In-app camera + magic-byte + EXIF freshness — DONE"),
+
+    # --- Slide 11 P1: 2 item done, 1 tetap pending (WA) ---
+    ("·  WhatsApp Business Cloud API resmi (2 minggu)",
+     "·  WhatsApp Business Cloud API resmi (tunggu akses Meta)"),
+    ("·  Smart Allocation 3-parameter (1 minggu)",
+     "✓  Smart Allocation 3-parameter — DONE"),
+    ("·  Interactive WA template CTA button (1 minggu)",
+     "✓  APK Capacitor + Foreground GPS + FCM — DONE"),
+    ("·  Scheduler Pre-Due & Past-Due tier DPD (1 minggu)",
+     "✓  Chat petugas ↔ supervisor realtime — DONE"),
+
+    # --- Slide 11 P2: Core Banking realistic, HA update ---
+    ("·  Core Banking connector REST/SFTP (2 minggu)",
+     "·  Core Banking connector REST/webhook (tunggu spec)"),
+    ("·  High Availability Postgres replica (1 minggu)",
+     "·  High Availability Postgres replica (saat scale > 1 region)"),
 ]
 
 
