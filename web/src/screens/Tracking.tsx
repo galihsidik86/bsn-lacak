@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Map as MlMap, Marker, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Ic } from '../components/Icons';
-import { Avatar, StatusPill, cssVar } from '../components/UI';
+import { Avatar, StatusPill } from '../components/UI';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import {
   HASIL_KUNJUNGAN, RPjt, STATUS_PETUGAS,
@@ -494,7 +494,9 @@ function MapTilerMap({ routes, sel, showAll, setSel, live, jejak, trail, heatmap
   trail: Array<{ lat: number; lng: number; ts: number }>;
   heatmap: Array<{ lat: number; lng: number; count: number }>;
 }) {
-  const accent = cssVar('--accent') || '#1f8a5b';
+  // Hex hardcoded karena MapLibre GL JS tidak parse oklch() string.
+  // Kalau nanti brand berubah, update di sini + var(--accent) di styles.css.
+  const accent = '#1f8a5b';
   const styleUrl = `https://api.maptiler.com/maps/${MAPTILER_STYLE}/style.json?key=${MAPTILER_KEY}`;
   const mapRef = useRef<MapRef | null>(null);
 
@@ -788,7 +790,9 @@ function MapStylized({ routes, sel, showAll, setSel, myRoute, jejak, trail }: {
   jejak: JejakStop[];
   trail: Array<{ lat: number; lng: number; ts: number }>;
 }) {
-  const accent = cssVar('--accent') || '#1f8a5b';
+  // Hex hardcoded karena MapLibre GL JS tidak parse oklch() string.
+  // Kalau nanti brand berubah, update di sini + var(--accent) di styles.css.
+  const accent = '#1f8a5b';
   const W = 1000;
   const H = 620;
   const vRoads = [120, 240, 360, 480, 600, 720, 840];
