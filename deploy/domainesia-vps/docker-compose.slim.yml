@@ -71,6 +71,21 @@ services:
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_FROM_SMS: ${TWILIO_FROM_SMS:-}
       TWILIO_WA_FROM: ${TWILIO_WA_FROM:-}
+      # Firebase Cloud Messaging — jalur push notif untuk APK Android.
+      # Diisi dari .env; kalau kosong FCM silently no-op.
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      # Web Push VAPID — jalur push untuk PWA browser.
+      VAPID_PUBLIC: ${VAPID_PUBLIC:-}
+      VAPID_PRIVATE: ${VAPID_PRIVATE:-}
+      VAPID_CONTACT: ${VAPID_CONTACT:-mailto:admin@example.com}
+      # Retention & worker tuning — kalau ingin naikkan untuk investigasi
+      # fraud lawas, override sementara di .env lalu recreate api container.
+      POSITION_RETENTION_DAYS: ${POSITION_RETENTION_DAYS:-90}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-365}
+      LIVE_INACTIVITY_THRESHOLD_MIN: ${LIVE_INACTIVITY_THRESHOLD_MIN:-30}
+      LIVE_INACTIVITY_CHECK_INTERVAL_MIN: ${LIVE_INACTIVITY_CHECK_INTERVAL_MIN:-5}
       # Tekan Node heap supaya tidak rakus saat idle.
       NODE_OPTIONS: --max-old-space-size=256
     volumes:
