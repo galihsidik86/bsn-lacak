@@ -78,6 +78,18 @@ router.get('/positions/latest', async (req, res) => {
   })));
 });
 
+// On-demand retention sweep — admin bisa trigger prune manual di luar
+// jadwal harian. Contoh use case: mau hapus data > retention days
+// sebelum backup ekspor, atau setelah menaikkan retention days
+// sementara untuk investigasi, mau kembali normal.
+// ADMIN ONLY — supervisor tidak boleh menghapus data trail.
+router.post('/positions/prune', async (req, res) => {
+  if (req.user?.role !== 'ADMIN') return res.status(403).json({ error: 'forbidden' });
+  const { runPositionRetentionSweep } = await import('../workers/positionRetentionWorker.js');
+  const result = await runPositionRetentionSweep();
+  res.json(result);
+});
+
 // Trail pergerakan petugas — semua PetugasPosition dalam window waktu,
 // urut kronologis. Dipakai supervisor Tracking untuk render polyline
 // "history pergerakan hari ini". Scope branch wajib: petugas hanya boleh

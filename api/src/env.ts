@@ -89,6 +89,11 @@ const schema = z.object({
   // tapi tidak ping lebih dari threshold menit.
   LIVE_INACTIVITY_THRESHOLD_MIN: z.coerce.number().int().min(5).max(180).default(30),
   LIVE_INACTIVITY_CHECK_INTERVAL_MIN: z.coerce.number().int().min(1).max(60).default(5),
+  // Trail history retention — PetugasPosition > N hari dihapus worker
+  // harian. 90 hari cukup untuk audit lapangan realistis; naikkan
+  // sementara di env kalau ada investigasi fraud lawas yang butuh
+  // trail lebih panjang.
+  POSITION_RETENTION_DAYS: z.coerce.number().int().min(7).max(3650).default(90),
   // DG — leave auto-reassign sweep. Every 30 min covers same-day starts
   // without churning the DB.
   LEAVE_REASSIGN_POLL_MS: z.coerce.number().int().positive().default(30 * 60 * 1000),

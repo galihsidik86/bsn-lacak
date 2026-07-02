@@ -61,6 +61,7 @@ import { startEscalationWorker, stopEscalationWorker } from './workers/escalatio
 import { startWeeklyDigestWorker, stopWeeklyDigestWorker } from './workers/weeklyDigestWorker.js';
 import { startInactivityWorker, stopInactivityWorker } from './workers/inactivityWorker.js';
 import { startLiveInactivityWorker, stopLiveInactivityWorker } from './workers/liveInactivityWorker.js';
+import { startPositionRetentionWorker, stopPositionRetentionWorker } from './workers/positionRetentionWorker.js';
 import { startLeaveAssignmentWorker, stopLeaveAssignmentWorker } from './workers/leaveAssignmentWorker.js';
 import { startStaleNasabahWorker, stopStaleNasabahWorker } from './workers/staleNasabahWorker.js';
 import { startTagRuleWorker, stopTagRuleWorker } from './workers/tagRuleWorker.js';
@@ -231,6 +232,7 @@ startEscalationWorker();
 startWeeklyDigestWorker();
 startInactivityWorker();
 startLiveInactivityWorker();
+startPositionRetentionWorker();
 startLeaveAssignmentWorker();
 startStaleNasabahWorker();
 startTagRuleWorker();
@@ -255,6 +257,7 @@ const shutdown = (sig: string) => {
   stopWeeklyDigestWorker();
   stopInactivityWorker();
   stopLiveInactivityWorker();
+  stopPositionRetentionWorker();
   stopLeaveAssignmentWorker();
   stopStaleNasabahWorker();
   stopTagRuleWorker();
